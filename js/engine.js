@@ -516,7 +516,7 @@ export function validate(S, pid, a) {
   }
   if (a.type === 'factor') { const r = (S.recv || []).find(x => x.id === a.id && x.to === pid); return r ? null : 'その売掛金はもうない'; }
   if (a.type === 'bridge') { if (!(a.amt >= 100 && a.amt <= BRIDGE_MAX)) return '金額がちがう'; if ((S.recv || []).some(x => x.from === pid && x.bridge)) return 'つなぎ融資は返してから'; return null; }
-  if (a.type === 'deal') { const o = p.offers.find(x => x.id === a.id); if (!o) return 'その取引はもう終わった'; if (o.kind === 'pact') return null; if (o.kind === 'buy' && (p.inv[o.item] || 0) < o.qty) return `${ITEMS[o.item].name}が足りない`; if (o.kind === 'sell' && p.cash < o.qty * o.price) return 'お金が足りない'; return null; }
+  if (a.type === 'deal') { const o = p.offers.find(x => x.id === a.id); if (!o) return 'その取引はもう終わった'; if (o.kind === 'pact') return null; if (o.kind === 'shopbid') { const t = S.shops.find(x => x.id === o.shop && x.owner === pid), rv = S.players[o.rival]; if (!t) return 'その店はもうない'; if (rv.cash < o.price || shopsOf(S, rv.id).length >= MAX_SHOPS) return '相手の都合で取引が流れた'; return null; } if (o.kind === 'buy' && (p.inv[o.item] || 0) < o.qty) return `${ITEMS[o.item].name}が足りない`; if (o.kind === 'sell' && p.cash < o.qty * o.price) return 'お金が足りない'; return null; }
   if (a.type === 'buy') { if (!ITEMS[a.res] || !(a.qty > 0)) return '数がちがう'; if (p.cash < quote(S, a.res, a.qty)) return 'お金が足りない'; return null; }
   if (a.type === 'sell') { if (!(a.qty > 0) || (p.inv[a.res] || 0) < a.qty) return '在庫が足りない'; return null; }
   if (a.type === 'card') {
@@ -598,7 +598,8 @@ function applyAction(S, pid, a, fx, late) {
   }
   if (a.type === 'factor') { const r = S.recv.find(x => x.id === a.id); const got = Math.round(r.amt * (1 - FACTOR_FEE)); p.cash += got; r.to = -1; fx.push({ kind: 'factor', pid, amt: r.amt, got }); }
   if (a.type === 'bridge') { p.cash += a.amt; (S.recv = S.recv || []).push({ id: S.nextOffer++, from: pid, to: -1, amt: Math.round(a.amt * (1 + BRIDGE_RATE)), due: S.t + 1, bridge: 1 }); fx.push({ kind: 'bridge', pid, amt: a.amt }); }
-  if (a.type === 'deal' && p.offers.find(x => x.id === a.id).kind === 'pact') { const o = p.offers.find(x => x.id === a.id); newPact(S, o.pact); p.offers = p.offers.filter(x => x !== o); fx.push({ kind: 'pactYes', pid: o.pact.from, to: pid, pact: o.pact }); }
+  if (a.type === 'deal' && p.offers.find(x => x.id === a.id).kind === 'shopbid') { const o = p.offers.find(x => x.id === a.id), t = S.shops.find(x => x.id === o.shop), rv = S.players[o.rival]; rv.cash -= o.price; p.cash += o.price; t.owner = rv.id; t.feat = null; t.featQty = 0; p.offers = p.offers.filter(x => x !== o); fx.push({ kind: 'buyshop', pid: rv.id, from: pid, shop: t.id, price: o.price }); }
+  else if (a.type === 'deal' && p.offers.find(x => x.id === a.id).kind === 'pact') { const o = p.offers.find(x => x.id === a.id); newPact(S, o.pact); p.offers = p.offers.filter(x => x !== o); fx.push({ kind: 'pactYes', pid: o.pact.from, to: pid, pact: o.pact }); }
   else if (a.type === 'deal') {
     const o = p.offers.find(x => x.id === a.id);
     if (o.kind === 'buy') { const avg = p.invCost[o.item] / p.inv[o.item]; p.inv[o.item] -= o.qty; p.invCost[o.item] -= avg * o.qty; p.cash += o.qty * o.price;
@@ -643,6 +644,14 @@ function aiPactOk(S, aid, c) {
 }
 // ライバルからの契約の申し出(人の商会へ)
 function pactOffers(S) {
+  // ライバルが、あなたの儲かっている店を買いたいと言ってくる(お金に余裕があり、店を増やしたいとき)
+  for (const p of S.players) {
+    if (p.ai || S.t < 6 || S.t > S.months - 4 || rnd(S) > 0.2) continue;
+    const rv = S.players.filter(o => o.ai && o.id !== p.id && shopsOf(S, o.id).length < MAX_SHOPS).sort((a, b) => b.cash - a.cash)[0];
+    const t = shopsOf(S, p.id).filter(x => x.g !== 'work' && x.hist.length >= 3 && x.hist.slice(-3).reduce((a, b) => a + b, 0) > 45).sort((a, b) => shopValue(S, b) - shopValue(S, a))[0];
+    if (!rv || !t) continue; const price = Math.round(shopValue(S, t) * (1.25 + rnd(S) * 0.35) / 10) * 10;
+    if (rv.cash > price + 400) p.offers.push({ id: S.nextOffer++, kind: 'shopbid', shop: t.id, price, rival: rv.id, item: GOODS[t.g].res, qty: 1, who: rv.name + '(ライバル)' });
+  }
   for (const p of S.players) {
     if (p.ai || rnd(S) > 0.45) continue;
     for (const rv of S.players.filter(o => o.ai && o.id !== p.id)) {
@@ -1306,6 +1315,18 @@ function deepMuts(S, pid, p, P, acts, stores) {
   // 赤字続きの店をたたむ案
   const worst = stores.filter(s => s.hist.length >= 3 && s.hist.slice(-3).reduce((a, x) => a + x, 0) < 0).sort((a, b) => a.last.profit - b.last.profit)[0];
   if (worst && !acts.some(a => a.type === 'close' && a.shop === worst.id)) muts.push(acts.concat([{ type: 'close', shop: worst.id }]));
+  if (P.mx) {
+    const cash = p.cash - 150, mine = shopsOf(S, pid);
+    // 育て方: まだ決めていない店に、3つの路線それぞれを試す
+    if (!acts.some(a => a.type === 'route')) for (const s of stores.filter(x => x.months >= 3 && !x.route).slice(0, 2)) for (const k of Object.keys(ROUTES)) if (cash > ROUTES[k].cost[0] + 200) muts.push(acts.concat([{ type: 'route', shop: s.id, k }]));
+    // レア素材: 安いときに仕入れて目玉に
+    for (const k of Object.keys(RARES)) { const sh = stores.find(x => x.g === RARES[k].use); if (sh && S.market[k].price < RARES[k].base * 0.95 && !(p.inv[k] > 2) && cash > quote(S, k, 4) + 300) muts.push(acts.concat([{ type: 'buy', res: k, qty: 4 }, { type: 'set', shop: sh.id, feat: k, featQty: 4 }])); }
+    // ライバル(AI)の店を買い取る: 相手が売ってくれる値段で
+    if (mine.length < MAX_SHOPS && !acts.some(a => a.type === 'open')) {
+      const tg = S.shops.filter(t => t.owner !== pid && S.players[t.owner].ai && t.g !== 'work' && t.hist.length >= 3).map(t => { const sel = S.players[t.owner], v = shopValue(S, t), losing = t.hist.slice(-2).every(x => x < 0), poor = sel.cash < 150; return { t, price: Math.ceil(v * (poor ? 1.0 : losing ? 1.1 : 1.6)) + 1, avg: t.hist.slice(-3).reduce((a, b) => a + b, 0) / 3 }; }).filter(x => x.price < cash - 200 && x.avg > 0).sort((a, b) => b.avg / b.price - a.avg / a.price).slice(0, 2);
+      for (const x of tg) muts.push(acts.concat([{ type: 'buyshop', shop: x.t.id, price: x.price }]));
+    }
+  }
   return muts;
 }
 // AI の判断のくせ(自己対戦で学習して決める)。buf=出店時に残す現金, thr=出店の基準, pw=値付けのくせの強さ, ropen=育て方に残す現金, H=何か月先まで読むか, nc=試算する候補数, run=店の稼ぐ力の重み

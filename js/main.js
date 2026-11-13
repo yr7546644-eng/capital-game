@@ -35,7 +35,7 @@ function pendCost() {
     if (a.type === 'buyshop') c += a.price;
     if (a.type === 'bridge') c -= a.amt;
     if (a.type === 'factor') { const r = (S.recv || []).find(x => x.id === a.id); if (r) c -= Math.round(r.amt * (1 - E.FACTOR_FEE)); }
-    if (a.type === 'deal') { const o = (me().offers || []).find(x => x.id === a.id); if (o && o.kind === 'sell') c += o.qty * o.price; if (o && o.kind === 'buy') c -= o.qty * o.price; }
+    if (a.type === 'deal') { const o = (me().offers || []).find(x => x.id === a.id); if (o && o.kind === 'sell') c += o.qty * o.price; if (o && o.kind === 'buy') c -= o.qty * o.price; if (o && o.kind === 'shopbid') c -= o.price; }
     if (a.type === 'route') { const s = S.shops.find(x => x.id === a.shop); const lv = s && s.route ? s.route.lv + 1 : 1; c += E.ROUTES[a.k].cost[lv - 1]; }
   }
   return c;
@@ -353,7 +353,7 @@ SHEETS.market = () => {
     body = `<div class="box"><div class="lbl">先月のライバルの売り買い</div>${lines.length ? lines.map(x => `<div class="news">${x}</div>`).join('') : '<div class="t3">目立った動きはない</div>'}</div><div class="box"><div class="lbl">ライバルの倉(うわさ)</div>${stock}</div><div class="t3">誰かが原料を買い込んでいたら、来月はその原料が値上がりしやすい。倉にたくさんある相手は、売りに出して値を崩すかも。</div>`;
   }
   if (tab === 'pact') body = pactTab();
-  if (tab === 'deal') body = offers.length ? `<div class="box">${offers.map(o => { if (o.kind === 'pact') return pactOfferRow(o); const r = E.ITEMS[o.item], m = S.market[o.item].price, on = F.acts.some(a => a.type === 'deal' && a.id === o.id), k = o.price / m; const ok = o.kind === 'buy' ? p.inv[o.item] >= o.qty : freeCash() >= o.qty * o.price || on;
+  if (tab === 'deal') body = offers.length ? `<div class="box">${offers.map(o => { if (o.kind === 'pact') return pactOfferRow(o); if (o.kind === 'shopbid') return shopBidRow(o); const r = E.ITEMS[o.item], m = S.market[o.item].price, on = F.acts.some(a => a.type === 'deal' && a.id === o.id), k = o.price / m; const ok = o.kind === 'buy' ? p.inv[o.item] >= o.qty : freeCash() >= o.qty * o.price || on;
       return `<div class="res"><span class="ri">${r.icon}</span><div class="grow"><div style="font-size:14px">${esc(o.who)}${o.rival != null ? ' <span class="tagg r">前金つき</span>' : ''}${E.isRare(o.item) ? ' <span class="tagg y">レア</span>' : ''}</div>${o.rival != null ? `<div class="t3">納めると、${esc(S.players[o.rival].name)}の${E.GOODS[E.RARES[o.item].use].name}が目玉商品で強くなる</div>` : ''}<div class="t2" style="margin:0">${o.kind === 'buy' ? `あなたの<b>${r.name}</b>を <b>${fmt(o.qty)}</b>個、1個 <b>${o.price.toFixed(2)}G</b> で買いたい` : `<b>${r.name}</b>を <b>${fmt(o.qty)}</b>個、1個 <b>${o.price.toFixed(2)}G</b> で売りたい`}</div><div class="t3">相場 ${m.toFixed(2)}G の <b class="${(o.kind === 'buy') === (k > 1) ? 'up' : 'down'}">${Math.round(k * 100)}%</b> · 合計 ${fmt(o.qty * o.price)}G${o.kind === 'buy' && !ok ? ` · <span class="down">在庫 ${fmt(p.inv[o.item])} では足りない</span>` : ''}</div></div>
         <button class="btn sm ${on ? 'warm' : 'pri'}" data-a="deal" data-v="${o.id}" ${ok || on ? '' : 'disabled'}>${on ? '受ける ✓' : '受ける'}</button></div>`; }).join('')}</div><div class="t3">申し出は今月だけ。「次の月へ」で決まる。相場より高く買ってくれる相手には売り、安く売ってくれる相手からは買うのが基本。でも相場が動く前に…?</div>` : '<div class="box t2">今月は申し出がない。</div>';
   return head('🛒', '市場', '値段は町の倉の在庫で決まる。在庫が減ると値上がり、増えると値下がり') + tabs + body + `<div class="t3" style="margin-top:8px">📦 在庫は「生産(季節・天気・出来事)」で増え、「町の人の消費(高いと控える)」と「みんなの店の仕入れ」で減る。プレイヤーが買えば減り、売れば増える。</div>`;
@@ -438,6 +438,11 @@ async function mpStep(acts) {
 NET.on_('acts', (m) => { netSend({ k: 'ready', ready: Object.fromEntries(Object.keys(NET.ready).map(k => [k, 1])) }); updateWait(); if (F.mpChk) F.mpChk(); });
 // 契約: いま結んでいる契約・売掛金と買掛金・来月の資金繰り・新しい契約の申し込み
 const pactLine = (c) => { const r = E.ITEMS[c.item], sell = c.seller === ME, who = S.players[sell ? c.buyer : c.seller]; return `<b>${esc(who.name)}</b>${sell ? 'に' : 'から'} ${r.icon}${r.name} 毎月<b>${fmt(c.qty)}</b>個 · 1個 <b>${c.price.toFixed(2)}G</b> · ${c.pay ? '<span class="tagg y">翌月払い</span>' : '<span class="tagg">その月払い</span>'}`; };
+function shopBidRow(o) {
+  const t = S.shops.find(x => x.id === o.shop); if (!t) return ''; const on = F.acts.some(a => a.type === 'deal' && a.id === o.id), v = E.shopValue(S, t), avg = t.hist.slice(-3).reduce((a, b) => a + b, 0) / 3;
+  return `<div class="res"><span class="ri">${gd(t).icon}</span><div class="grow"><div style="font-size:14px">${esc(o.who)} <span class="tagg r">店の買い取り</span></div><div class="t2" style="margin:0">あなたの<b>${gd(t).name}(${E.DISTRICTS[t.d].short})</b>を <b>${fmt(o.price)}G</b> で買いたい</div><div class="t3">帳簿の店の価値 ${fmt(v)}G · 最近の利益 月${sign(Math.round(avg))}G。売れば現金が入るが、その店の稼ぎは${esc(S.players[o.rival].name)}のものになる</div></div>
+    <button class="btn sm ${on ? 'warm' : ''}" data-a="deal" data-v="${o.id}">${on ? '売る ✓' : '売る'}</button></div>`;
+}
 function pactOfferRow(o) {
   const c = o.pact, on = F.acts.some(a => a.type === 'deal' && a.id === o.id), m = S.market[c.item].price, k = c.price / m, sell = c.seller === ME;
   return `<div class="res"><span class="ri">📝</span><div class="grow"><div style="font-size:14px">${esc(o.who)} <span class="tagg b">契約の申し込み</span></div><div class="t2" style="margin:0">${sell ? 'あなたが売る' : 'あなたが買う'}: ${pactLine(c)} · ${c.months}か月</div><div class="t3">相場の${Math.round(k * 100)}%。${sell ? (c.pay ? '代金は翌月に入る(その間の資金繰りに注意)' : '代金はその月に入る') : (c.pay ? '支払いは翌月でいい(手元のお金に余裕ができる)' : 'その月に払う')}。足りない月は不足分の${Math.round(E.PACT_SHORT * 100)}%を違約金として払う</div></div>

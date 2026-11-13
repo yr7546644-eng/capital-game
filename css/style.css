@@ -248,3 +248,4 @@ button,[data-a],.card{-webkit-tap-highlight-color:transparent;transition:transfo
 #mpwait{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 70px);transform:translateX(-50%);z-index:40;background:rgba(255,255,255,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:16px;padding:10px 14px;box-shadow:0 8px 26px rgba(20,40,90,.22);font-size:13.5px;text-align:center;max-width:calc(100vw - 32px);animation:shin .4s cubic-bezier(.22,1.25,.36,1)}
 #mpwait .btn{margin-top:6px}
 .title .tb .btn.ghost+.btn.ghost{margin-top:0}
+body:has(.title) #dock,body:has(.title) #labels{opacity:0;pointer-events:none;transition:opacity .3s}
