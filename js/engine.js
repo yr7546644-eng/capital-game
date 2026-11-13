@@ -26,13 +26,29 @@ export const PROC = {
 };
 // レア素材(少ししか出回らない。目玉商品にすると客寄せと特別売上。use = 目玉にできる業種)
 export const RARES = {
-  starsilver: { name: '星銀鉱', icon: '✨', base: 48, vol: 0.12, impact: 0.035, decay: 0, use: 'tool', rare: 1, where: '雪解けのころ鉱山で出る。騎士の大会で値上がり' },
-  dragonscale: { name: '竜のうろこ', icon: '🐉', base: 60, vol: 0.12, impact: 0.04, decay: 0, use: 'cloth', rare: 1, where: '冒険者が竜を討伐すると出回る' },
-  moonherb: { name: '月光草', icon: '🌙', base: 32, vol: 0.14, impact: 0.035, decay: 0.15, use: 'potion', rare: 1, where: '満月の夜に森でとれる。すぐ傷む。はやり風邪で値上がり' },
-  seapearl: { name: '海の真珠', icon: '🦪', base: 70, vol: 0.12, impact: 0.04, decay: 0, use: 'cloth', rare: 1, where: '嵐のあとの浜で見つかる。貴族街で特に高く売れる' },
-  goldwheat: { name: '黄金麦', icon: '🌟', base: 22, vol: 0.12, impact: 0.03, decay: 0.05, use: 'bread', rare: 1, where: '豊作の秋にだけ少しとれる' },
+  starsilver: { name: '星銀鉱', icon: '✨', base: 48, decay: 0, use: 'tool', rare: 1, where: '雪解けのころ鉱山で出る。騎士の大会で高級装備の注文が増えて値上がり。目玉にすると職人の手(加工枠)を使う' },
+  dragonscale: { name: '竜のうろこ', icon: '🐉', base: 60, decay: 0, use: 'tool', rare: 1, where: '冒険者が竜を討つと出回る。鍛冶屋で竜鱗の盾に。冒険者ブームや騎士の大会で欲しがる人が増える' },
+  moonherb: { name: '月光草', icon: '🌙', base: 32, decay: 0.15, use: 'potion', rare: 1, where: '満月の夜に森でとれる。すぐ傷む。薬師ギルドと宿屋(月見酒)が別々の値段で買いに来る' },
+  seapearl: { name: '海の真珠', icon: '🦪', base: 70, decay: 0, use: 'cloth', rare: 1, where: '嵐のあとの浜で見つかる。王都の祭りで礼服に。町に仕立て屋が少ないと、よその町の商人が高く買う' },
+  goldwheat: { name: '黄金麦', icon: '🌟', base: 22, decay: 0.3, use: 'bread', rare: 1, where: '豊作の秋にだけ少し実る。パン屋の限定商品に。毎月3割傷むので持ち越しにくい' },
 };
 export const isRare = (k) => !!RARES[k];
+// 市場のしくみ: 町の倉の在庫で値段が決まる。在庫は 生産(季節・天気・出来事) − 町の消費(値段が高いと控える) − 店の仕入れ ± プレイヤーの売買 で動く
+// flow = ふだんの1か月の生産量。N = ふだんの在庫(原料は4か月分・加工品は2か月分)。値段 = ふだんの値段 × (ふだんの在庫 ÷ いまの在庫)^0.7
+const SEAS = {
+  wheat: [0.7, 0.65, 0.65, 0.7, 0.75, 0.8, 0.85, 1.9, 2.1, 1.7, 0.85, 0.7],   // 8〜10月が収穫
+  herb: [0.6, 0.6, 0.9, 1.25, 1.35, 1.35, 1.3, 1.2, 1.0, 0.9, 0.75, 0.6],
+  wool: [0.8, 0.8, 0.95, 1.8, 1.9, 1.0, 0.9, 0.9, 0.9, 0.85, 0.8, 0.8],   // 春の毛刈り
+};
+export const FLOW = { wheat: 3000, herb: 900, iron: 500, wool: 900, flour: 800, tincture: 250, steel: 180, fabric: 350, starsilver: 0, dragonscale: 0, moonherb: 0, seapearl: 0, goldwheat: 0 };
+const RARE_PULSE = 14, RARE_NEED = 6, RARE_N = 30;
+const seasK = (k, mo) => { const a = SEAS[k]; if (!a) return 1; const avg = a.reduce((x, y) => x + y, 0) / 12; return a[mo] / avg; };
+export const normalStock = (k) => (RARES[k] ? RARE_N : FLOW[k] * (RES[k] ? 4 : 2));
+export function priceAt(k, stock) { const N = normalStock(k); return ITEMS[k].base * Math.min(3.5, Math.max(0.35, Math.pow(N / Math.max(1, stock), 0.7))); }
+function setPrice(S, k) { S.market[k].price = priceAt(k, S.mk[k].stock); }
+// 町の倉から qty 取り出す(買う・店が使う)。値段は在庫が減るほど上がる
+function takeCost(S, k, qty, spread) { let st = S.mk[k].stock, c = 0; const step = Math.max(1, qty / 40); for (let left = qty; left > 0; left -= step) { const u = Math.min(step, left); c += u * priceAt(k, st - u / 2) * (1 + spread); st -= u; } return { c, st }; }
+function giveGot(S, k, qty, spread) { let st = S.mk[k].stock, g = 0; const step = Math.max(1, qty / 40); for (let left = qty; left > 0; left -= step) { const u = Math.min(step, left); g += u * priceAt(k, st + u / 2) * (1 - spread); st += u; } return { g, st }; }
 export const ITEMS = { ...RES, ...PROC, ...RARES };
 export const isProc = (k) => !!PROC[k];
 export const SPREAD = 0.03;   // 買うときは相場より3%高く、売るときは3%安く
@@ -81,29 +97,30 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
 // ── 出来事(1か月前に予告が出る)
 export const EVENTS = [
-  { id: 'harvest_bad', name: '小麦の不作', icon: '🌧️', text: '北の畑が長雨にやられた。小麦が高くなりそう', res: { wheat: 1.55 }, len: 3 },
-  { id: 'harvest_good', name: '小麦の大豊作', icon: '🌾', text: '今年は豊作。小麦が安くなりそう', res: { wheat: 0.7 }, len: 3 },
-  { id: 'plague', name: 'はやり風邪', icon: '🤧', text: '町で風邪がはやりはじめた。薬が売れ、月光草が値上がり', dem: { potion: 1.8 }, res: { moonherb: 1.6 }, len: 2 },
+  { id: 'harvest_bad', name: '小麦の不作', icon: '🌧️', text: '北の畑が長雨にやられた。小麦の生産が半分近くに減る(在庫が細ると値上がり)', prod: { wheat: 0.5 }, len: 3 },
+  { id: 'harvest_good', name: '小麦の大豊作', icon: '🌾', text: '今年は豊作。小麦の生産が1.6倍(在庫がだぶつくと値下がり)', prod: { wheat: 1.6 }, len: 3 },
+  { id: 'plague', name: 'はやり風邪', icon: '🤧', text: '町で風邪がはやりはじめた。薬が売れ、薬草・秘薬の素・月光草を欲しがる人が増える', dem: { potion: 1.8 }, need: { herb: 1.3, tincture: 1.6, moonherb: 2.5 }, len: 2 },
   { id: 'festival', name: '収穫祭', icon: '🎪', text: '中央広場で収穫祭。広場に人がどっと来る(1.8倍)', dist: { plaza: 1.8 }, len: 1, w: 2 },
-  { id: 'adventurer', name: '冒険者ブーム', icon: '🗡️', text: '迷宮が見つかり、冒険者が集まってきた。道具が売れそう', dem: { tool: 1.6, potion: 1.25 }, len: 3 },
-  { id: 'mine', name: '鉱山の落盤', icon: '⛏️', text: '鉄の鉱山で落盤。鉄が高くなりそう', res: { iron: 1.6 }, len: 3 },
-  { id: 'ship', name: '商船の到着', icon: '⛵', text: '大きな商船が港に入る。港が大にぎわい(1.6倍)、羊毛が安くなる', dist: { port: 1.6 }, res: { wool: 0.75 }, len: 1, w: 1.5 },
-  { id: 'cold', name: '寒波', icon: '❄️', text: '寒い冬が来る。服がよく売れそう', dem: { cloth: 1.6 }, len: 2 },
-  { id: 'herb_bad', name: '薬草の不作', icon: '🥀', text: '森の薬草が枯れた。薬草が高くなりそう', res: { herb: 1.6 }, len: 2 },
+  { id: 'adventurer', name: '冒険者ブーム', icon: '🗡️', text: '迷宮が見つかり、冒険者が集まってきた。道具と薬が売れ、竜のうろこを欲しがる人も', dem: { tool: 1.6, potion: 1.25 }, need: { dragonscale: 1.8, steel: 1.2 }, len: 3 },
+  { id: 'mine', name: '鉱山の落盤', icon: '⛏️', text: '鉄の鉱山で落盤。鉄の生産が4割に減る', prod: { iron: 0.4 }, len: 3 },
+  { id: 'ship', name: '商船の到着', icon: '⛵', text: '大きな商船が港に入る。港が大にぎわい(1.6倍)、羊毛がたくさん入荷', dist: { port: 1.6 }, prod: { wool: 2.2, iron: 1.3 }, len: 1, w: 1.5 },
+  { id: 'cold', name: '寒波', icon: '❄️', text: '寒い冬が来る。服がよく売れ、羊毛と毛織物を欲しがる人が増える', dem: { cloth: 1.6 }, need: { wool: 1.3, fabric: 1.3 }, len: 2 },
+  { id: 'herb_bad', name: '薬草の不作', icon: '🥀', text: '森の薬草が枯れた。薬草の生産が4割に減る', prod: { herb: 0.4 }, len: 2 },
   { id: 'tax', name: '臨時の税', icon: '📜', text: '領主が臨時の税をかける。現金を多く持つ人ほど払う', tax: 0.04, len: 1 },
-  { id: 'vein', name: '新しい鉱脈', icon: '💎', text: '鉱山で新しい鉱脈が見つかった。鉱夫が押し寄せ、鉱山口の客が1.7倍', dist: { mine: 1.7 }, res: { iron: 0.8 }, len: 3, only: 'snow' },
-  { id: 'cavein', name: '坑道の崩落', icon: '🪨', text: '坑道が崩れて鉱夫が減る。鉱山口の客が半分に', dist: { mine: 0.5 }, len: 2, only: 'snow' },
-  { id: 'storm', name: '嵐の季節', icon: '⛈️', text: '海が荒れて船が来ない。港の客が減る', dist: { port: 0.6 }, len: 2 },
-  { id: 'order', name: '王都の大口注文', icon: '⚔️', text: '王都の軍が鋼を大量に注文。鋼の相場が上がる', res: { steel: 1.5, iron: 1.15 }, len: 3 },
-  { id: 'fashion', name: '毛織物の流行', icon: '🧣', text: '貴族の間で毛織物がはやる。毛織物の相場が上がる', res: { fabric: 1.45 }, dem: { cloth: 1.2 }, len: 3 },
-  { id: 'millfire', name: '粉ひき小屋の火事', icon: '🔥', text: '町の粉ひき小屋が焼けた。小麦粉が足りなくなる', res: { flour: 1.5 }, len: 2 },
-  { id: 'snowmelt', name: '早い雪解け', icon: '🏔️', text: '雪解けで山肌が出た。星銀鉱が出回る(安く買える)', res: { starsilver: 0.55 }, supply: 'starsilver', len: 2 },
-  { id: 'tourney', name: '騎士の大会', icon: '🏆', text: '王都で騎士の大会。星銀鉱が値上がりし、道具がよく売れる', res: { starsilver: 1.8 }, dem: { tool: 1.25 }, len: 2 },
-  { id: 'dragonhunt', name: '竜の討伐', icon: '🐉', text: '冒険者が竜を討った。竜のうろこが出回る', res: { dragonscale: 0.55 }, supply: 'dragonscale', len: 2 },
-  { id: 'fullmoon', name: '満月の夜', icon: '🌕', text: '満月で森に月光草が咲く。すぐ傷むので早めに使うか売る', res: { moonherb: 0.5 }, supply: 'moonherb', len: 1 },
-  { id: 'pearlbeach', name: '嵐のあとの浜', icon: '🦪', text: '浜に真珠貝が打ち上げられた。海の真珠が出回る', res: { seapearl: 0.55 }, supply: 'seapearl', len: 1 },
-  { id: 'goldharvest', name: '黄金の実り', icon: '🌟', text: '黄金麦がわずかに実った。パンの目玉にできる', res: { goldwheat: 0.6 }, supply: 'goldwheat', len: 2 },
-  { id: 'substitute', name: '代わりの素材の入荷', icon: '🚢', text: '商船が南の国の代わりの素材を運んできた。レア素材がまとめて値下がり', res: { starsilver: 0.65, dragonscale: 0.65, seapearl: 0.65 }, len: 2 },
+  { id: 'storm', name: '嵐の季節', icon: '⛈️', text: '海が荒れて船が来ない。港の客が減り、輸入にたよる羊毛と鉄の入荷が減る', dist: { port: 0.6 }, prod: { wool: 0.6, iron: 0.8 }, len: 2 },
+  { id: 'vein', name: '新しい鉱脈', icon: '💎', text: '鉱山で新しい鉱脈が見つかった。鉱夫が押し寄せ、鉱山口の客が1.7倍。鉄の生産も増える', dist: { mine: 1.7 }, prod: { iron: 1.6 }, len: 3, only: 'snow' },
+  { id: 'cavein', name: '坑道の崩落', icon: '🪨', text: '坑道が崩れて鉱夫が減る。鉱山口の客が半分に', dist: { mine: 0.5 }, prod: { iron: 0.6 }, len: 2, only: 'snow' },
+  { id: 'order', name: '王都の大口注文', icon: '⚔️', text: '王都の軍が鋼を大量に注文。鋼と鉄を欲しがる人が増える', need: { steel: 2.2, iron: 1.2 }, len: 3 },
+  { id: 'fashion', name: '毛織物の流行', icon: '🧣', text: '貴族の間で毛織物がはやる。毛織物を欲しがる人が増える', need: { fabric: 2 }, dem: { cloth: 1.2 }, len: 3 },
+  { id: 'millfire', name: '粉ひき小屋の火事', icon: '🔥', text: '町の粉ひき小屋が焼けた。小麦粉の生産が3割に減る', prod: { flour: 0.3 }, len: 2 },
+  { id: 'snowmelt', name: '早い雪解け', icon: '🏔️', text: '雪解けで山肌が出た。星銀鉱が掘り出される', prod: { starsilver: 1 }, len: 2 },
+  { id: 'tourney', name: '騎士の大会', icon: '🏆', text: '王都で騎士の大会。高級装備の注文が増え、星銀鉱・竜のうろこ・鋼を欲しがる人が増える。道具もよく売れる', need: { starsilver: 3, dragonscale: 2, steel: 1.4 }, dem: { tool: 1.25 }, len: 2 },
+  { id: 'dragonhunt', name: '竜の討伐', icon: '🐉', text: '冒険者が竜を討った。竜のうろこが出回る', prod: { dragonscale: 1 }, len: 2 },
+  { id: 'fullmoon', name: '満月の夜', icon: '🌕', text: '満月で森に月光草が咲く。すぐ傷むので早めに使うか売る', prod: { moonherb: 1 }, len: 1 },
+  { id: 'pearlbeach', name: '嵐のあとの浜', icon: '🦪', text: '浜に真珠貝が打ち上げられた。海の真珠が出回る', prod: { seapearl: 1 }, len: 1 },
+  { id: 'royalfest', name: '王都の祭り', icon: '🎊', text: '王都で祭り。礼服がよく売れ、海の真珠を欲しがる人が増える', need: { seapearl: 3, fabric: 1.3 }, dem: { cloth: 1.3 }, len: 2 },
+  { id: 'goldharvest', name: '黄金の実り', icon: '🌟', text: '秋の畑に黄金麦がわずかに実った', prod: { goldwheat: 1 }, len: 2, autumn: 1 },
+  { id: 'substitute', name: '代わりの素材の入荷', icon: '🚢', text: '商船が南の国の代わりの素材を運んできた。星銀鉱・竜のうろこ・海の真珠の在庫が増える', prod: { starsilver: 0.6, dragonscale: 0.6, seapearl: 0.6 }, len: 2 },
   { id: 'calm', name: '平和な月', icon: '☀️', text: '特に何もない、おだやかな月', len: 1 },
 ];
 // ── 天気(毎月かわる。予報は75%の確率で当たる)
@@ -172,7 +189,7 @@ export const CARDS = {
   // ライバルへの攻撃
   poach: { name: '客引き合戦', icon: '🥊', cost: 50, need: 'rival', text: 'ライバルの店を1つ選ぶ。今月その店の客寄せ ×0.7、同じ地区・業種のあなたの店は ×1.4' },
   headhunt: { name: '引き抜き', icon: '🤝', cost: 90, need: 'rival', text: 'ライバルの店から店員を引き抜く。相手はさばける数 −30%(2か月)、あなたの一番の店は +30%(2か月)' },
-  dump: { name: '市場に放出', icon: '📉', cost: 40, need: 'res', text: '遠くの倉から資源を流して値段を3割下げる。買い占めた相手の在庫の価値が下がる' },
+  dump: { name: '市場に放出', icon: '📉', cost: 40, need: 'res', text: '遠くの倉から資源を取り寄せ、町の在庫を3割ほど増やす(値下がりする)。買い占めた相手の在庫の価値が下がる' },
 };
 const CARD_POOL = ['shout', 'shout', 'sale', 'sale', 'craft', 'helper', 'remodel', 'scout', 'contract', 'loan', 'poach', 'poach', 'headhunt', 'dump'];
 
@@ -224,7 +241,7 @@ export const STAGES = {
     },
     lots: layout(() => C('harbor', 2, 2, [[4, 1], [0, 4], [3, 3]]), () => C('market', -1, -3, [[1, -4]]), () => C('cliff', -6, 1, [[-7, 3]])),
     roads: [['market', 'harbor'], ['market', 'cliff']], marks: [{ k: 'pier', at: [4, 3] }, { k: 'boat', at: [5, 3] }, { k: 'pier', at: [1, 5] }, { k: 'boat', at: [2, 5] }, { k: 'fountain', at: [-3, -1] }],
-    water: 'marina', theme: 'green', res: { wool: 1.4, herb: 2.6 }, ev: { ship: 4, storm: 2.5, festival: 0.6, pearlbeach: 2.5, snowmelt: 0.3 },
+    water: 'marina', theme: 'green', res: { wool: 1.4, herb: 2.6 }, ev: { ship: 4, storm: 2.5, festival: 0.6, pearlbeach: 2.5, snowmelt: 0.3, fullmoon: 1.2 },
   },
   snow: {
     name: '雪山の鉱山町ガルド', sub: '鉱脈と冬の町', diff: 2, icon: '⛏️', desc: '鉱脈が見つかれば鉱夫が押し寄せ、崩れれば消える。冬は服と薬が飛ぶように売れる',
@@ -235,7 +252,7 @@ export const STAGES = {
     },
     lots: layout(() => C('mine', 1, -6, [[3, -6]]), () => C('inn', 0, 0, [[2, -1], [-2, 1]]), () => C('village', -5, 4, [[-3, 5]])),
     roads: [['inn', 'mine'], ['inn', 'village']], marks: [{ k: 'mine', at: [2, -8] }, { k: 'cart', at: [3, -7] }, { k: 'cart', at: [0, -8] }, { k: 'well', at: [1, 1] }],
-    water: 'snow', theme: 'snow', winter: 1, res: { iron: 2.4, wheat: 1.0, wool: 2.0 }, ev: { vein: 3, cavein: 2, cold: 3, plague: 2, festival: 0.5, ship: 0, storm: 0, snowmelt: 2.5, pearlbeach: 0.2, tourney: 1.2 },
+    water: 'snow', theme: 'snow', winter: 1, res: { iron: 2.4, wheat: 1.0, wool: 2.0 }, ev: { vein: 3, cavein: 2, cold: 3, plague: 2, festival: 0.5, ship: 0, storm: 0, snowmelt: 2.5, tourney: 1.2, pearlbeach: 0.2, dragonhunt: 1.2 },
   },
   capital: {
     name: '王都ルミナス', sub: '上級者の都', diff: 3, icon: '👑', desc: '地区が4つ。家賃は高いが、貴族街では高級品が飛ぶように売れる。ライバルも手強い',
@@ -247,7 +264,7 @@ export const STAGES = {
     },
     lots: layout(() => C('noble', 0, -6, [[2, -7]]), () => C('plaza', 0, 0, [[2, -1]]), () => C('gate', 6, -2, [[7, -1]]), () => C('slum', -6, 3, [[-4, 4], [-7, 5]])),
     roads: [['gate', 'plaza'], ['plaza', 'noble'], ['plaza', 'slum'], ['gate', [10, -3]]], marks: [{ k: 'castle', at: [1, -9] }, { k: 'gate', at: [9, -3] }, { k: 'fountain', at: [1, 1] }],
-    water: 'capital', theme: 'green', maxShops: 6, cash: 1200, ev: { tax: 2, tourney: 2.5, dragonhunt: 1.5 }, aiHard: 1,
+    water: 'capital', theme: 'green', maxShops: 6, cash: 1200, ev: { tax: 2, tourney: 2.2, royalfest: 2.2, dragonhunt: 1.5 }, aiHard: 1,
   },
 };
 const RES_BASE = Object.fromEntries(Object.entries(RES).map(([k, r]) => [k, r.base]));
@@ -319,12 +336,13 @@ const AI_NAMES = [['ベルナ', 'red', 'cheap'], ['グスタフ', 'yellow', 'lux
 
 export function newGame({ seed = 1, players = null, months = MONTHS, stage = 'rose' } = {}) {
   const st = useStage(stage);
-  const S = { v: 5, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
+  const S = { v: 7, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
   const ps = players || [{ name: 'あなた', human: true }, ...AI_NAMES.map(([n, c, k]) => ({ name: n, ai: k }))];
   const mk = Object.keys(MISSIONS).sort(() => 0);
   const deck = mk.slice(); for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(rnd(S) * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
   ps.forEach((p, i) => S.players.push({ id: i, name: p.name, color: p.color || COLORS[i], human: !!p.human, ai: p.human ? null : (p.ai || 'balanced'), cash: st.cash || 1000, debt: 0, inv: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), invCost: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), offers: [], deals: 0, contracts: [], hand: [], scout: -1, nw: [st.cash || 1000], rankHist: [], mission: deck[i % deck.length], flags: { bigm: 0, bailed: 0, route2: 0, crown: 0, made: 0 } }));
-  for (const k in ITEMS) S.market[k] = { price: ITEMS[k].base, hist: [ITEMS[k].base], k: 1 };
+  S.mk = {};
+  for (const k in ITEMS) { S.mk[k] = { stock: normalStock(k) * (RARES[k] ? 0.6 : 1), prod: 0, need: 0, shop: 0, buy: 0, sell: 0 }; S.market[k] = { price: 0, hist: [], k: 1 }; setPrice(S, k); S.market[k].hist.push(S.market[k].price); }
   // AI の好みはゲームごとにちがう(毎回同じ手を打たないように)
   const gs = Object.keys(GOODS), ds = Object.keys(DISTRICTS);
   for (const p of S.players) if (p.ai) { p.fav = gs[Math.floor(rnd(S) * gs.length)]; p.favD = ds[Math.floor(rnd(S) * ds.length)]; p.boldness = 0.6 + rnd(S) * 0.8; }
@@ -443,8 +461,8 @@ export function validate(S, pid, a) {
   return '不明な決断';
 }
 // 資源をまとめて買うときの見積もり(買うほど値上がり)
-export function quote(S, res, qty) { const m = S.market[res], r = ITEMS[res]; let c = 0, pr = m.price * (1 + SPREAD); for (let i = 0; i < qty; i++) { c += pr; pr *= 1 + r.impact; } return c; }
-export function sellQuote(S, res, qty) { let got = 0, pr = S.market[res].price * (1 - SPREAD); for (let i = 0; i < qty; i++) { got += pr; pr /= 1 + ITEMS[res].impact; } return got; }
+export function quote(S, res, qty) { return takeCost(S, res, qty, SPREAD).c; }
+export function sellQuote(S, res, qty) { return giveGot(S, res, qty, SPREAD).g; }
 function applyAction(S, pid, a, fx, late) {
   const err = validate(S, pid, a); if (err) return err;
   const p = S.players[pid];
@@ -472,14 +490,14 @@ function applyAction(S, pid, a, fx, late) {
     const s = S.shops.find(x => x.id === a.shop); p.cash += Math.round(shopValue(S, s) * 0.8); S.shops = S.shops.filter(x => x !== s); fx.push({ kind: 'close', pid, shop: s.id, g: s.g, d: s.d });
   }
   if (a.type === 'buy') {
-    const c = quote(S, a.res, a.qty); p.cash -= c; p.inv[a.res] += a.qty; p.invCost[a.res] += c;
-    S.market[a.res].price *= Math.pow(1 + ITEMS[a.res].impact, a.qty);
+    const { c, st } = takeCost(S, a.res, a.qty, SPREAD); p.cash -= c; p.inv[a.res] += a.qty; p.invCost[a.res] += c;
+    S.mk[a.res].stock = st; S.mk[a.res].buy += a.qty; setPrice(S, a.res);
     fx.push({ kind: 'buy', pid, res: a.res, qty: a.qty });
   }
   if (a.type === 'sell') {
-    const got = sellQuote(S, a.res, a.qty), pr = S.market[a.res].price / Math.pow(1 + ITEMS[a.res].impact, a.qty);
+    const { g: got, st } = giveGot(S, a.res, a.qty, SPREAD);
     const avg = p.inv[a.res] ? p.invCost[a.res] / p.inv[a.res] : 0;
-    p.invCost[a.res] -= avg * a.qty; p.inv[a.res] -= a.qty; p.cash += got; S.market[a.res].price = pr;
+    p.invCost[a.res] -= avg * a.qty; p.inv[a.res] -= a.qty; p.cash += got; S.mk[a.res].stock = st; S.mk[a.res].sell += a.qty; setPrice(S, a.res);
     fx.push({ kind: 'sell', pid, res: a.res, qty: a.qty, got });
   }
   if (a.type === 'repay') { const amt = Math.min(a.amt, p.debt); p.cash -= amt; p.debt -= amt; }
@@ -504,7 +522,7 @@ function applyAction(S, pid, a, fx, late) {
     if (a.card === 'contract') { const need = monthlyUse(S, pid, a.res) * 3 || 60; p.contracts.push({ res: a.res, price: S.market[a.res].price, left: 3, qty: Math.ceil(need / 3), stock: 0 }); }
     if (a.card === 'poach') { s.boost *= 0.7; for (const m of S.shops) if (m.owner === pid && m.d === s.d && m.g === s.g) m.boost *= 1.4; }
     if (a.card === 'headhunt') { s.under = 2; const best = storesOf(S, pid).sort((x, y) => (y.last ? y.last.want : 0) - (x.last ? x.last.want : 0))[0]; if (best) best.helper = Math.max(best.helper, 2); }
-    if (a.card === 'dump') { late.push(() => { S.market[a.res].price *= 0.7; }); }
+    if (a.card === 'dump') { late.push(() => { S.mk[a.res].stock += normalStock(a.res) * 0.35; setPrice(S, a.res); }); }
     fx.push({ kind: 'card', pid, card: a.card, shop: a.shop, res: a.res, target: s ? s.owner : null });
   }
   return null;
@@ -520,10 +538,11 @@ function attraction(S, s, pm) {
 }
 // 目玉商品(レア素材)を並べた店は客寄せが上がる(1個 +8%、最大 +60%)
 function featUnits(S, s) { if (!s.feat || !s.featQty) return 0; const p = S.players[s.owner]; return Math.min(s.featQty, Math.floor(p.inv[s.feat] || 0)); }
+export const capOf = (s) => capRaw(s);
 export function featK(S, s) { const u = featUnits(S, s); return u ? Math.min(1.6, 1 + 0.08 * u) : 1; }
 // 売値の基準は相場だが、ふだんの2倍までにする(自分で買い占めて相場をつり上げても売値は上がりすぎない)
-export const featPremium = (S, s, k) => Math.min(S.market[k].price, RARES[k].base * 2) * (kindOf(s.d) === 'noble' && k === 'seapearl' ? 2.3 : 1.7);
-const capOf = (s) => s.staff * GOODS[s.g].capPer * routeFx(s).cap * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1);
+export const featPremium = (S, s, k) => Math.min(S.market[k].price, RARES[k].base * 2) * (kindOf(s.d) === 'noble' && k === 'seapearl' ? 2.2 : 1.7);
+const capRaw = (s) => s.staff * GOODS[s.g].capPer * routeFx(s).cap * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1);
 
 // ── 1か月進める。decisions: {pid: [actions]}(人間とAIの決断)。順番は種で公平にまぜる
 export function step(S, decisions = {}) {
@@ -536,15 +555,9 @@ export function step(S, decisions = {}) {
   if (S.evNext) { S.ev = S.evNext; const e = evDef(S.ev.id); S.evActive.push({ id: S.ev.id, left: e.len }); if (e.tax) for (const p of S.players) { const tx = Math.round(Math.max(0, p.cash) * e.tax); p.cash -= tx; fx.push({ kind: 'tax', pid: p.id, amt: tx }); } }
   S.evNext = pickEvent(S);
   S.w = S.wNext || 'cloudy'; S.wHist = (S.wHist || []).concat(S.w).slice(-6);
-  // 資源の値段
-  for (const k in ITEMS) {
-    const m = S.market[k], r = ITEMS[k];
-    // 加工品の相場は原料の相場にも引っぱられる
-    const follow = r.from ? 0.6 + 0.4 * S.market[r.from].price / RES[r.from].base : 1;
-    const target = r.base * activeMult(S, 'res', k) * follow * weatherRes(S, k);
-    m.price = Math.max(r.base * 0.3, m.price + (target - m.price) * (r.from ? 0.55 : 0.4) + m.price * r.vol * gauss(S));
-  }
+  for (const k in ITEMS) { S.mk[k].shop = 0; }
   for (const f of late) f();
+  for (const k in ITEMS) { S.mk[k].buyM = S.mk[k].buy; S.mk[k].sellM = S.mk[k].sell; }
   // 客の取り合い
   const res = {}; S.missed = {};
   for (const d in DISTRICTS) { S.missed[d] = {}; for (const g in GOODS) if (!S.shops.some(s => s.d === d && s.g === g)) S.missed[d][g] = demandOf(S, d, g, 1) * 0.5 + spillOf(S, d, g).add * 0.4; }
@@ -559,7 +572,8 @@ export function step(S, decisions = {}) {
     shops.forEach((s, i) => { const L = routeFx(s).loyal; if (L && s.last) want[i] = Math.max(want[i], s.last.units * L * (0.6 + s.rep * 0.5)); });
     // 真横の安い店: 隣り合う同業の店で、値段が一段以上安いほうに客が流れる
     shops.forEach((a, i) => shops.forEach((b, j) => { if (i !== j && NEIGHBORS[a.lot].includes(b.lot) && pm[i] < pm[j] - 0.05) { const mv = want[j] * 0.15 * (1 - routeFx(b).loyal); want[j] -= mv; want[i] += mv; } }));
-    const cap = shops.map(capOf);
+    // 目玉商品は職人の手を使う: 1個あたり、普段の客 capPer×0.1 人分の枠を使う
+    const cap = shops.map(s => Math.max(0, capOf(s) - featUnits(S, s) * GOODS[s.g].capPer * 0.1));
     const served = want.map((w, i) => Math.min(w, cap[i]));
     let spill = want.reduce((a, w, i) => a + Math.max(0, w - cap[i]), 0) * 0.6;
     for (let it = 0; it < 2 && spill > 0.5; it++) {
@@ -583,7 +597,7 @@ export function step(S, decisions = {}) {
     s.home = units > 0 ? homeU / Math.max(1, units * QUALITY[s.qual].cost * R.cost) : 0;
     for (const ct of p.contracts) if (need > 0 && ct.res === G.res && ct.stock > 0) { const u = Math.min(need, ct.stock); cogs += u * ct.price; ct.stock -= u; need -= u; }
     if (need > 0 && p.inv[G.res] > 0) { const u = Math.min(need, p.inv[G.res]); const avg = p.invCost[G.res] / p.inv[G.res]; cogs += u * avg; p.inv[G.res] -= u; p.invCost[G.res] -= u * avg; need -= u; }
-    if (need > 0) { const m = S.market[G.res]; cogs += need * m.price; m.price *= Math.pow(1 + RES[G.res].impact * 0.04, need); }
+    if (need > 0) { const { c, st } = takeCost(S, G.res, need, 0); cogs += c; S.mk[G.res].stock = st; S.mk[G.res].shop += need; setPrice(S, G.res); }
     // 目玉商品: 並べた分は特別な品として高く売れる(素材の相場の1.7倍。真珠は貴族街で2.3倍)
     let featRev = 0, featUsed = 0;
     const fu = featUnits(S, s);
@@ -636,7 +650,28 @@ export function step(S, decisions = {}) {
     }
   }
   for (const a of S.evActive) a.left--; S.evActive = S.evActive.filter(a => a.left > 0);
-  for (const k in ITEMS) { S.market[k].hist.push(S.market[k].price); if (S.market[k].hist.length > 60) S.market[k].hist.shift(); }
+  // 月末: 生産と町の消費で在庫が動き、値段が決まる
+  const mo = (S.t) % 12, ev = (kind, k) => { let m = 1; for (const a of S.evActive) { const e = evDef(a.id); if (e && e[kind] && e[kind][k] != null) m *= e[kind][k]; } return m; };
+  const wProd = (k) => { if (S.w === 'storm' && (k === 'wool' || k === 'iron')) return 0.8; if (S.w === 'heat' && (k === 'wheat' || k === 'herb')) return mo >= 5 && mo <= 7 ? 0.85 : 1; if (S.w === 'rain' && k === 'wheat' && mo >= 2 && mo <= 5) return 1.05; return 1; };
+  for (const k in ITEMS) {
+    const m = S.mk[k], base = ITEMS[k].base, pk = S.market[k].price / base, N = normalStock(k);
+    let prod, need;
+    if (RARES[k]) {
+      // ふだんも少しずつ入荷し、出回る出来事の月はどっと入る
+      const pulse = S.evActive.some(a => { const e = evDef(a.id); return e && e.prod && e.prod[k] != null; });
+      prod = RARE_NEED * (0.7 + 0.6 * rnd(S)) + (pulse ? RARE_PULSE * ev('prod', k) * (0.8 + 0.4 * rnd(S)) : 0);
+      need = (RARE_NEED - 0.5 * (ITEMS[k].decay || 0) * RARE_N) * ev('need', k) * Math.pow(pk, -0.7);
+    } else {
+      const decay = ITEMS[k].decay || 0;
+      prod = FLOW[k] * seasK(k, mo) * ev('prod', k) * wProd(k) * Math.pow(pk, 0.25) * (0.95 + 0.1 * rnd(S));
+      need = Math.max(0, FLOW[k] - 0.5 * decay * N) * ev('need', k) * Math.pow(pk, -0.7);
+    }
+    const spoil = m.stock * (ITEMS[k].decay || 0) * 0.5;
+    m.stock = Math.max(1, m.stock + prod - need - spoil);
+    m.prod = prod; m.need = need; m.buy = 0; m.sell = 0;
+    setPrice(S, k);
+    S.market[k].hist.push(S.market[k].price); if (S.market[k].hist.length > 60) S.market[k].hist.shift();
+  }
   for (const p of S.players) p.offers = [];
   makeOffers(S);
   forecastWeather(S);
@@ -666,7 +701,7 @@ function workMonth(S, s, fx) {
   if (units > 0) { const avg = p.invCost[raw] / p.inv[raw]; rawCost = units * avg; p.inv[raw] -= units; p.invCost[raw] -= rawCost; p.inv[pk] += units; p.invCost[pk] += rawCost + labor + rent; p.flags.made += units; }
   p.cash -= labor + rent;
   let sold = 0, got = 0;
-  if (s.autoSell > 0 && p.inv[pk] > 0) { sold = Math.floor(p.inv[pk] * s.autoSell); if (sold > 0) { got = sellQuote(S, pk, sold); const avg = p.invCost[pk] / p.inv[pk]; p.inv[pk] -= sold; p.invCost[pk] -= avg * sold; p.cash += got; S.market[pk].price /= Math.pow(1 + P.impact, sold); } }
+  if (s.autoSell > 0 && p.inv[pk] > 0) { sold = Math.floor(p.inv[pk] * s.autoSell); if (sold > 0) { const r2 = giveGot(S, pk, sold, SPREAD); got = r2.g; const avg = p.invCost[pk] / p.inv[pk]; p.inv[pk] -= sold; p.invCost[pk] -= avg * sold; p.cash += got; S.mk[pk].stock = r2.st; S.mk[pk].sell += sold; setPrice(S, pk); } }
   const value = units * S.market[pk].price * (1 - SPREAD) - rawCost - labor - rent;
   s.last = { units, want: units, cap, D: 0, revenue: got, cogs: rawCost, labor, rent, ads: 0, profit: value, made: units, sold, got, short: Math.max(0, cap - units) };
   s.hist.push(value); if (s.hist.length > 24) s.hist.shift();
@@ -675,10 +710,14 @@ function workMonth(S, s, fx) {
 }
 // 旅の商人からの申し出(プレイヤーごとに別々。今月中に受けるかどうか決める)
 function makeOffers(S) {
-  const supply = S.evActive.map(a => evDef(a.id)).filter(e => e && e.supply).map(e => e.supply);
+  const supply = S.evActive.map(a => evDef(a.id)).filter(e => e && e.prod).flatMap(e => Object.keys(e.prod).filter(k => RARES[k] && e.prod[k] >= 1));
   for (const p of S.players) {
     // 出回っているレア素材を売りに来る商人
     for (const k of supply) if (rnd(S) < 0.7) p.offers.push({ id: S.nextOffer++, kind: 'sell', item: k, qty: 3 + Math.floor(rnd(S) * 8), price: Math.round(S.market[k].price * (0.7 + rnd(S) * 0.15) * 100) / 100, k: 0.75, who: MERCHANTS[Math.floor(rnd(S) * MERCHANTS.length)], rareHint: 1 });
+    // 海の真珠: 町に仕立て屋が少ないほど、よその町の商人が高く買う
+    if ((p.inv.seapearl || 0) >= 2 && rnd(S) < 0.6) { const tailors = S.shops.filter(x => x.g === 'cloth').length; const kk = 1.05 + Math.max(0, 3 - tailors) * 0.12 + rnd(S) * 0.15; p.offers.push({ id: S.nextOffer++, kind: 'buy', item: 'seapearl', qty: Math.min(Math.floor(p.inv.seapearl), 2 + Math.floor(rnd(S) * 6)), price: Math.round(S.market.seapearl.price * kk * 100) / 100, k: kk, who: 'よその町の仕立て屋' }); }
+    // 月光草: 薬師ギルドと宿屋(月見酒)が別々の値段で買いに来る(どちらが高いかは月による)
+    if ((p.inv.moonherb || 0) >= 2) for (const who of ['薬師ギルド', '宿屋の主人(月見酒)']) { const kk = 0.95 + rnd(S) * 0.45; p.offers.push({ id: S.nextOffer++, kind: 'buy', item: 'moonherb', qty: Math.min(Math.floor(p.inv.moonherb), 3 + Math.floor(rnd(S) * 5)), price: Math.round(S.market.moonherb.price * kk * 100) / 100, k: kk, who }); }
     // レア素材を持っていると、それを目玉にできる店を持つライバルが前金つきで買いに来る
     for (const k of Object.keys(RARES)) {
       if ((p.inv[k] || 0) < 3) continue;

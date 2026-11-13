@@ -196,3 +196,6 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .pr{padding:8px 0;border-bottom:1px dashed var(--line)}
 .pr:last-child{border-bottom:0}
 .stickybar{position:sticky;bottom:calc(-18px - var(--safeb));margin:0 -16px;padding:10px 16px calc(var(--safeb) + 14px);background:linear-gradient(180deg,rgba(246,248,253,0),#f6f8fd 30%)}
+.stockbar{position:relative;height:6px;border-radius:3px;background:#eef1f8;margin:5px 0 2px;overflow:visible}
+.stockbar i{display:block;height:100%;border-radius:3px}
+.stockbar b{position:absolute;top:-2px;width:2px;height:10px;background:#1f2340;opacity:.35}
