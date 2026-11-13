@@ -10,7 +10,7 @@ const WORKB = { wheat: 'watermill', wool: 'watermill', iron: 'lumbermill', herb:
 // 看板(業種のアイコン + 持ち主の色)
 const signCache = new Map();
 function signTex(icon, color, isNew, mood = '') { const key = icon + color + isNew + mood; if (signCache.has(key)) return signCache.get(key); const c = document.createElement('canvas'); c.width = 128; c.height = isNew ? 168 : 128; const x = c.getContext('2d'); if (isNew) { x.fillStyle = '#ff3b5c'; x.beginPath(); x.roundRect(24, 0, 80, 34, 12); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 24px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('NEW', 64, 18); } const oy = isNew ? 40 : 0; x.fillStyle = '#fff'; x.beginPath(); x.arc(64, oy + 64, 54, 0, 7); x.fill(); x.lineWidth = 12; x.strokeStyle = color; x.stroke(); x.font = '62px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(icon, 64, oy + 68); if (mood) { x.fillStyle = mood === '🔥' ? '#ffedd5' : '#e5e7eb'; x.beginPath(); x.arc(104, oy + 22, 22, 0, 7); x.fill(); x.font = '30px sans-serif'; x.fillText(mood, 104, oy + 24); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; signCache.set(key, t); return t; }
-const CHAR_OF = ['Knight', 'Mage', 'Barbarian', 'Rogue'];
+const CHAR_OF = ['Knight', 'Mage', 'Barbarian', 'Rogue', 'Rogue_Hooded'];
 const loader = new GLTFLoader();
 const cache = new Map();
 function load(url) { if (!cache.has(url)) cache.set(url, new Promise((res) => loader.load(url, (g) => res(g), undefined, () => res(null)))); return cache.get(url); }
@@ -222,13 +222,15 @@ export class Board {
     for (const [id, o] of this.shopObjs) if (!want.has(id)) { if (o) this.world.remove(o); this.shopObjs.delete(id); }
     const jobs = [];
     for (const s of S.shops) {
-      if (this.shopObjs.has(s.id)) continue;
+      const ex = this.shopObjs.get(s.id);
+      if (ex && ex.userData.owner !== s.owner) { this.world.remove(ex); this.shopObjs.delete(s.id); const sg = this.signs && this.signs.get(s.id); if (sg) { this.world.remove(sg); this.signs.delete(s.id); } }
+      else if (this.shopObjs.has(s.id)) continue;
       const color = S.players[s.owner].color, l = LOTS[s.lot];
       this.shopObjs.set(s.id, null);
       const bname = s.g === 'work' ? `building_${WORKB[s.res]}_${color}` : `building_${BUILDING[s.g]}_${color}`;
       jobs.push(model(bname).then(o => {
         o.position.copy(hexPos(l.q, l.r)); o.rotation.y = (s.lot % 6) * Math.PI / 3 + Math.PI / 6;
-        o.traverse(m => { m.userData.shop = s.id; m.userData.lot = s.lot; });
+        o.traverse(m => { m.userData.shop = s.id; m.userData.lot = s.lot; }); o.userData.owner = s.owner;
         o.scale.setScalar(0.01); o.userData.pop = 0; this.world.add(o); this.shopObjs.set(s.id, o);
       }));
     }
@@ -286,6 +288,37 @@ export class Board {
     this.precip.material.size = w === 'snow' ? 0.2 : 0.13; this.precip.material.color.setHex(w === 'snow' ? 0xffffff : 0xb8d4ff);
     this.precipSpeed = w === 'snow' ? 1.6 : w === 'storm' ? 16 : 11;
     this.flash = 0;
+  }
+  // 店員の似顔絵: 町と同じ3Dキャラの部品を組み合わせる(体・頭・帽子・服の色)。同じ骨組みなので重ねて1人にできる
+  portrait(look) {
+    if (typeof look !== 'object' || !look) return '';
+    const key = JSON.stringify(look); this.pcache = this.pcache || new Map(); if (this.pcache.has(key)) return this.pcache.get(key);
+    if (!this.charProto || !this.charProto[0]) return '';
+    if (!this.pR) { this.pR = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); this.pR.setSize(128, 128); this.pR.outputColorSpace = THREE.SRGBColorSpace; this.pScene = new THREE.Scene(); this.pScene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.7)); const dl = new THREE.DirectionalLight(0xffffff, 1.5); dl.position.set(1, 2, 3); this.pScene.add(dl); this.pCam = new THREE.PerspectiveCamera(30, 1, 0.1, 50); }
+    const g = this.composeChar(look);
+    this.pScene.add(g); g.updateMatrixWorld(true);
+    // 見えている頭を基準に写す(どのキャラも顔が同じ大きさになるように)
+    const hb = new THREE.Box3(); g.children[1].traverse(m => { if ((m.isMesh || m.isSkinnedMesh) && m.visible) hb.expandByObject(m); });
+    const c = hb.getCenter(new THREE.Vector3()), hh = Math.max(0.3, hb.max.y - hb.min.y);
+    this.pCam.position.set(c.x, c.y - hh * 0.1, c.z + hh * 3.4); this.pCam.lookAt(c.x, c.y - hh * 0.28, c.z);
+    this.pR.render(this.pScene, this.pCam); const url = this.pR.domElement.toDataURL('image/png');
+    this.pScene.remove(g); this.pcache.set(key, url); return url;
+  }
+  composeChar(look) {
+    const NAMES = ['Knight', 'Mage', 'Barbarian', 'Rogue', 'Rogue'];
+    const g = new THREE.Group();
+    const part = (mi, test, tint) => {
+      const proto = this.charProto[mi]; if (!proto) return;
+      const o = SkeletonUtils.clone(proto.scene);
+      o.traverse(m => { if (!m.isMesh && !m.isSkinnedMesh) return; m.visible = !!test(m.name); if (m.visible && tint != null) { m.material = m.material.clone(); m.material.color.setHex(tint); } });
+      const mx = new THREE.AnimationMixer(o); const cl = proto.animations.find(c => c.name === 'Idle'); if (cl) { mx.clipAction(cl).play(); mx.update(0.4); }
+      g.add(o);
+    };
+    const B = NAMES[look.b], H = look.h === 4 ? 4 : look.h;
+    part(look.b, n => /_(Body|ArmLeft|ArmRight|LegLeft|LegRight)$/.test(n) || (look.cape && /_Cape$/.test(n)), look.tint);
+    part(H, n => look.h === 4 ? /Head_Hooded$/.test(n) : new RegExp('^' + NAMES[look.h] + '_Head$').test(n));
+    if (look.hat >= 0 && look.h !== 4) part(look.hat, n => /_(Helmet|Hat)$/.test(n));
+    return g;
   }
   // 町の景気: いいと人通りが増えて広場に旗飾り、悪いと人が減る
   setProsperity(k) {

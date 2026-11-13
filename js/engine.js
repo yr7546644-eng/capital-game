@@ -99,10 +99,22 @@ export const TRAITS = {
 };
 const STAFF_NAMES = ['ハンナ', 'トマス', 'リコ', 'ミーナ', 'ガルド', 'ソフィア', 'ベン', 'ユーリ', 'ネル', 'オットー', 'カミラ', 'ルカ', 'エマ', 'ジン', 'ポポ', 'セラ', 'ダリオ', 'フィン', 'マルタ', 'ロロ', 'イリス', 'カイ', 'ノーラ', 'ヴィム'];
 const FACES = ['👩', '👨', '🧑', '👧', '👦', '👩‍🦰', '👨‍🦱', '🧔', '👱‍♀️', '👵', '🧓', '👩‍🦳'];
-function newStaff(S, trait) { const tr = trait || 'plain'; const id = (S.nextStaff = (S.nextStaff || 1) + 1); return { id, name: STAFF_NAMES[(id * 7 + Math.floor(rnd(S) * 3)) % STAFF_NAMES.length], face: FACES[Math.floor(rnd(S) * FACES.length)], trait: tr, wage: TRAITS[tr].wage, skill: 1, months: 0 }; }
+const TINTS = [0xffffff, 0xff9a9a, 0x9ac2ff, 0xa6e6a0, 0xffd77a, 0xc9a6ff, 0xffb27a, 0x8fe0e0];
+const FEMALE = new Set(['ハンナ', 'ミーナ', 'ソフィア', 'ネル', 'カミラ', 'エマ', 'セラ', 'マルタ', 'イリス', 'ノーラ', 'ポポ', 'ロロ']);
+// 見た目: b=体(服) h=頭 hat=帽子(−1はなし) tint=服の色 cape=マント。同じ骨組みの部品を組み合わせる
+function newLook(S, name) {
+  const fem = FEMALE.has(name.replace(/\d+$/, ''));
+  const heads = fem ? [1, 3, 3, 4] : [0, 2, 0, 4];
+  const h = heads[Math.floor(rnd(S) * heads.length)];
+  const hats = fem ? [-1, -1, -1, 1] : [-1, -1, 0, 2, 1];
+  return { b: Math.floor(rnd(S) * 4), h, hat: h === 4 ? -1 : hats[Math.floor(rnd(S) * hats.length)], tint: TINTS[Math.floor(rnd(S) * TINTS.length)], cape: rnd(S) < 0.25 ? 1 : 0 };
+}
+function usedNames(S) { const u = new Set(); for (const sh of S.shops || []) for (const c of sh.crew || []) u.add(c.name); for (const p of S.players || []) for (const c of p.cands || []) u.add(c.name); return u; }
+function newStaff(S, trait) { const tr = trait || 'plain'; const id = (S.nextStaff = (S.nextStaff || 1) + 1); const used = usedNames(S); const free = STAFF_NAMES.filter(n => !used.has(n)); const name = free.length ? free[Math.floor(rnd(S) * free.length)] : STAFF_NAMES[id % STAFF_NAMES.length] + (2 + Math.floor(id / STAFF_NAMES.length)); return { id, name, look: newLook(S, name), face: FACES[Math.floor(rnd(S) * FACES.length)], trait: tr, wage: TRAITS[tr].wage, skill: 1, months: 0 }; }
 function crewOf(S, s) { if (!s.crew) { s.crew = []; for (let i = 0; i < s.staff; i++) s.crew.push(newStaff(S, 'plain')); } return s.crew; }
 export const crewCapK = (s) => (s.crew ? s.crew.reduce((a, c) => a + TRAITS[c.trait].cap * (c.skill || 1) * (c.moodK || 1), 0) : s.staff);
-export const crewWage = (s) => (s.crew ? s.crew.reduce((a, c) => a + c.wage, 0) : s.staff * WAGE);
+let WAGE_ADD = 0;
+export const crewWage = (s) => (s.crew ? s.crew.reduce((a, c) => a + c.wage + WAGE_ADD, 0) : s.staff * (WAGE + WAGE_ADD));
 export const crewAtt = (s) => (s.crew ? s.crew.reduce((a, c) => a * (TRAITS[c.trait].att || 1), 1) : 1);
 export const crewCost = (s) => (s.crew ? s.crew.reduce((a, c) => a * (TRAITS[c.trait].cost || 1), 1) : 1);
 export const crewRep = (s) => (s.crew ? Math.max(1, ...s.crew.map(c => TRAITS[c.trait].rep || 1)) : 1);
@@ -200,6 +212,30 @@ export function outlook(S, d, wFore) {
 }
 export const RANKS = [[0, '露店', '🧺'], [2000, '小さな商会', '🏠'], [5000, '町の商会', '🏡'], [10000, '大商会', '🏛️'], [18000, '豪商', '💰'], [30000, '王都御用達', '👑']];
 export const rankOf = (nw) => { let r = 0; for (let i = 0; i < RANKS.length; i++) if (nw >= RANKS[i][0]) r = i; return r; };
+// ── 年末の決算: 1年の店の利益に税(15%)。その年の設備投資(出店・育て方)の半分は利益から差し引ける
+export const TAX_RATE = 0.15;
+// ── 町の依頼: 期限までに品物を納めると、相場より高い報酬
+export const QUESTS = [
+  { item: 'steel', qty: 120, months: 4, k: 1.6, who: '王城の兵站係', text: '騎士団の武具を作るため、鋼を納めてほしい' },
+  { item: 'flour', qty: 400, months: 3, k: 1.5, who: '修道院', text: '冬の炊き出しのため、小麦粉を納めてほしい' },
+  { item: 'tincture', qty: 80, months: 3, k: 1.6, who: '治療院', text: 'はやり風邪に備えて、秘薬の素を納めてほしい' },
+  { item: 'fabric', qty: 150, months: 4, k: 1.5, who: '仕立て屋組合', text: '祭りの衣装のため、毛織物を納めてほしい' },
+  { item: 'wheat', qty: 900, months: 3, k: 1.35, who: '隣の村', text: '不作で困っている。小麦を分けてほしい' },
+  { item: 'iron', qty: 250, months: 3, k: 1.4, who: '橋の普請方', text: '新しい橋をかけるため、鉄を納めてほしい' },
+  { item: 'herb', qty: 300, months: 3, k: 1.4, who: '薬師ギルド', text: '薬草が足りない。まとめて納めてほしい' },
+];
+export const QUEST_PENALTY = 0.25;   // 期限に間に合わないと、報酬の25%を違約金として払う
+// ── 商人ギルドの投票: 年に1回、町のルールを決める(1年間有効)
+export const BILLS = {
+  plazaRent: { name: '広場の家賃を上げる', text: '広場タイプの地区の家賃 +25%(広場の地主が喜ぶ)', icon: '🏛️' },
+  tariff: { name: '港に関税をかける', text: '輸入にたよる羊毛と鉄の生産(入荷) −15%。地元の工房が有利に', icon: '⚓' },
+  fair: { name: '毎月の市を開く', text: '広場タイプの地区の客 +15%。そのぶん家賃 +10%', icon: '🎪' },
+  wage: { name: '最低賃金を上げる', text: '全員の店員のお給料 +4G。住民の財布がうるおい、全地区の客 +5%', icon: '💰' },
+  road: { name: '街道を整える', text: '大通り沿いの区画の客寄せ +8%(合計 +20%)', icon: '🛣️' },
+  guildTax: { name: 'ギルド税を下げる', text: '年末の税率 15% → 10%', icon: '📉' },
+};
+const lawOn = (S, k) => !!(S.laws && S.laws[k] && S.laws[k] > S.t);
+export const lawsActive = (S) => Object.keys(BILLS).filter(k => lawOn(S, k));
 export const GRAND = { name: '王都の大祭', icon: '🏰', text: '最後の年に王都の大祭が来る。最後の3か月は客 1.3倍、最終月は 1.6倍。最終月に各地区で一番多くお客を集めた商会に「地区の覇者」の褒美 400G' };
 
 // ── カード(毎月3枚配られ、1枚使える)
@@ -363,7 +399,7 @@ const AI_NAMES = [['ベルナ', 'red', 'cheap'], ['グスタフ', 'yellow', 'lux
 export const AI_LEVEL = { normal: { name: 'ふつう', desc: 'のんびりした商人たち' }, hard: { name: 'つよい', desc: '在庫・予報・季節を読んで動く' }, oni: { name: '鬼', desc: 'つよいAIに加え、ライバルの開始資金 +30%' } };
 export function newGame({ seed = 1, players = null, months = MONTHS, stage = 'rose', level = 'normal' } = {}) {
   const st = useStage(stage);
-  const S = { v: 8, level, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
+  const S = { v: 10, level, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
   const ps = players || [{ name: 'あなた', human: true }, ...AI_NAMES.map(([n, c, k]) => ({ name: n, ai: k }))];
   const mk = Object.keys(MISSIONS).sort(() => 0);
   const deck = mk.slice(); for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(rnd(S) * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
@@ -485,6 +521,10 @@ export function validate(S, pid, a) {
     return null;
   }
   if (a.type === 'repay') { if (!(a.amt > 0) || p.cash < a.amt || p.debt <= 0) return '返せない'; return null; }
+  if (a.type === 'quest') { const q = (S.quests || []).find(x => x.id === a.id); if (!q || q.taker != null) return 'その依頼はもう受けられない'; if ((S.quests || []).some(x => x.taker === pid && !x.done)) return '依頼は1つずつ'; return null; }
+  if (a.type === 'deliver') { const q = (S.quests || []).find(x => x.id === a.id && x.taker === pid && !x.done); if (!q) return '受けた依頼がない'; if (!(a.qty > 0) || (p.inv[q.item] || 0) < a.qty) return '在庫が足りない'; return null; }
+  if (a.type === 'buyshop') { const t = S.shops.find(x => x.id === a.shop); if (!t || t.owner === pid) return 'ライバルの店を選んで'; if (shopsOf(S, pid).length >= MAX_SHOPS) return `お店は${MAX_SHOPS}つまで`; if (p.cash < a.price) return 'お金が足りない'; return null; }
+  if (a.type === 'vote') { if (!S.vote || S.vote.t !== S.t) return '今は投票の月ではない'; if (!S.vote.bills.includes(a.bill)) return 'その議題はない'; return null; }
   if (a.type === 'hire') { const sh = own(a.shop); if (!sh) return '自分の店ではない'; if (!(p.cands || []).some(c => c.id === a.cand)) return 'その人はもういない'; if (crewOf(S, sh).length >= 5) return '店員は5人まで'; return null; }
   if (a.type === 'fire') { const sh = own(a.shop); if (!sh) return '自分の店ではない'; const c = crewOf(S, sh); if (c.length <= 1) return '最後の1人はやめさせられない'; if (!c.some(x => x.id === a.staffId)) return 'その人はいない'; return null; }
   return '不明な決断';
@@ -497,7 +537,7 @@ function applyAction(S, pid, a, fx, late) {
   const p = S.players[pid];
   if (a.type === 'open') {
     const lot = LOTS[a.lot], cost = openCost(lot.d, a.g);
-    p.cash -= cost;
+    p.cash -= cost; p.yCapex = (p.yCapex || 0) + cost;
     const s = { id: S.nextShop++, owner: pid, lot: a.lot, d: lot.d, g: a.g, res: a.g === 'work' ? a.res : null, autoSell: a.g === 'work' ? 1 : 0, useProc: 1, home: 0, feat: null, featQty: 0, priceLv: a.priceLv ?? 2, staff: a.staff ?? 2, ads: 0, qual: 0, rep: 0.5, months: 0, hist: [], boost: 1, helper: 0, saleNow: 0, under: 0, last: null, openedT: S.t, route: null };
     crewOf(S, s); S.shops.push(s); fx.push({ kind: 'open', pid, shop: s.id });
   }
@@ -512,7 +552,7 @@ function applyAction(S, pid, a, fx, late) {
   }
   if (a.type === 'route') {
     const s = S.shops.find(x => x.id === a.shop), lv = s.route ? s.route.lv + 1 : 1;
-    p.cash -= ROUTES[a.k].cost[lv - 1]; s.route = { k: a.k, lv }; if (lv === 2) p.flags.route2 = 1;
+    p.cash -= ROUTES[a.k].cost[lv - 1]; p.yCapex = (p.yCapex || 0) + ROUTES[a.k].cost[lv - 1]; s.route = { k: a.k, lv }; if (lv === 2) p.flags.route2 = 1;
     fx.push({ kind: 'route', pid, shop: s.id, k: a.k, lv });
   }
   if (a.type === 'close') {
@@ -530,6 +570,17 @@ function applyAction(S, pid, a, fx, late) {
     fx.push({ kind: 'sell', pid, res: a.res, qty: a.qty, got });
   }
   if (a.type === 'repay') { const amt = Math.min(a.amt, p.debt); p.cash -= amt; p.debt -= amt; }
+  if (a.type === 'quest') { const q = S.quests.find(x => x.id === a.id); q.taker = pid; q.took = S.t; fx.push({ kind: 'questTake', pid, q: q.id }); }
+  if (a.type === 'deliver') { const q = S.quests.find(x => x.id === a.id); const u = Math.min(a.qty, q.qty - q.got); const avg = p.invCost[q.item] / p.inv[q.item]; p.inv[q.item] -= u; p.invCost[q.item] -= avg * u; q.got += u; p.cash += u * q.price; fx.push({ kind: 'deliver', pid, q: q.id, qty: u, got: u * q.price }); if (q.got >= q.qty) { q.done = 1; p.cash += q.bonus; fx.push({ kind: 'questDone', pid, q: q.id, bonus: q.bonus }); } }
+  if (a.type === 'buyshop') {
+    const t = S.shops.find(x => x.id === a.shop), seller = S.players[t.owner];
+    // 持ち主が AI なら、損得で売るか決める(お金に困っている・赤字・高く買ってくれるなら売る)
+    const v = shopValue(S, t), losing = t.hist.length >= 2 && t.hist.slice(-2).every(x => x < 0), poor = seller.cash < 150;
+    const ok = !seller.ai ? !!a.agreed : (a.price >= v * (poor ? 1.0 : losing ? 1.1 : 1.6));
+    if (ok) { p.cash -= a.price; seller.cash += a.price; const from = t.owner; t.owner = pid; t.feat = null; t.featQty = 0; fx.push({ kind: 'buyshop', pid, from, shop: t.id, price: a.price }); }
+    else fx.push({ kind: 'buyshopNo', pid, from: t.owner, shop: t.id, price: a.price });
+  }
+  if (a.type === 'vote') { S.vote.ballots[pid] = a.bill; }
   if (a.type === 'hire') { const sh = S.shops.find(x => x.id === a.shop), c = p.cands.find(x => x.id === a.cand); crewOf(S, sh).push({ ...c }); sh.staff = sh.crew.length; p.cands = p.cands.filter(x => x !== c); fx.push({ kind: 'hire', pid, shop: sh.id, who: c }); }
   if (a.type === 'fire') { const sh = S.shops.find(x => x.id === a.shop); sh.crew = sh.crew.filter(x => x.id !== a.staffId); sh.staff = sh.crew.length; }
   if (a.type === 'deal') {
@@ -561,12 +612,13 @@ function applyAction(S, pid, a, fx, late) {
 function monthlyUse(S, pid, res) { return storesOf(S, pid).filter(s => GOODS[s.g].res === res).reduce((a, s) => a + (s.last ? s.last.units : s.staff * GOODS[s.g].capPer * 0.6), 0); }
 
 // お客の取り合い(1つの地区・1つの業種の中で)
+export const rentOf = (S, d) => DISTRICTS[d].rent * (kindOf(d) === 'plaza' ? (lawOn(S, 'plazaRent') ? 1.25 : 1) * (lawOn(S, 'fair') ? 1.1 : 1) : 1);
 export const prosperK = (S, d) => (S.prosper && S.prosper[d]) || 1;
-function demandOf(S, d, g, noise) { return DISTRICTS[d].demand[g] * 1.25 * prosperK(S, d) * weatherMult(S, d, g) * season(S, g, d) * activeMult(S, 'dem', g, d) * activeMult(S, 'dist', d, d) * noise; }
+function demandOf(S, d, g, noise) { return DISTRICTS[d].demand[g] * 1.25 * prosperK(S, d) * (lawOn(S, 'fair') && kindOf(d) === 'plaza' ? 1.15 : 1) * (lawOn(S, 'wage') ? 1.05 : 1) * weatherMult(S, d, g) * season(S, g, d) * activeMult(S, 'dem', g, d) * activeMult(S, 'dist', d, d) * noise; }
 function attraction(S, s, pm) {
   const G = GOODS[s.g], R = routeFx(s);
   const kd = kindOf(s.d), repExp = kd === 'hill' ? 1.7 : 1.2, nob = kd === 'noble' ? 0.55 : 1;
-  return Math.pow(0.35 + s.rep, repExp) * QUALITY[s.qual].k * R.qual * Math.pow(1 / pm, G.elastic * 1.6 * R.elastic * nob) * ADS[s.ads].k * s.boost * streetBonus(S, s) * (1 + 0.15 * (s.home || 0)) * (LOTS[s.lot] && LOTS[s.lot].road ? ROAD_BONUS : 1) * featK(S, s) * crewAtt(s);
+  return Math.pow(0.35 + s.rep, repExp) * QUALITY[s.qual].k * R.qual * Math.pow(1 / pm, G.elastic * 1.6 * R.elastic * nob) * ADS[s.ads].k * s.boost * streetBonus(S, s) * (1 + 0.15 * (s.home || 0)) * (LOTS[s.lot] && LOTS[s.lot].road ? ROAD_BONUS * (lawOn(S, 'road') ? 1.08 : 1) : 1) * featK(S, s) * crewAtt(s);
 }
 // 目玉商品(レア素材)を並べた店は客寄せが上がる(1個 +8%、最大 +60%)
 function featUnits(S, s) { if (!s.feat || !s.featQty) return 0; const p = S.players[s.owner]; return Math.min(s.featQty, Math.floor(p.inv[s.feat] || 0)); }
@@ -634,9 +686,9 @@ export function step(S, decisions = {}) {
     let featRev = 0, featUsed = 0;
     const fu = featUnits(S, s);
     if (fu > 0 && units > 0) { featUsed = fu; const k = s.feat, avg = p.invCost[k] / p.inv[k]; featRev = fu * featPremium(S, s, k); cogs += fu * avg; p.inv[k] -= fu; p.invCost[k] -= fu * avg; }
-    const labor = crewWage(s), rent = DISTRICTS[s.d].rent * R.rent, ads = ADS[s.ads].cost;
+    const labor = crewWage(s), rent = rentOf(S, s.d) * R.rent, ads = ADS[s.ads].cost;
     const profit = revenue + featRev - cogs - labor - rent - ads;
-    p.cash += profit;
+    p.cash += profit; p.yProfit = (p.yProfit || 0) + profit;
     if (profit >= 250) p.flags.bigm = 1;
     p.flags.rareRev = (p.flags.rareRev || 0) + featRev;
     const prev = s.last;
@@ -684,7 +736,8 @@ export function step(S, decisions = {}) {
   for (const a of S.evActive) a.left--; S.evActive = S.evActive.filter(a => a.left > 0);
   // 月末: 生産と町の消費で在庫が動き、値段が決まる
   const mo = (S.t) % 12, ev = (kind, k) => { let m = 1; for (const a of S.evActive) { const e = evDef(a.id); if (e && e[kind] && e[kind][k] != null) m *= e[kind][k]; } return m; };
-  const wProd = (k) => { if (S.w === 'storm' && (k === 'wool' || k === 'iron')) return 0.8; if (S.w === 'heat' && (k === 'wheat' || k === 'herb')) return mo >= 5 && mo <= 7 ? 0.85 : 1; if (S.w === 'rain' && k === 'wheat' && mo >= 2 && mo <= 5) return 1.05; return 1; };
+  const tariff = (k) => (lawOn(S, 'tariff') && (k === 'wool' || k === 'iron') ? 0.85 : 1);
+  const wProd = (k) => tariff(k) * (() => { if (S.w === 'storm' && (k === 'wool' || k === 'iron')) return 0.8; if (S.w === 'heat' && (k === 'wheat' || k === 'herb')) return mo >= 5 && mo <= 7 ? 0.85 : 1; if (S.w === 'rain' && k === 'wheat' && mo >= 2 && mo <= 5) return 1.05; return 1; })();
   for (const k in ITEMS) {
     const m = S.mk[k], base = ITEMS[k].base, pk = S.market[k].price / base, N = normalStock(k);
     let prod, need;
@@ -723,6 +776,47 @@ export function step(S, decisions = {}) {
   S.ledger = fx.filter(f => f.kind === 'buy' || f.kind === 'sell' || f.kind === 'deal' || (f.kind === 'card' && f.card === 'dump') || f.kind === 'open' || f.kind === 'close').map(f => ({ ...f, t: S.t }));
   S.crowns = crownsOf(S);
   if (S.t === S.months - 12) fx.push({ kind: 'grand' });
+  // 町の依頼: 期限切れは違約金。新しい依頼がときどき出る
+  S.quests = (S.quests || []).filter(q => !q.done || q.doneT === undefined);
+  for (const q of S.quests) if (!q.done && q.taker != null && S.t >= q.took + q.months - 1) { const p = S.players[q.taker]; const fine = Math.round(q.qty * q.price * QUEST_PENALTY * (1 - q.got / q.qty)); p.cash -= fine; q.done = 1; q.failed = 1; fx.push({ kind: 'questFail', pid: q.taker, q: q.id, fine }); }
+  for (const q of S.quests) if (q.taker == null && !q.done && S.t >= q.posted + 3) { q.done = 1; q.expired = 1; }
+  S.quests = S.quests.filter(q => !(q.done && q.endT != null && S.t > q.endT + 1)); for (const q of S.quests) if (q.done && q.endT == null) q.endT = S.t;
+  if (!S.quests.some(q => q.taker == null && !q.done) && S.t % 3 === 1 && S.t < S.months - 4) {
+    const Q = QUESTS[Math.floor(rnd(S) * QUESTS.length)];
+    S.quests.push({ id: (S.nextQuest = (S.nextQuest || 0) + 1), ...Q, price: Math.round(S.market[Q.item].price * Q.k * 100) / 100, bonus: Math.round(S.market[Q.item].price * Q.qty * 0.15), got: 0, taker: null, posted: S.t });
+    fx.push({ kind: 'questNew' });
+  }
+  // 商人ギルドの投票: 毎年6月に議題が出て、7月に決まる(1年有効)。1人1票 + 店2つごとに1票
+  if (S.vote && S.vote.t === S.t) {
+    for (const p of S.players) if (p.ai && S.vote.ballots[p.id] == null) S.vote.ballots[p.id] = aiVote(S, p.id);
+    const tally = {}; for (const b of S.vote.bills) tally[b] = 0;
+    for (const p of S.players) { const b = S.vote.ballots[p.id]; if (b) tally[b] += 1 + Math.floor(shopsOf(S, p.id).length / 2); }
+    const win = S.vote.bills.slice().sort((a, b) => tally[b] - tally[a])[0];
+    S.laws = S.laws || {}; S.laws[win] = S.t + 13;
+    fx.push({ kind: 'law', bill: win, tally });
+    S.vote = null;
+  }
+  if (S.t % 12 === 5 && S.t < S.months - 3) { const ks = Object.keys(BILLS).filter(k => !lawOn(S, k)); const bills = []; while (bills.length < 3 && ks.length) bills.push(ks.splice(Math.floor(rnd(S) * ks.length), 1)[0]); S.vote = { t: S.t + 1, bills, ballots: {} }; fx.push({ kind: 'voteOpen' }); }
+  WAGE_ADD = lawOn(S, 'wage') ? 4 : 0;
+  // 年末の決算: 店の利益の15%(ギルド税を下げたら10%)。その年の設備投資の半分は差し引ける
+  if (S.t % 12 === 11) for (const p of S.players) {
+    const taxable = Math.max(0, (p.yProfit || 0) - (p.yCapex || 0) * 0.5), rate = lawOn(S, 'guildTax') ? 0.1 : TAX_RATE, tax = Math.round(taxable * rate);
+    p.cash -= tax; fx.push({ kind: 'yearTax', pid: p.id, tax, profit: Math.round(p.yProfit || 0), capex: Math.round(p.yCapex || 0), rate });
+    p.yProfit = 0; p.yCapex = 0;
+  }
+  // 口コミ: 目立つ店のうわさ
+  S.rumors = [];
+  for (const sh of S.shops) {
+    if (sh.g === 'work' || !sh.last) continue; const l = sh.last, nm = S.players[sh.owner].name, G = GOODS[sh.g];
+    if (l.want > l.cap * 1.2) S.rumors.push({ pid: sh.owner, shop: sh.id, t: `「${nm}の${G.name}、行列で買えなかったよ」`, w: 3 });
+    else if (sh.priceLv >= 3 && sh.rep > 0.6) S.rumors.push({ pid: sh.owner, shop: sh.id, t: `「${nm}の${G.name}は高いけど、品はいいね」`, w: 2 });
+    else if (sh.priceLv >= 3 && sh.rep < 0.4) S.rumors.push({ pid: sh.owner, shop: sh.id, t: `「${nm}の${G.name}、高いわりに…」`, w: 2 });
+    else if (sh.priceLv <= 1 && l.units > l.cap * 0.8) S.rumors.push({ pid: sh.owner, shop: sh.id, t: `「${nm}の${G.name}は安くて助かる」`, w: 2 });
+    if (l.featUsed) S.rumors.push({ pid: sh.owner, shop: sh.id, t: `「${nm}の${G.name}に${RARES[l.featKey].name}の品が並んでたぞ!」`, w: 4 });
+    if (sh.hist.length >= 3 && sh.hist.slice(-3).every(x => x < 0)) S.rumors.push({ pid: sh.owner, shop: sh.id, t: `「${nm}の${G.name}、最近お客が少ないね」`, w: 2 });
+    if (sh.crew && sh.crew.some(c => c.trait === 'idol')) S.rumors.push({ pid: sh.owner, shop: sh.id, t: `「${nm}の${G.name}の看板娘、感じがいいんだ」`, w: 1 });
+  }
+  S.rumors = S.rumors.sort((a, b) => b.w - a.w + (rnd(S) - 0.5)).slice(0, 4);
   S.t++;
   if (S.t >= S.months) {
     // 大祭の褒美と秘密の目標
@@ -740,7 +834,7 @@ export function workCap(s) { return crewCapK(s) * PROC[RES[s.res].proc].rate * (
 function workMonth(S, s, fx) {
   const p = S.players[s.owner], raw = s.res, pk = RES[raw].proc, P = PROC[pk];
   const cap = workCap(s), units = Math.min(cap, p.inv[raw]);
-  const labor = crewWage(s), rent = DISTRICTS[s.d].rent;
+  const labor = crewWage(s), rent = rentOf(S, s.d);
   let rawCost = 0;
   if (units > 0) { const avg = p.invCost[raw] / p.inv[raw]; rawCost = units * avg; p.inv[raw] -= units; p.invCost[raw] -= rawCost; p.inv[pk] += units; p.invCost[pk] += rawCost + labor + rent; p.flags.made += units; }
   p.cash -= labor + rent;
@@ -832,6 +926,21 @@ export function missionProgress(S, p) {
 
 // ── AI(ライバル商会)
 
+// ギルドの投票: 自分の店に得な議題に入れる
+export function billScore(S, pid, b) {
+  const mine = shopsOf(S, pid), plaza = mine.filter(s => kindOf(s.d) === 'plaza').length, road = mine.filter(s => LOTS[s.lot].road).length, works = mine.filter(s => s.g === 'work' && (s.res === 'wool' || s.res === 'iron')).length;
+  const stores = mine.filter(s => s.g !== 'work'), staff = mine.reduce((a, s) => a + s.staff, 0);
+  switch (b) {
+    case 'plazaRent': return -plaza * 18;
+    case 'tariff': return -stores.filter(s => s.g === 'cloth' || s.g === 'tool').length * 8 + works * 15;
+    case 'fair': return plaza * 25 - plaza * 7;
+    case 'wage': return stores.length * 6 - staff * 4;
+    case 'road': return road * 12;
+    case 'guildTax': return Math.max(0, mine.reduce((a, s) => a + (s.last ? s.last.profit : 0), 0)) * 0.6;
+  }
+  return 0;
+}
+function aiVote(S, pid) { return S.vote.bills.slice().sort((a, b) => billScore(S, pid, b) - billScore(S, pid, a))[0]; }
 // ── 強いAI(見えている情報だけで判断する。ズルはしない)
 // 出店先の見積もり・予報への先回り・季節の買いだめ・工房・レア素材・攻撃・資金管理
 function fixedCosts(S, pid) { return shopsOf(S, pid).reduce((a, s) => a + crewWage(s) + DISTRICTS[s.d].rent + ADS[s.ads].cost, 0) + (S.players[pid].debt || 0) * LOAN_RATE; }
@@ -1018,6 +1127,13 @@ function aiStrong(S, pid) {
       acts = best.acts;
     }
   }
+  // 町の依頼: 自分の工房で作れる品なら受けて、納める
+  for (const q of (S.quests || [])) {
+    if (q.taker == null && !q.done && !(S.quests || []).some(x => x.taker === pid && !x.done) && mine.some(s => s.g === 'work' && RES[s.res].proc === q.item)) { acts.push({ type: 'quest', id: q.id }); break; }
+    if (q.taker === pid && !q.done && p.inv[q.item] >= 1) acts.push({ type: 'deliver', id: q.id, qty: Math.floor(Math.min(p.inv[q.item], q.qty - q.got)) });
+  }
+  // ギルドの投票
+  if (S.vote && S.vote.t === S.t && S.vote.ballots[pid] == null) acts.push({ type: 'vote', bill: aiVote(S, pid) });
   // 求職者: 割のいい人がいれば、人手の要る店に雇う
   for (const c of (p.cands || [])) { const T = TRAITS[c.trait]; const val = T.cap * 30 / c.wage + ((T.att || 1) - 1) * 8; if (val < 1.12) continue; const sh = stores.find(x => x.last && x.last.want > x.last.cap * 0.95 && x.staff < 5); if (sh && cash > reserve + c.wage * 3) { acts.push({ type: 'hire', shop: sh.id, cand: c.id }); break; } }
   // 1) 予報で客が増える・減る → 先に店員を合わせる
@@ -1060,7 +1176,7 @@ function aiStrong(S, pid) {
 }
 // AI の判断のくせ(自己対戦で学習して決める)。buf=出店時に残す現金, thr=出店の基準, pw=値付けのくせの強さ, ropen=育て方に残す現金, H=何か月先まで読むか, nc=試算する候補数, run=店の稼ぐ力の重み
 export const AIP_BASE = { buf: 250, thr: 0.02, pw: 6, ropen: 300, H: 8, nc: 6, run: 0.5 };
-export const AIP_LEARNED = { ...AIP_BASE };
+export const AIP_LEARNED = { ...AIP_BASE, H: 12, nc: 9 };   // 鬼: 12か月先まで、9通りの手を試算する
 const aipOf = (p) => p.aip || AIP_BASE;
 export function aiDecide(S, pid) {
   if (S.players[pid].smart) return aiStrong(S, pid);
