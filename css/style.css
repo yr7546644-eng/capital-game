@@ -156,3 +156,5 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .title .tb .btn{padding:16px;font-size:17px}
 .title .tb .btn.ghost{background:rgba(255,255,255,.85)}
 .ai-chip{font-size:10.5px;padding:2px 7px;border-radius:999px;background:#eef1f8;color:var(--ink2);margin-left:6px}
+.evchip.grand{background:linear-gradient(135deg,#fff4dc,#ffe7f0)}
+.shoprow:disabled{opacity:.45}
