@@ -20,7 +20,7 @@ const REC = 'capital-records';
 const records = () => { try { return JSON.parse(localStorage.getItem(REC) || '{}'); } catch (e) { return {}; } };
 const setRecord = (stage, pos, nw) => { try { const r = records(); const o = r[stage] || {}; const best = !o.pos || pos < o.pos || (pos === o.pos && nw > (o.nw || 0)); r[stage] = { pos: best ? pos : o.pos, nw: best ? nw : o.nw, plays: (o.plays || 0) + 1 }; localStorage.setItem(REC, JSON.stringify(r)); } catch (e) { } };
 const save = () => { try { localStorage.setItem(SAVE, JSON.stringify({ S, acts: F.acts })); } catch (e) { } };
-const loadSave = () => { try { const j = JSON.parse(localStorage.getItem(SAVE) || 'null'); return j && j.S && j.S.v === 6 ? j : null; } catch (e) { return null; } };
+const loadSave = () => { try { const j = JSON.parse(localStorage.getItem(SAVE) || 'null'); return j && j.S && j.S.v === 8 ? j : null; } catch (e) { return null; } };
 
 // ── 決断(月末にまとめて実行される)
 const me = () => S.players[ME];
@@ -239,7 +239,8 @@ SHEETS.shop = ({ id }) => {
     <div class="box"><div class="lbl">値段 <span class="grow"></span><span class="num">${(G.ref * E.PRICE_LV[s.priceLv]).toFixed(1)}G / 1つ</span></div>
       <div class="seg">${E.PRICE_NAME.map((n, i) => `<button class="${s.priceLv === i ? 'on' : ''}" data-a="setp" data-id="${id}" data-v="${i}">${n}</button>`).join('')}</div>
       <div class="lbl" style="margin-top:12px">店員 <span class="grow"></span><span class="t3">1人 ${E.WAGE}G/月 · 1人で月 ${G.capPer}人さばける</span></div>
-      <div class="stepper"><button data-a="sets" data-id="${id}" data-v="-1">−</button><div class="v num">${s.staff}人</div><button data-a="sets" data-id="${id}" data-v="1">＋</button><div class="t3 grow" style="text-align:right">さばける ${fmt(s.staff * G.capPer)}人</div></div>
+      <div class="stepper"><button data-a="sets" data-id="${id}" data-v="-1">−</button><div class="v num">${s.staff}人</div><button data-a="sets" data-id="${id}" data-v="1">＋</button><div class="t3 grow" style="text-align:right">＋は「ふつう」の人</div></div>
+      ${crewList(s0)}
       <div class="lbl" style="margin-top:12px">広告</div>
       <div class="seg">${E.ADS.map((a, i) => `<button class="${s.ads === i ? 'on' : ''}" data-a="seta" data-id="${id}" data-v="${i}">${a.name}<small>${a.cost ? a.cost + 'G' : '0G'}</small></button>`).join('')}</div>
       ${est ? `<div class="est"><span class="ev">🔮</span><div class="grow"><div class="t3" style="margin:0">この設定だと来月は(ざっくり)</div><div style="font-size:17px">お客 ${fmt(est.units)}人 · 利益 <span class="${cls(est.profit)}">${sign(est.profit)}G</span>${base != null ? ` <span class="t3">(先月 ${sign(base)})</span>` : ''}</div></div></div>` : ''}
@@ -283,6 +284,16 @@ function routeBox(s) {
   if (s.route) { const R = E.ROUTES[s.route.k]; const c = R.cost[1]; return `<div class="box"><div class="lbl">育て方</div><div style="font-size:16px">${R.icon} ${R.name} Lv1</div><div class="t3">${R.text[0]}</div><div class="t3" style="margin-top:6px">Lv2: ${R.text[1]}</div><button class="btn pri wide" style="margin-top:8px" data-a="route" data-id="${s.id}" data-k="${s.route.k}" ${freeCash() >= c ? '' : 'disabled'}>${c}G で Lv2 にする</button></div>`; }
   return `<div class="box"><div class="lbl">育て方を選ぶ(一度決めたら変えられない)</div>${Object.entries(E.ROUTES).map(([k, R]) => `<button class="shoprow" style="width:100%;text-align:left" data-a="route" data-id="${s.id}" data-k="${k}" ${freeCash() >= R.cost[0] ? '' : 'disabled'}><span class="ic">${R.icon}</span><div class="grow"><div>${R.name} <span class="t3">${R.cost[0]}G</span></div><div class="t3">${R.text[0]}<br>💡 ${R.tip}</div></div></button>`).join('')}</div>`;
 }
+function crewList(s0) {
+  const crew = s0.crew || [], hires = F.acts.filter(a => a.type === 'hire' && a.shop === s0.id).map(a => (me().cands || []).find(c => c.id === a.cand)).filter(Boolean), fires = F.acts.filter(a => a.type === 'fire' && a.shop === s0.id).map(a => a.staffId);
+  return `<div class="crew">${crew.map(c => { const T = E.TRAITS[c.trait]; return `<div class="cm ${fires.includes(c.id) ? 'gone' : ''}"><span class="cf">${c.face}</span><div class="grow"><div>${esc(c.name)} <span class="tagg ${c.trait === 'plain' ? '' : 'y'}">${T.icon}${T.name}</span></div><div class="t3">${T.text} · ${c.wage}G/月${T.grow ? ` · 育ち ${Math.round(((c.skill || 1) * T.cap - T.cap) / T.cap * 100)}%` : ''}${c.months ? ` · ${c.months}か月目` : ''}</div></div>${crew.length > 1 && !fires.includes(c.id) ? `<button class="btn sm" data-a="fire" data-id="${s0.id}" data-v="${c.id}">やめてもらう</button>` : fires.includes(c.id) ? '<span class="t3">月末にやめる</span>' : ''}</div>`; }).join('')}
+    ${hires.map(c => `<div class="cm new"><span class="cf">${c.face}</span><div class="grow">${esc(c.name)} <span class="tagg g">${E.TRAITS[c.trait].icon}${E.TRAITS[c.trait].name}</span><div class="t3">月末に入る</div></div></div>`).join('')}
+    <button class="btn sm pri" data-a="hirelist" data-id="${s0.id}" style="margin-top:6px">🧑‍💼 求人を見る(${(me().cands || []).length}人)</button></div>`;
+}
+SHEETS.hire = ({ shop }) => {
+  const s0 = S.shops.find(x => x.id === shop), cands = me().cands || [];
+  return head('🧑‍💼', '求人', `${gd(s0).name}(${E.DISTRICTS[s0.d].short})で働いてくれる人。毎月入れかわる`) + `<div class="box">${cands.length ? cands.map(c => { const T = E.TRAITS[c.trait], taken = F.acts.some(a => a.type === 'hire' && a.cand === c.id); return `<div class="cm"><span class="cf" style="font-size:30px">${c.face}</span><div class="grow"><div style="font-size:15px">${esc(c.name)} <span class="tagg y">${T.icon}${T.name}</span></div><div class="t3">${T.text}<br>お給料 ${c.wage}G/月(ふつうは ${E.WAGE}G)</div></div><button class="btn sm ${taken ? '' : 'warm'}" data-a="hire" data-id="${shop}" data-v="${c.id}" ${taken || (s0.crew || []).length >= 5 ? 'disabled' : ''}>${taken ? '予定' : '雇う'}</button></div>`; }).join('') : '<div class="t2">今月は求職者がいない</div>'}</div><div class="t3">ライバルも同じ町で人を探している。いい人は早い者勝ち…ではなく、毎月それぞれに別の人が来る。</div>`;
+};
 function rivalSheet(s) {
   const p = S.players[s.owner], G = gd(s), l = s.last, sc = me().scout === S.t;
   return head(G.icon, `${G.name}`, `${E.DISTRICTS[s.d].name}`) + `<div class="box"><div class="kv"><span class="k">持ち主</span><span>${pname(p)}<span class="ai-chip">${E.AI_KIND[p.ai] ? E.AI_KIND[p.ai].name : '人'}</span></span></div>
@@ -444,6 +455,9 @@ const H = {
   doopen: (d) => { const lot = +d.v; F.acts = F.acts.filter(a => !(a.type === 'open' && a.lot === lot)); F.acts.push({ type: 'open', lot, g: F.args.g, res: F.args.g === 'work' ? F.args.res : undefined, priceLv: 2, staff: 2 }); sfx('build'); save(); closeSheet(); render(); board.preview(lot, F.args.g, S.players[ME].color); toast('月末に建つ!'); },
   setfeat: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, feat: d.v || null, featQty: d.v ? (s.featQty || 4) : 0 }); sfx('tap'); render(); },
   setfeatq: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s), pd = pendSet(s.id); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, feat: pd && pd.feat !== undefined ? pd.feat : s.feat, featQty: +d.v }); sfx('tap'); render(); },
+  hirelist: (d) => openSheet('hire', { shop: +d.id }),
+  hire: (d) => { F.acts.push({ type: 'hire', shop: +d.id, cand: +d.v }); sfx('build'); save(); toast('月末に入る'); openSheet('shop', { id: +d.id }); },
+  fire: (d) => { F.acts.push({ type: 'fire', shop: +d.id, staffId: +d.v }); sfx('tap'); save(); render(); },
   setauto: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, autoSell: +d.v }); sfx('tap'); render(); },
   setproc: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, useProc: +d.v }); sfx('tap'); render(); },
   cancelopen: (d) => { const lot = +d.v; F.acts = F.acts.filter(a => !(a.type === 'open' && a.lot === lot)); board.preview(lot, null); save(); closeSheet(); render(); },
@@ -602,6 +616,7 @@ function newsOf(fx, pre) {
     if (f.kind === 'card' && ['craft', 'remodel'].includes(f.card)) out.push(`${pname(p)} が「${E.CARDS[f.card].name}」を使った`);
     if (f.kind === 'bailout') out.push(`${pname(p)} はお金が尽きて銀行から借りた`);
     if (f.kind === 'deal' && f.offer.qty * f.offer.price > 300) out.push(`${pname(p)} が${esc(f.offer.who)}と大きな取引をまとめた`);
+    if (f.kind === 'hire' && E.TRAITS[f.who.trait].wage >= 36) out.push(`${pname(p)} が${E.TRAITS[f.who.trait].icon}${E.TRAITS[f.who.trait].name}の${esc(f.who.name)}を雇った`);
     if (f.kind === 'route') out.push(`${pname(p)} が店を${E.ROUTES[f.k].icon}${E.ROUTES[f.k].name}${f.lv === 2 ? ' Lv2' : ''}に育てた`);
     if (f.kind === 'card' && (f.card === 'poach' || f.card === 'headhunt') && f.target === ME) { const s = S.shops.find(x => x.id === f.shop); out.unshift(`<span class="down">⚔️ ${pname(p)} があなたの${s ? gd(s).name : '店'}に「${E.CARDS[f.card].name}」を仕掛けてきた!</span>`); }
     if (f.kind === 'card' && f.card === 'dump') out.push(`${pname(p)} が${E.ITEMS[f.res].name}を市場に放出した(値下がり)`);

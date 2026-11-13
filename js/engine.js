@@ -84,6 +84,30 @@ export const ROUTES = {
 };
 export const DISTRICTS = {};
 export const WAGE = 30;
+// ── 店員(名前と性格つき)。cap=さばける量の倍率, wage=お給料, att=客寄せ, cost=材料費, grow=毎月育つ, rep=評判の上がりやすさ
+export const TRAITS = {
+  plain: { name: 'ふつう', icon: '🙂', cap: 1, wage: 30, text: '可もなく不可もなく' },
+  fast: { name: '手が早い', icon: '⚡', cap: 1.25, wage: 34, text: 'さばける数 +25%' },
+  charm: { name: '接客上手', icon: '😊', cap: 1, wage: 34, att: 1.05, rep: 1.3, text: '客寄せ +5%・評判が上がりやすい' },
+  eye: { name: '目利き', icon: '🔍', cap: 0.95, wage: 33, cost: 0.94, text: '材料費 −6%' },
+  rookie: { name: '新人', icon: '🌱', cap: 0.75, wage: 22, grow: 0.04, text: 'お給料は安いが最初は遅い。毎月育つ(最大 +25%)' },
+  veteran: { name: 'ベテラン', icon: '🎖️', cap: 1.35, wage: 42, text: 'お給料は高いが手が早い(+35%)' },
+  lazy: { name: 'サボりがち', icon: '💤', cap: 0.75, wage: 25, text: 'お給料は安いが遅い(−25%)' },
+  idol: { name: '看板娘', icon: '🌟', cap: 1, wage: 37, att: 1.07, text: '客寄せ +7%' },
+  artisan: { name: '職人気質', icon: '🔨', cap: 0.9, wage: 36, att: 1.08, text: '品質が上がって客寄せ +8%。少し遅い' },
+  moody: { name: '気まぐれ', icon: '🎲', cap: 1, wage: 30, moody: 1, text: '月によって働きぶりが ±30%' },
+};
+const STAFF_NAMES = ['ハンナ', 'トマス', 'リコ', 'ミーナ', 'ガルド', 'ソフィア', 'ベン', 'ユーリ', 'ネル', 'オットー', 'カミラ', 'ルカ', 'エマ', 'ジン', 'ポポ', 'セラ', 'ダリオ', 'フィン', 'マルタ', 'ロロ', 'イリス', 'カイ', 'ノーラ', 'ヴィム'];
+const FACES = ['👩', '👨', '🧑', '👧', '👦', '👩‍🦰', '👨‍🦱', '🧔', '👱‍♀️', '👵', '🧓', '👩‍🦳'];
+function newStaff(S, trait) { const tr = trait || 'plain'; const id = (S.nextStaff = (S.nextStaff || 1) + 1); return { id, name: STAFF_NAMES[(id * 7 + Math.floor(rnd(S) * 3)) % STAFF_NAMES.length], face: FACES[Math.floor(rnd(S) * FACES.length)], trait: tr, wage: TRAITS[tr].wage, skill: 1, months: 0 }; }
+function crewOf(S, s) { if (!s.crew) { s.crew = []; for (let i = 0; i < s.staff; i++) s.crew.push(newStaff(S, 'plain')); } return s.crew; }
+export const crewCapK = (s) => (s.crew ? s.crew.reduce((a, c) => a + TRAITS[c.trait].cap * (c.skill || 1) * (c.moodK || 1), 0) : s.staff);
+export const crewWage = (s) => (s.crew ? s.crew.reduce((a, c) => a + c.wage, 0) : s.staff * WAGE);
+export const crewAtt = (s) => (s.crew ? s.crew.reduce((a, c) => a * (TRAITS[c.trait].att || 1), 1) : 1);
+export const crewCost = (s) => (s.crew ? s.crew.reduce((a, c) => a * (TRAITS[c.trait].cost || 1), 1) : 1);
+export const crewRep = (s) => (s.crew ? Math.max(1, ...s.crew.map(c => TRAITS[c.trait].rep || 1)) : 1);
+// 店員の数を合わせる(足すときは ふつうの人、減らすときは いちばん割に合わない人から)
+function setCrewSize(S, s, n) { const c = crewOf(S, s); while (c.length < n) c.push(newStaff(S, 'plain')); while (c.length > n) { let wi = 0, wv = 1e9; c.forEach((x, i) => { const v = TRAITS[x.trait].cap * (x.skill || 1) * 30 / x.wage + ((TRAITS[x.trait].att || 1) - 1) * 10; if (v < wv) { wv = v; wi = i; } }); c.splice(wi, 1); } s.staff = c.length; }
 export const LOAN_RATE = 0.015;
 export let MAX_SHOPS = 5;
 export const CROWN_BONUS = 400;
@@ -339,11 +363,11 @@ const AI_NAMES = [['ベルナ', 'red', 'cheap'], ['グスタフ', 'yellow', 'lux
 export const AI_LEVEL = { normal: { name: 'ふつう', desc: 'のんびりした商人たち' }, hard: { name: 'つよい', desc: '在庫・予報・季節を読んで動く' }, oni: { name: '鬼', desc: 'つよいAIに加え、ライバルの開始資金 +30%' } };
 export function newGame({ seed = 1, players = null, months = MONTHS, stage = 'rose', level = 'normal' } = {}) {
   const st = useStage(stage);
-  const S = { v: 7, level, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
+  const S = { v: 8, level, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
   const ps = players || [{ name: 'あなた', human: true }, ...AI_NAMES.map(([n, c, k]) => ({ name: n, ai: k }))];
   const mk = Object.keys(MISSIONS).sort(() => 0);
   const deck = mk.slice(); for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(rnd(S) * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
-  ps.forEach((p, i) => S.players.push({ id: i, name: p.name, color: p.color || COLORS[i], human: !!p.human, ai: p.human ? null : (p.ai || 'balanced'), smart: !p.human && (p.smart || level !== 'normal'), cash: Math.round((st.cash || 1000) * (!p.human && level === 'oni' ? 1.3 : 1)), debt: 0, inv: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), invCost: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), offers: [], deals: 0, contracts: [], hand: [], scout: -1, nw: [st.cash || 1000], rankHist: [], mission: deck[i % deck.length], flags: { bigm: 0, bailed: 0, route2: 0, crown: 0, made: 0 } }));
+  ps.forEach((p, i) => S.players.push({ id: i, name: p.name, color: p.color || COLORS[i], human: !!p.human, ai: p.human ? null : (p.ai || 'balanced'), smart: !p.human && (p.smart || level !== 'normal'), aip: p.aip || (!p.human && level === 'oni' ? AIP_LEARNED : undefined), cash: Math.round((st.cash || 1000) * (!p.human && level === 'oni' ? 1.3 : 1)), debt: 0, inv: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), invCost: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), offers: [], deals: 0, contracts: [], hand: [], scout: -1, nw: [st.cash || 1000], rankHist: [], mission: deck[i % deck.length], flags: { bigm: 0, bailed: 0, route2: 0, crown: 0, made: 0 } }));
   S.mk = {};
   for (const k in ITEMS) { S.mk[k] = { stock: normalStock(k) * (RARES[k] ? 0.6 : 1), prod: 0, need: 0, shop: 0, buy: 0, sell: 0 }; S.market[k] = { price: 0, hist: [], k: 1 }; setPrice(S, k); S.market[k].hist.push(S.market[k].price); }
   // AI の好みはゲームごとにちがう(毎回同じ手を打たないように)
@@ -461,6 +485,8 @@ export function validate(S, pid, a) {
     return null;
   }
   if (a.type === 'repay') { if (!(a.amt > 0) || p.cash < a.amt || p.debt <= 0) return '返せない'; return null; }
+  if (a.type === 'hire') { const sh = own(a.shop); if (!sh) return '自分の店ではない'; if (!(p.cands || []).some(c => c.id === a.cand)) return 'その人はもういない'; if (crewOf(S, sh).length >= 5) return '店員は5人まで'; return null; }
+  if (a.type === 'fire') { const sh = own(a.shop); if (!sh) return '自分の店ではない'; const c = crewOf(S, sh); if (c.length <= 1) return '最後の1人はやめさせられない'; if (!c.some(x => x.id === a.staffId)) return 'その人はいない'; return null; }
   return '不明な決断';
 }
 // 資源をまとめて買うときの見積もり(買うほど値上がり)
@@ -473,12 +499,12 @@ function applyAction(S, pid, a, fx, late) {
     const lot = LOTS[a.lot], cost = openCost(lot.d, a.g);
     p.cash -= cost;
     const s = { id: S.nextShop++, owner: pid, lot: a.lot, d: lot.d, g: a.g, res: a.g === 'work' ? a.res : null, autoSell: a.g === 'work' ? 1 : 0, useProc: 1, home: 0, feat: null, featQty: 0, priceLv: a.priceLv ?? 2, staff: a.staff ?? 2, ads: 0, qual: 0, rep: 0.5, months: 0, hist: [], boost: 1, helper: 0, saleNow: 0, under: 0, last: null, openedT: S.t, route: null };
-    S.shops.push(s); fx.push({ kind: 'open', pid, shop: s.id });
+    crewOf(S, s); S.shops.push(s); fx.push({ kind: 'open', pid, shop: s.id });
   }
   if (a.type === 'set') {
     const s = S.shops.find(x => x.id === a.shop);
     if (a.priceLv != null) s.priceLv = clamp(a.priceLv | 0, 0, 4);
-    if (a.staff != null) s.staff = clamp(a.staff | 0, 1, 5);
+    if (a.staff != null) setCrewSize(S, s, clamp(a.staff | 0, 1, 5));
     if (a.ads != null) s.ads = clamp(a.ads | 0, 0, 2);
     if (a.autoSell != null) s.autoSell = clamp(+a.autoSell, 0, 1);
     if (a.useProc != null) s.useProc = a.useProc ? 1 : 0;
@@ -504,6 +530,8 @@ function applyAction(S, pid, a, fx, late) {
     fx.push({ kind: 'sell', pid, res: a.res, qty: a.qty, got });
   }
   if (a.type === 'repay') { const amt = Math.min(a.amt, p.debt); p.cash -= amt; p.debt -= amt; }
+  if (a.type === 'hire') { const sh = S.shops.find(x => x.id === a.shop), c = p.cands.find(x => x.id === a.cand); crewOf(S, sh).push({ ...c }); sh.staff = sh.crew.length; p.cands = p.cands.filter(x => x !== c); fx.push({ kind: 'hire', pid, shop: sh.id, who: c }); }
+  if (a.type === 'fire') { const sh = S.shops.find(x => x.id === a.shop); sh.crew = sh.crew.filter(x => x.id !== a.staffId); sh.staff = sh.crew.length; }
   if (a.type === 'deal') {
     const o = p.offers.find(x => x.id === a.id);
     if (o.kind === 'buy') { const avg = p.invCost[o.item] / p.inv[o.item]; p.inv[o.item] -= o.qty; p.invCost[o.item] -= avg * o.qty; p.cash += o.qty * o.price;
@@ -538,7 +566,7 @@ function demandOf(S, d, g, noise) { return DISTRICTS[d].demand[g] * 1.25 * prosp
 function attraction(S, s, pm) {
   const G = GOODS[s.g], R = routeFx(s);
   const kd = kindOf(s.d), repExp = kd === 'hill' ? 1.7 : 1.2, nob = kd === 'noble' ? 0.55 : 1;
-  return Math.pow(0.35 + s.rep, repExp) * QUALITY[s.qual].k * R.qual * Math.pow(1 / pm, G.elastic * 1.6 * R.elastic * nob) * ADS[s.ads].k * s.boost * streetBonus(S, s) * (1 + 0.15 * (s.home || 0)) * (LOTS[s.lot] && LOTS[s.lot].road ? ROAD_BONUS : 1) * featK(S, s);
+  return Math.pow(0.35 + s.rep, repExp) * QUALITY[s.qual].k * R.qual * Math.pow(1 / pm, G.elastic * 1.6 * R.elastic * nob) * ADS[s.ads].k * s.boost * streetBonus(S, s) * (1 + 0.15 * (s.home || 0)) * (LOTS[s.lot] && LOTS[s.lot].road ? ROAD_BONUS : 1) * featK(S, s) * crewAtt(s);
 }
 // 目玉商品(レア素材)を並べた店は客寄せが上がる(1個 +8%、最大 +60%)
 function featUnits(S, s) { if (!s.feat || !s.featQty) return 0; const p = S.players[s.owner]; return Math.min(s.featQty, Math.floor(p.inv[s.feat] || 0)); }
@@ -546,7 +574,7 @@ export const capOf = (s) => capRaw(s);
 export function featK(S, s) { const u = featUnits(S, s); return u ? Math.min(1.6, 1 + 0.08 * u) : 1; }
 // 売値の基準は相場だが、ふだんの2倍までにする(自分で買い占めて相場をつり上げても売値は上がりすぎない)
 export const featPremium = (S, s, k) => Math.min(S.market[k].price, RARES[k].base * 2) * (kindOf(s.d) === 'noble' && k === 'seapearl' ? 2.2 : 1.7);
-const capRaw = (s) => s.staff * GOODS[s.g].capPer * routeFx(s).cap * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1);
+const capRaw = (s) => crewCapK(s) * GOODS[s.g].capPer * routeFx(s).cap * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1);
 
 // ── 1か月進める。decisions: {pid: [actions]}(人間とAIの決断)。順番は種で公平にまぜる
 export function step(S, decisions = {}) {
@@ -594,7 +622,7 @@ export function step(S, decisions = {}) {
     const p = S.players[s.owner], G = GOODS[s.g], r = res[s.id] || { want: 0, cap: 0, served: 0 }, R = routeFx(s);
     const pm = PRICE_LV[s.priceLv] * (s.saleNow ? 0.8 : 1);
     const units = r.served, revenue = units * G.ref * pm;
-    let need = units * QUALITY[s.qual].cost * R.cost, cogs = 0;
+    let need = units * QUALITY[s.qual].cost * R.cost * crewCost(s), cogs = 0;
     // 自分の工房の加工品があれば先に使う(自家製: 次の月の客寄せ +15%)
     const pk = RES[G.res].proc; let homeU = 0;
     if (s.useProc && p.inv[pk] > 0 && need > 0) { const u = Math.min(need, p.inv[pk]); const avg = p.invCost[pk] / p.inv[pk]; cogs += u * avg * 0.5; p.inv[pk] -= u; p.invCost[pk] -= u * avg; need -= u; homeU = u; }
@@ -606,7 +634,7 @@ export function step(S, decisions = {}) {
     let featRev = 0, featUsed = 0;
     const fu = featUnits(S, s);
     if (fu > 0 && units > 0) { featUsed = fu; const k = s.feat, avg = p.invCost[k] / p.inv[k]; featRev = fu * featPremium(S, s, k); cogs += fu * avg; p.inv[k] -= fu; p.invCost[k] -= fu * avg; }
-    const labor = s.staff * WAGE, rent = DISTRICTS[s.d].rent * R.rent, ads = ADS[s.ads].cost;
+    const labor = crewWage(s), rent = DISTRICTS[s.d].rent * R.rent, ads = ADS[s.ads].cost;
     const profit = revenue + featRev - cogs - labor - rent - ads;
     p.cash += profit;
     if (profit >= 250) p.flags.bigm = 1;
@@ -638,7 +666,7 @@ export function step(S, decisions = {}) {
     s.hist.push(profit); if (s.hist.length > 24) s.hist.shift();
     const ok = r.want > 0 ? units / r.want : 1;
     const target = clamp(0.5 + 0.22 * s.qual + (R.qual - 1) * 0.6 - 0.9 * R.priceRep * (pm - 1) - 0.45 * Math.max(0, 1 - ok) + (s.saleNow ? 0.08 : 0), 0.05, 0.98);
-    s.rep = clamp(s.rep + (target - s.rep) * 0.25 * (target > s.rep ? R.repGain : 1), 0.02, 1);
+    s.rep = clamp(s.rep + (target - s.rep) * 0.25 * (target > s.rep ? R.repGain * crewRep(s) : 1), 0.02, 1);
     s.months++; s.boost = 1; s.saleNow = 0; s.promo = 0; s.promoK = 1; s.promoName = null; if (s.helper > 0) s.helper--; if (s.under > 0) s.under--;
     fx.push({ kind: 'sales', pid: s.owner, shop: s.id, units, profit });
   }
@@ -678,6 +706,10 @@ export function step(S, decisions = {}) {
   }
   for (const p of S.players) p.offers = [];
   makeOffers(S);
+  // 店員: 新人は育ち、気まぐれは月ごとに調子が変わる。求職者が毎月入れかわる
+  const trs = Object.keys(TRAITS).filter(k => k !== 'plain');
+  for (const sh of S.shops) for (const c of crewOf(S, sh)) { c.months++; const T = TRAITS[c.trait]; if (T.grow) c.skill = Math.min(1.25 / T.cap, (c.skill || 1) + T.grow); c.moodK = T.moody ? 0.7 + rnd(S) * 0.6 : 1; }
+  for (const p of S.players) { p.cands = []; for (let i = 0; i < 3; i++) p.cands.push(newStaff(S, trs[Math.floor(rnd(S) * trs.length)])); }
   forecastWeather(S);
   // 地区の景気: 店が払うお給料は住民の財布に回る。雇う人が増えると客が増え、閉店が続くと減る
   S.prosper = S.prosper || {}; S.prospHist = S.prospHist || {};
@@ -704,11 +736,11 @@ export function step(S, decisions = {}) {
   return { fx, errors };
 }
 // 工房: 原料を加工品にする。作った分の一部を自動で市場に売れる
-export function workCap(s) { return s.staff * PROC[RES[s.res].proc].rate * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1); }
+export function workCap(s) { return crewCapK(s) * PROC[RES[s.res].proc].rate * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1); }
 function workMonth(S, s, fx) {
   const p = S.players[s.owner], raw = s.res, pk = RES[raw].proc, P = PROC[pk];
   const cap = workCap(s), units = Math.min(cap, p.inv[raw]);
-  const labor = s.staff * WAGE, rent = DISTRICTS[s.d].rent;
+  const labor = crewWage(s), rent = DISTRICTS[s.d].rent;
   let rawCost = 0;
   if (units > 0) { const avg = p.invCost[raw] / p.inv[raw]; rawCost = units * avg; p.inv[raw] -= units; p.invCost[raw] -= rawCost; p.inv[pk] += units; p.invCost[pk] += rawCost + labor + rent; p.flags.made += units; }
   p.cash -= labor + rent;
@@ -802,7 +834,7 @@ export function missionProgress(S, p) {
 
 // ── 強いAI(見えている情報だけで判断する。ズルはしない)
 // 出店先の見積もり・予報への先回り・季節の買いだめ・工房・レア素材・攻撃・資金管理
-function fixedCosts(S, pid) { return shopsOf(S, pid).reduce((a, s) => a + s.staff * WAGE + DISTRICTS[s.d].rent + ADS[s.ads].cost, 0) + (S.players[pid].debt || 0) * LOAN_RATE; }
+function fixedCosts(S, pid) { return shopsOf(S, pid).reduce((a, s) => a + crewWage(s) + DISTRICTS[s.d].rent + ADS[s.ads].cost, 0) + (S.players[pid].debt || 0) * LOAN_RATE; }
 function seasonAvg(S, g, d) { let a = 0; const t0 = S.t; for (let i = 0; i < 12; i++) { S.t = t0 + i; a += season(S, g, d); } S.t = t0; return a / 12; }
 // 新しい店を出したときの、ふだんの月の儲けの見積もり
 export function lotValue(S, pid, lotId, g) {
@@ -953,7 +985,7 @@ export function aiSmart(S, pid) {
 
 export const SMART_ON = { surge: 1, stock: 0, rare: 0, attack: 0, work: 0, look: 1 };
 // 先読み: 候補の手を打ったあと H か月、全員がふだんどおり動いたら自分の純資産がどうなるかを試算する
-function rollout(S, pid, acts, H) {
+function rollout(S, pid, acts, H, runW = 0.5) {
   const T = JSON.parse(JSON.stringify(S)); T.look = 1;
   for (const q of T.players) q.smart = false;   // 試算の中ではみんな基本の判断で動く(計算を軽くする)
   const nw0 = netWorth(T, T.players[pid]);
@@ -962,7 +994,7 @@ function rollout(S, pid, acts, H) {
   // 店の価値は「この先も稼ぐ力」として、直近の利益から見積もる
   const p = T.players[pid], left = Math.max(0, S.months - T.t);
   const run = shopsOf(T, pid).reduce((a, s) => a + (s.hist.length ? s.hist.slice(-3).reduce((x, y) => x + y, 0) / Math.min(3, s.hist.length) : 0), 0);
-  return netWorth(T, p) + Math.max(0, run) * Math.min(left, 12) * 0.5 - nw0;
+  return netWorth(T, p) + Math.max(0, run) * Math.min(left, 12) * runW - nw0;
 }
 // 強いAI: 実績のある基本の判断に、読みの強化を重ねる
 function aiStrong(S, pid) {
@@ -978,13 +1010,16 @@ function aiStrong(S, pid) {
     for (const lot of LOTS) { if (!lotFree(S, lot.id)) continue; for (const g in GOODS) { const v = lotValue(S, pid, lot.id, g); if (p.cash - v.cost > fixedCosts(S, pid) * 0.5 + 60) opts.push({ lot: lot.id, g, sc: v.score + rnd(S) * 0.01, staff: v.staff }); } }
     opts.sort((a, b) => b.sc - a.sc);
     const seen = new Set();
-    for (const o of opts) { const key = LOTS[o.lot].d + o.g; if (seen.has(key)) continue; seen.add(key); cands.push({ acts: base.concat([{ type: 'open', lot: o.lot, g: o.g, priceLv: 2, staff: Math.max(1, Math.min(3, o.staff)) }]), label: key }); if (cands.length >= 6) break; }
+    const P = aipOf(p);
+    for (const o of opts) { const key = LOTS[o.lot].d + o.g; if (seen.has(key)) continue; seen.add(key); cands.push({ acts: base.concat([{ type: 'open', lot: o.lot, g: o.g, priceLv: 2, staff: Math.max(1, Math.min(3, o.staff)) }]), label: key }); if (cands.length >= P.nc) break; }
     const old = acts.find(a => a.type === 'open'); if (old && !cands.some(c => c.acts.some(a => a.type === 'open' && a.lot === old.lot && a.g === old.g))) cands.push({ acts, label: 'old' });
     if (cands.length > 1) {
-      let best = null; for (const c of cands) { const v = rollout(S, pid, c.acts, 8); if (!best || v > best.v) best = { ...c, v }; }
+      let best = null; for (const c of cands) { const v = rollout(S, pid, c.acts, P.H, P.run); if (!best || v > best.v) best = { ...c, v }; }
       acts = best.acts;
     }
   }
+  // 求職者: 割のいい人がいれば、人手の要る店に雇う
+  for (const c of (p.cands || [])) { const T = TRAITS[c.trait]; const val = T.cap * 30 / c.wage + ((T.att || 1) - 1) * 8; if (val < 1.12) continue; const sh = stores.find(x => x.last && x.last.want > x.last.cap * 0.95 && x.staff < 5); if (sh && cash > reserve + c.wage * 3) { acts.push({ type: 'hire', shop: sh.id, cand: c.id }); break; } }
   // 1) 予報で客が増える・減る → 先に店員を合わせる
   if (SMART_ON.surge && e) for (const s of stores) {
     const k = ((e.dem && e.dem[s.g]) || 1) * ((e.dist && e.dist[kindOf(s.d)]) || 1); if (Math.abs(k - 1) < 0.15 || !s.last) continue;
@@ -1023,9 +1058,13 @@ function aiStrong(S, pid) {
   }
   return acts;
 }
+// AI の判断のくせ(自己対戦で学習して決める)。buf=出店時に残す現金, thr=出店の基準, pw=値付けのくせの強さ, ropen=育て方に残す現金, H=何か月先まで読むか, nc=試算する候補数, run=店の稼ぐ力の重み
+export const AIP_BASE = { buf: 250, thr: 0.02, pw: 6, ropen: 300, H: 8, nc: 6, run: 0.5 };
+export const AIP_LEARNED = { ...AIP_BASE };
+const aipOf = (p) => p.aip || AIP_BASE;
 export function aiDecide(S, pid) {
   if (S.players[pid].smart) return aiStrong(S, pid);
-  const p = S.players[pid], K = AI_KIND[p.ai] || AI_KIND.balanced, acts = [];
+  const p = S.players[pid], K = AI_KIND[p.ai] || AI_KIND.balanced, acts = [], P = aipOf(p);
   const mine = shopsOf(S, pid);
   let cash = p.cash;
   if (mine.length < MAX_SHOPS && S.t < S.months - 8) {
@@ -1033,7 +1072,7 @@ export function aiDecide(S, pid) {
     for (const lot of LOTS) {
       if (!lotFree(S, lot.id)) continue;
       for (const g in GOODS) {
-        const cost = openCost(lot.d, g); if (cash < cost + ((STAGES[S.stage] || {}).aiHard ? 150 : 250) + 300 * (1 - K.risk)) continue;
+        const cost = openCost(lot.d, g); if (cash < cost + ((STAGES[S.stage] || {}).aiHard ? P.buf * 0.6 : P.buf) + 300 * (1 - K.risk)) continue;
         const comp = S.shops.filter(s => s.d === lot.d && s.g === g).length;
         const dem = (DISTRICTS[lot.d].demand[g] * 1.25 + spillOf(S, lot.d, g).add) * GOODS[g].ref * 0.36 / (1 + comp * 1.1);
         const fav = (p.fav === g ? 0.06 : 0) + (p.favD === lot.d ? 0.04 : 0);
@@ -1044,7 +1083,7 @@ export function aiDecide(S, pid) {
         if (!best || score > best.score) best = { lot: lot.id, g, score, cost };
       }
     }
-    if (best && best.score > 0.02) { acts.push({ type: 'open', lot: best.lot, g: best.g, priceLv: K.price, staff: 2 }); cash -= best.cost; }
+    if (best && best.score > P.thr) { acts.push({ type: 'open', lot: best.lot, g: best.g, priceLv: K.price, staff: 2 }); cash -= best.cost; }
   }
   for (const s of mine) {
     const l = s.last; if (!l) continue;
@@ -1054,7 +1093,7 @@ export function aiDecide(S, pid) {
       const pl = s.priceLv + dp, st = s.staff + ds, ad = s.ads + da;
       if (pl < 0 || pl > 4 || st < 1 || st > 5 || ad < 0 || ad > 2) continue;
       const e = estimateShop(S, s, { priceLv: pl, staff: st, ads: ad });
-      const v = e.profit - Math.abs(pl - K.price) * 6 - (pl > 3 && !(s.route && s.route.k === 'lux') ? 8 : 0);
+      const v = e.profit - Math.abs(pl - K.price) * P.pw - (pl > 3 && !(s.route && s.route.k === 'lux') ? 8 : 0);
       if (v > best.v + 4) best = { pl, st, ad, v };
     }
     if (best.pl !== s.priceLv || best.st !== s.staff || best.ad !== s.ads) acts.push({ type: 'set', shop: s.id, priceLv: best.pl, staff: best.st, ads: best.ad });
@@ -1062,7 +1101,7 @@ export function aiDecide(S, pid) {
     // 育て方: 黒字の店から
     if (s.months >= 3 && l.profit > 30) {
       const k = s.route ? s.route.k : (kindOf(s.d) === 'hill' ? 'local' : kindOf(s.d) === 'noble' ? 'lux' : K.route), lv = s.route ? s.route.lv + 1 : 1;
-      if (lv <= 2 && cash > ROUTES[k].cost[lv - 1] + 300 && (lv === 1 || s.months >= 12)) { acts.push({ type: 'route', shop: s.id, k }); cash -= ROUTES[k].cost[lv - 1]; }
+      if (lv <= 2 && cash > ROUTES[k].cost[lv - 1] + P.ropen && (lv === 1 || s.months >= 12)) { acts.push({ type: 'route', shop: s.id, k }); cash -= ROUTES[k].cost[lv - 1]; }
     }
   }
   for (const k in RES) {
@@ -1121,9 +1160,10 @@ export function estimateShop(S, s, patch = {}) {
   const pm0 = PRICE_LV[s.priceLv], pm1 = PRICE_LV[patch.priceLv ?? s.priceLv];
   const st1 = patch.staff ?? s.staff, ad1 = patch.ads ?? s.ads;
   const want = l.want * Math.pow(pm0 / pm1, G.elastic * 1.6 * R.elastic * 0.7 * (kindOf(s.d) === 'noble' ? 0.55 : 1)) * ADS[ad1].k / ADS[s.ads].k;
-  const cap = st1 * G.capPer * R.cap * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1);
+  const per = s.crew && s.crew.length ? crewCapK(s) / s.crew.length : 1, wper = s.crew && s.crew.length ? crewWage(s) / s.crew.length : WAGE;
+  const cap = (st1 === s.staff ? crewCapK(s) : st1 * (st1 > s.staff ? (per + (st1 - s.staff) * 0) : per)) * G.capPer * R.cap * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1);
   const units = Math.min(want, cap);
   const unitCost = l.units > 0 ? l.cogs / l.units : RES[G.res].base;
-  const revenue = units * G.ref * pm1, cogs = units * unitCost, labor = st1 * WAGE, rent = DISTRICTS[s.d].rent * R.rent, ads = ADS[ad1].cost;
+  const revenue = units * G.ref * pm1, cogs = units * unitCost, labor = st1 === s.staff ? crewWage(s) : crewWage(s) + (st1 - s.staff) * (st1 > s.staff ? WAGE : wper), rent = DISTRICTS[s.d].rent * R.rent, ads = ADS[ad1].cost;
   return { units, want, cap, revenue, cogs, labor, rent, ads, profit: revenue - cogs - labor - rent - ads };
 }
