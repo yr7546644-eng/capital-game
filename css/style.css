@@ -249,3 +249,6 @@ button,[data-a],.card{-webkit-tap-highlight-color:transparent;transition:transfo
 #mpwait .btn{margin-top:6px}
 .title .tb .btn.ghost+.btn.ghost{margin-top:0}
 body:has(.title) #dock,body:has(.title) #labels{opacity:0;pointer-events:none;transition:opacity .3s}
+.pill.bump{animation:bump .5s cubic-bezier(.34,1.8,.5,1)}.pill.dip{animation:dip .45s ease-out}
+@keyframes bump{30%{transform:scale(1.12)}100%{transform:scale(1)}}
+@keyframes dip{25%{transform:translateY(3px) scale(.97)}100%{transform:none}}

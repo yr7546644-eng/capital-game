@@ -65,6 +65,7 @@ function hud() {
 }
 // ── 下のドック
 function dock() {
+  if (S.over) { $('#dock').innerHTML = `<div class="actions"><button class="abtn" data-a="books"><span class="ai">📒</span>帳簿</button><button class="abtn" data-a="ranking"><span class="ai">👑</span>順位</button><button class="abtn go" data-a="showfinal">🏆 最終結果</button></div>`; return; }
   const ev = S.evNext && E.evDef(S.evNext.id), p = me(), used = pendCard();
   const n = F.acts.length;
   $('#dock').innerHTML = `
@@ -78,7 +79,7 @@ function dock() {
       <button class="abtn go" data-a="next">次の月へ${n ? `<small>決めたこと ${n}</small>` : ''}</button>
     </div>`;
 }
-function render() { hud(); dock(); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
+function render() { hud(); cashRoll(); dock(); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
 // 場面に合わせて曲を選ぶ: 大祭の年・雨・町ごとの曲を数か月ごとに入れ替え
 const STAGE_BGM = { rose: ['asa', 'kenso'], marina: ['minato', 'asa'], snow: ['yuki', 'kenso'], capital: ['kenso', 'asa'] };
 function pickBgm() {
@@ -610,6 +611,7 @@ const H = {
   seta: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: +d.v }); sfx('tap'); render(); },
   closeshop: (d) => { if (!confirm('この店をたたむ?(月末に売れる)')) return; F.acts = F.acts.filter(a => !(a.type === 'set' && a.shop === +d.id)); F.acts.push({ type: 'close', shop: +d.id }); save(); closeSheet(); render(); toast('月末に店をたたむ'); },
   mtab: (d) => { F.mtab = d.v; renderSheet(); },
+  showfinal: () => openSheet('final'),
   online: () => { $('.title') && $('.title').remove(); unlockAudio(); openSheet('online'); },
   mpcreate: () => mpConnect(newCode(), true),
   mpjoin: () => { const c = ($('#mpcode').value || '').trim().toUpperCase(); if (c.length < 4) return toast('部屋の番号を入れてね'); F.joinCode = c; mpConnect(c, false); },
@@ -899,6 +901,13 @@ function tipOf() {
 }
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 function popAt(pos, v, color) { const d = document.createElement('div'); d.className = 'pop ' + (v >= 0 ? 'g' : 'r'); d.style.left = pos.x + 'px'; d.style.top = pos.y + 'px'; d.textContent = sign(v) + 'G'; if (color) d.style.outline = `3px solid ${E.COLOR_HEX[color]}`; $('#pops').appendChild(d); setTimeout(() => d.remove(), 2300); }
+// 所持金が変わったら、数字が転がって弾む
+function cashRoll() {
+  const el = $('#cashv'); if (!el) return; const v = Math.round(me().cash), old = F.cashShown;
+  F.cashShown = v; if (old == null || old === v) return;
+  el.textContent = fmt(old); const pill = el.closest('.pill'); if (pill) { pill.classList.remove('bump', 'dip'); void pill.offsetWidth; pill.classList.add(v > old ? 'bump' : 'dip'); }
+  const t0 = performance.now(), tick = (t) => { const k = Math.min(1, (t - t0) / 700), e = 1 - Math.pow(1 - k, 3); if (!el.isConnected) return; el.textContent = fmt(Math.round(old + (v - old) * e)); if (k < 1) requestAnimationFrame(tick); }; requestAnimationFrame(tick);
+}
 function countUp(el, v) { if (!el) return; const t0 = performance.now(); const tick = (t) => { const k = Math.min(1, (t - t0) / 900); el.textContent = sign(v * (1 - Math.pow(1 - k, 3))) + 'G'; if (k < 1) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
 function confetti() { const c = ['#4f8cff', '#ff5d6c', '#ffc53d', '#3ccf8e', '#c79bff']; for (let i = 0; i < 40; i++) { const d = document.createElement('div'); d.className = 'confetti'; d.style.left = Math.random() * 100 + 'vw'; d.style.background = c[i % 5]; d.style.animationDuration = 1.8 + Math.random() * 1.4 + 's'; d.style.animationDelay = Math.random() * 0.4 + 's'; document.body.appendChild(d); setTimeout(() => d.remove(), 3800); } }
 let toastT = 0;
