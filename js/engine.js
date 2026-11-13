@@ -10,12 +10,24 @@ export const GOODS = {
   tool: { name: '鍛冶屋', item: '道具', icon: '⚒️', res: 'iron', ref: 9.0, capPer: 20, elastic: 0.8, open: 1.3 },
   cloth: { name: '仕立て屋', item: '服', icon: '🧵', res: 'wool', ref: 5.0, capPer: 36, elastic: 1.3, open: 1.1 },
 };
+// 原料(decay = 毎月傷んで減る割合)
 export const RES = {
-  wheat: { name: '小麦', icon: '🌾', base: 0.7, vol: 0.05, impact: 0.0016 },
-  herb: { name: '薬草', icon: '🌿', base: 2.2, vol: 0.06, impact: 0.0035 },
-  iron: { name: '鉄', icon: '⛓️', base: 3.4, vol: 0.05, impact: 0.0045 },
-  wool: { name: '羊毛', icon: '🐑', base: 1.8, vol: 0.05, impact: 0.003 },
+  wheat: { name: '小麦', icon: '🌾', base: 0.7, vol: 0.05, impact: 0.0005, decay: 0.03, proc: 'flour' },
+  herb: { name: '薬草', icon: '🌿', base: 2.2, vol: 0.06, impact: 0.002, decay: 0.05, proc: 'tincture' },
+  iron: { name: '鉄', icon: '⛓️', base: 3.4, vol: 0.05, impact: 0.003, decay: 0, proc: 'steel' },
+  wool: { name: '羊毛', icon: '🐑', base: 1.8, vol: 0.05, impact: 0.0018, decay: 0.01, proc: 'fabric' },
 };
+// 加工品(工房で原料から作る。rate = 職人1人が1か月に作れる数)
+export const PROC = {
+  flour: { name: '小麦粉', icon: '🥣', from: 'wheat', base: 1.9, vol: 0.04, impact: 0.0003, decay: 0.01, rate: 80 },
+  tincture: { name: '秘薬の素', icon: '⚗️', from: 'herb', base: 5.6, vol: 0.05, impact: 0.0008, decay: 0, rate: 30 },
+  steel: { name: '鋼', icon: '🔩', from: 'iron', base: 8.6, vol: 0.05, impact: 0.0012, decay: 0, rate: 20 },
+  fabric: { name: '毛織物', icon: '🧶', from: 'wool', base: 4.6, vol: 0.05, impact: 0.0007, decay: 0, rate: 36 },
+};
+export const ITEMS = { ...RES, ...PROC };
+export const isProc = (k) => !!PROC[k];
+export const SPREAD = 0.03;   // 買うときは相場より3%高く、売るときは3%安く
+export const MERCHANTS = ['ヴェネト商会', '北の毛皮商', '王都の兵站係', '旅の薬師', '港の仲買人', '修道院の会計係', '鉱山組合', '流れの行商人'];
 // 地区の性格: 港=季節で大きく波打つ / 広場=祭りと市の日に強い / 住宅街=安定・常連が大事
 const ROSE_D = {
   plaza: { kind: 'plaza', name: '中央広場', short: '広場', rent: 70, open: 520, demand: { bread: 200, potion: 70, tool: 40, cloth: 95 }, desc: '人通りが一番多い。家賃も高い', trait: '🎪 祭りと3か月ごとの「市の日」に客がどっと増える', color: '#ffb84d' },
@@ -60,8 +72,50 @@ export const EVENTS = [
   { id: 'vein', name: '新しい鉱脈', icon: '💎', text: '鉱山で新しい鉱脈が見つかった。鉱夫が押し寄せ、鉱山口の客が1.7倍', dist: { mine: 1.7 }, res: { iron: 0.8 }, len: 3, only: 'snow' },
   { id: 'cavein', name: '坑道の崩落', icon: '🪨', text: '坑道が崩れて鉱夫が減る。鉱山口の客が半分に', dist: { mine: 0.5 }, len: 2, only: 'snow' },
   { id: 'storm', name: '嵐の季節', icon: '⛈️', text: '海が荒れて船が来ない。港の客が減る', dist: { port: 0.6 }, len: 2 },
+  { id: 'order', name: '王都の大口注文', icon: '⚔️', text: '王都の軍が鋼を大量に注文。鋼の相場が上がる', res: { steel: 1.5, iron: 1.15 }, len: 3 },
+  { id: 'fashion', name: '毛織物の流行', icon: '🧣', text: '貴族の間で毛織物がはやる。毛織物の相場が上がる', res: { fabric: 1.45 }, dem: { cloth: 1.2 }, len: 3 },
+  { id: 'millfire', name: '粉ひき小屋の火事', icon: '🔥', text: '町の粉ひき小屋が焼けた。小麦粉が足りなくなる', res: { flour: 1.5 }, len: 2 },
   { id: 'calm', name: '平和な月', icon: '☀️', text: '特に何もない、おだやかな月', len: 1 },
 ];
+// ── 天気(毎月かわる。予報は75%の確率で当たる)
+export const WEATHER = {
+  sun: { name: '晴れ', icon: '☀️', text: '人出が多い。広場と港 +10%', dist: { plaza: 1.1, port: 1.1, noble: 1.05 } },
+  cloudy: { name: 'くもり', icon: '☁️', text: 'ふだんどおり' },
+  rain: { name: '雨', icon: '🌧️', text: '外を歩く人が減る(広場・港 −15%)。薬と服は少し売れる', dist: { plaza: 0.85, port: 0.85, mine: 0.95 }, dem: { potion: 1.1, cloth: 1.05 } },
+  storm: { name: '嵐', icon: '⛈️', text: 'みんな家にこもる(全体 −15%、港 −40%)。原料の荷が届きにくく少し値上がり', all: 0.85, dist: { port: 0.6 }, res: 1.05 },
+  heat: { name: '猛暑', icon: '🥵', text: 'パンが売れにくく(−10%)、薬が売れる(+15%)。続くと小麦が不作に', dem: { bread: 0.9, potion: 1.15 }, dist: { port: 1.1 } },
+  snow: { name: '雪', icon: '❄️', text: '人出が減る(全体 −18%)。服 +30%・薬 +20%', all: 0.82, dem: { cloth: 1.3, potion: 1.2 } },
+};
+function weatherTable(S, mo) {
+  const st = STAGES[S.stage] || {};
+  if (mo === 11 || mo <= 1) return st.theme === 'snow' ? { snow: 5.5, cloudy: 2, sun: 2, storm: 0.5 } : { snow: 3, cloudy: 2.5, sun: 2.5, rain: 1, storm: 0.5 };
+  if (mo <= 4) return { sun: 4, rain: 3, cloudy: 2.5, storm: 0.5 };
+  if (mo === 5) return { rain: 4.5, cloudy: 2, sun: 2.5, heat: 1 };   // 梅雨
+  if (mo <= 7) return { sun: 4, heat: 2.5, rain: 1.5, storm: st.water === 'marina' ? 2 : 1, cloudy: 1 };
+  return { sun: 4, rain: 2, storm: st.water === 'marina' ? 2.5 : 1.5, cloudy: 2.5 };   // 秋は台風
+}
+function rollWeather(S, mo) { const t = weatherTable(S, mo), tot = Object.values(t).reduce((a, b) => a + b, 0); let x = rnd(S) * tot; for (const k in t) { x -= t[k]; if (x <= 0) return k; } return 'cloudy'; }
+function forecastWeather(S) {
+  const mo = S.t % 12;
+  S.wNext = rollWeather(S, mo);
+  S.wFore = rnd(S) < 0.75 ? S.wNext : rollWeather(S, mo);
+}
+// 天気が資源の相場に効く: 夏の猛暑が続くと小麦が不作、春の雨は豊作、嵐は荷が遅れる
+function weatherRes(S, k) {
+  const h = S.wHist || [], last3 = h.slice(-3);
+  let m = 1;
+  if (k === 'wheat' || k === 'flour') { m *= 1 + 0.12 * last3.filter(x => x === 'heat').length; const mo = S.t % 12; if (mo >= 3 && mo <= 6) m *= 1 - 0.05 * last3.filter(x => x === 'rain').length; }
+  if (k === 'herb' || k === 'tincture') m *= 1 + 0.06 * last3.filter(x => x === 'heat').length;
+  if (S.w === 'storm' && RES[k]) m *= WEATHER.storm.res;
+  return m;
+}
+function weatherMult(S, d, g) {
+  const w = WEATHER[S.w]; if (!w) return 1;
+  const kd = kindOf(d);
+  let k = (w.all || 1) * ((w.dist && w.dist[kd]) || 1) * ((w.dem && w.dem[g]) || 1);
+  if (kd === 'hill') k = 1 + (k - 1) * 0.5;
+  return k;
+}
 export const GRAND = { name: '王都の大祭', icon: '🏰', text: '最後の年に王都の大祭が来る。最後の3か月は客 1.3倍、最終月は 1.6倍。最終月に各地区で一番多くお客を集めた商会に「地区の覇者」の褒美 400G' };
 
 // ── カード(毎月3枚配られ、1枚使える)
@@ -91,6 +145,8 @@ export const MISSIONS = {
   route2: { name: '職人気質', text: 'どれかの店の育て方を Lv2 にする' },
   crown: { name: '覇者', text: '大祭で「地区の覇者」を1つ以上取る' },
   street: { name: '商店街', text: '最終月に、自分の店どうしが隣り合う組を2組以上作る' },
+  maker: { name: '職人の町', text: '工房で加工品を合計 400 個以上作る' },
+  trader: { name: '目利き', text: '商人との取引を5回以上まとめる' },
 };
 
 // ── 盤面(六角マス)の空き地
@@ -137,7 +193,7 @@ export const STAGES = {
     water: 'snow', theme: 'snow', winter: 1, res: { iron: 2.4, wheat: 1.0, wool: 2.0 }, ev: { vein: 3, cavein: 2, cold: 3, plague: 2, festival: 0.5, ship: 0, storm: 0 },
   },
   capital: {
-    name: '王都ルミナス', sub: '上級者の都', diff: 3, icon: '👑', desc: '地区が4つ、店は5つまで。家賃は高いが、貴族街では高級品が飛ぶように売れる。ライバルも手強い',
+    name: '王都ルミナス', sub: '上級者の都', diff: 3, icon: '👑', desc: '地区が4つ。家賃は高いが、貴族街では高級品が飛ぶように売れる。ライバルも手強い',
     districts: {
       noble: { kind: 'noble', name: '貴族街', short: '貴族街', rent: 110, open: 650, demand: { bread: 95, potion: 85, tool: 50, cloth: 145 }, desc: 'お金持ちの屋敷が並ぶ', trait: '💎 お客は値段をあまり気にしない。高級路線が大当たり', color: '#ff8fd0' },
       plaza: { kind: 'plaza', name: '大広場', short: '大広場', rent: 85, open: 560, demand: { bread: 235, potion: 80, tool: 45, cloth: 110 }, desc: '王都の中心', trait: '🎪 祭りと3か月ごとの「市の日」に客がどっと増える', color: '#ffb84d' },
@@ -149,6 +205,7 @@ export const STAGES = {
   },
 };
 const RES_BASE = Object.fromEntries(Object.entries(RES).map(([k, r]) => [k, r.base]));
+const PROC_BASE = Object.fromEntries(Object.entries(PROC).map(([k, r]) => [k, r.base]));
 export let STAGE = 'rose';
 export function useStage(id) {
   const st = STAGES[id] || STAGES.rose; STAGE = STAGES[id] ? id : 'rose';
@@ -156,6 +213,7 @@ export function useStage(id) {
   LOTS.length = 0; LOTS.push(...st.lots);
   NEIGHBORS.length = 0; NEIGHBORS.push(...LOTS.map(a => LOTS.filter(b => b !== a && hd(a, b) === 1).map(b => b.id)));
   for (const k in RES) RES[k].base = (st.res && st.res[k]) || RES_BASE[k];
+  for (const k in PROC) PROC[k].base = PROC_BASE[k] * (0.55 + 0.45 * RES[PROC[k].from].base / RES_BASE[PROC[k].from]);
   MAX_SHOPS = st.maxShops || 5;
   return st;
 }
@@ -172,14 +230,16 @@ const AI_NAMES = [['ベルナ', 'red', 'cheap'], ['グスタフ', 'yellow', 'lux
 
 export function newGame({ seed = 1, players = null, months = MONTHS, stage = 'rose' } = {}) {
   const st = useStage(stage);
-  const S = { v: 3, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
+  const S = { v: 5, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
   const ps = players || [{ name: 'あなた', human: true }, ...AI_NAMES.map(([n, c, k]) => ({ name: n, ai: k }))];
   const mk = Object.keys(MISSIONS).sort(() => 0);
   const deck = mk.slice(); for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(rnd(S) * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
-  ps.forEach((p, i) => S.players.push({ id: i, name: p.name, color: p.color || COLORS[i], human: !!p.human, ai: p.human ? null : (p.ai || 'balanced'), cash: st.cash || 1000, debt: 0, inv: { wheat: 0, herb: 0, iron: 0, wool: 0 }, invCost: { wheat: 0, herb: 0, iron: 0, wool: 0 }, contracts: [], hand: [], scout: -1, nw: [st.cash || 1000], rankHist: [], mission: deck[i % deck.length], flags: { bigm: 0, bailed: 0, route2: 0, crown: 0 } }));
-  for (const k in RES) S.market[k] = { price: RES[k].base, hist: [RES[k].base], k: 1 };
+  ps.forEach((p, i) => S.players.push({ id: i, name: p.name, color: p.color || COLORS[i], human: !!p.human, ai: p.human ? null : (p.ai || 'balanced'), cash: st.cash || 1000, debt: 0, inv: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), invCost: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), offers: [], deals: 0, contracts: [], hand: [], scout: -1, nw: [st.cash || 1000], rankHist: [], mission: deck[i % deck.length], flags: { bigm: 0, bailed: 0, route2: 0, crown: 0, made: 0 } }));
+  for (const k in ITEMS) S.market[k] = { price: ITEMS[k].base, hist: [ITEMS[k].base], k: 1 };
   S.evNext = pickEvent(S);
   dealHands(S);
+  S.nextOffer = 1; makeOffers(S);
+  S.w = 'sun'; S.wHist = []; forecastWeather(S);
   return S;
 }
 function pickEvent(S) {
@@ -191,12 +251,29 @@ function pickEvent(S) {
   return { id: pool[0].id };
 }
 export const evDef = (id) => EVENTS.find(e => e.id === id);
-function dealHands(S) { for (const p of S.players) { p.hand = []; for (let i = 0; i < 3; i++) p.hand.push(CARD_POOL[Math.floor(rnd(S) * CARD_POOL.length)]); } }
+// 手札は毎月3枚。同じ種類は重ならない。腕利き職人は得意な業種つき
+const CRAFT_SPEC = { bread: 'パン職人', potion: '薬師', tool: '鍛冶職人', cloth: '仕立て職人' };
+export function cardDef(c) {
+  const [base, spec] = String(c).split(':'); const d = CARDS[base]; if (!d) return null;
+  if (base === 'craft' && spec) return { ...d, base, spec, name: `腕利きの${CRAFT_SPEC[spec]}`, icon: GOODS[spec].icon, text: `${GOODS[spec].name}の品質を一段上げ、評判も上がる(ずっと)。${GOODS[spec].name}にしか使えない` };
+  return { ...d, base, spec: null };
+}
+function dealHands(S) {
+  for (const p of S.players) {
+    p.hand = []; const used = new Set();
+    for (let tries = 0; p.hand.length < 3 && tries < 40; tries++) {
+      const c = CARD_POOL[Math.floor(rnd(S) * CARD_POOL.length)]; if (used.has(c)) continue; used.add(c);
+      if (c === 'craft') { const gs = Object.keys(GOODS); p.hand.push('craft:' + gs[Math.floor(rnd(S) * gs.length)]); } else p.hand.push(c);
+    }
+  }
+}
 
 export const shopsOf = (S, pid) => S.shops.filter(s => s.owner === pid);
+export const storesOf = (S, pid) => S.shops.filter(s => s.owner === pid && s.g !== 'work');
+export const WORK = { name: '工房', icon: '🏭', open: 0.85 };
 export const lotFree = (S, lot) => !S.shops.some(s => s.lot === lot);
 export const shopAt = (S, lot) => S.shops.find(s => s.lot === lot);
-export function openCost(d, g) { return Math.round(DISTRICTS[d].open * GOODS[g].open); }
+export function openCost(d, g) { return Math.round(DISTRICTS[d].open * (g === 'work' ? WORK.open : GOODS[g].open)); }
 export function resValue(S, p) { let v = 0; for (const k in p.inv) v += p.inv[k] * S.market[k].price; return v; }
 export function shopValue(S, s) { const base = openCost(s.d, s.g) * 0.55 + (s.route ? ROUTES[s.route.k].cost.slice(0, s.route.lv).reduce((a, b) => a + b, 0) * 0.5 : 0); const avg = s.hist.length ? s.hist.slice(-6).reduce((a, b) => a + b, 0) / Math.min(6, s.hist.length) : 0; return Math.round(base + Math.max(0, avg) * 6); }
 export function netWorth(S, p) { return Math.round(p.cash + resValue(S, p) + shopsOf(S, p.id).reduce((a, s) => a + shopValue(S, s), 0) - p.debt); }
@@ -245,25 +322,27 @@ export function validate(S, pid, a) {
   if (a.type === 'open') {
     const lot = LOTS[a.lot]; if (!lot || !lotFree(S, a.lot)) return 'その土地はもう使われている';
     if (shopsOf(S, pid).length >= MAX_SHOPS) return `お店は${MAX_SHOPS}つまで`;
-    if (!GOODS[a.g]) return '業種がちがう';
+    if (!GOODS[a.g] && !(a.g === 'work' && RES[a.res])) return '業種がちがう';
     if (p.cash < openCost(lot.d, a.g)) return 'お金が足りない';
     return null;
   }
   if (a.type === 'set' || a.type === 'close') return own(a.shop) ? null : '自分の店ではない';
   if (a.type === 'route') {
-    const s = own(a.shop); if (!s) return '自分の店ではない'; if (!ROUTES[a.k]) return '育て方がちがう';
+    const s = own(a.shop); if (!s) return '自分の店ではない'; if (s.g === 'work') return '工房には育て方がない'; if (!ROUTES[a.k]) return '育て方がちがう';
     if (s.months < 3) return '開業から3か月たってから';
     if (s.route && s.route.k !== a.k) return '育て方は途中で変えられない';
     const lv = s.route ? s.route.lv + 1 : 1; if (lv > 2) return 'もう最大';
     if (p.cash < ROUTES[a.k].cost[lv - 1]) return 'お金が足りない';
     return null;
   }
-  if (a.type === 'buy') { if (!RES[a.res] || !(a.qty > 0)) return '数がちがう'; if (p.cash < quote(S, a.res, a.qty)) return 'お金が足りない'; return null; }
+  if (a.type === 'deal') { const o = p.offers.find(x => x.id === a.id); if (!o) return 'その取引はもう終わった'; if (o.kind === 'buy' && (p.inv[o.item] || 0) < o.qty) return `${ITEMS[o.item].name}が足りない`; if (o.kind === 'sell' && p.cash < o.qty * o.price) return 'お金が足りない'; return null; }
+  if (a.type === 'buy') { if (!ITEMS[a.res] || !(a.qty > 0)) return '数がちがう'; if (p.cash < quote(S, a.res, a.qty)) return 'お金が足りない'; return null; }
   if (a.type === 'sell') { if (!(a.qty > 0) || (p.inv[a.res] || 0) < a.qty) return '在庫が足りない'; return null; }
   if (a.type === 'card') {
     if (!p.hand.includes(a.card)) return 'そのカードはない';
-    const c = CARDS[a.card]; if (p.cash < c.cost) return 'お金が足りない';
-    if (c.need === 'shop' && !own(a.shop)) return '店を選んで';
+    const c = cardDef(a.card); if (p.cash < c.cost) return 'お金が足りない';
+    if (c.need === 'shop' && (!own(a.shop) || own(a.shop).g === 'work')) return '店を選んで';
+    if (c.spec && own(a.shop).g !== c.spec) return `${GOODS[c.spec].name}にしか使えない`;
     if (c.need === 'rival') { const t = S.shops.find(x => x.id === a.shop); if (!t || t.owner === pid) return 'ライバルの店を選んで'; }
     if (c.need === 'res' && !RES[a.res]) return '資源を選んで';
     return null;
@@ -272,14 +351,15 @@ export function validate(S, pid, a) {
   return '不明な決断';
 }
 // 資源をまとめて買うときの見積もり(買うほど値上がり)
-export function quote(S, res, qty) { const m = S.market[res], r = RES[res]; let c = 0, pr = m.price; for (let i = 0; i < qty; i++) { c += pr; pr *= 1 + r.impact; } return c; }
+export function quote(S, res, qty) { const m = S.market[res], r = ITEMS[res]; let c = 0, pr = m.price * (1 + SPREAD); for (let i = 0; i < qty; i++) { c += pr; pr *= 1 + r.impact; } return c; }
+export function sellQuote(S, res, qty) { let got = 0, pr = S.market[res].price * (1 - SPREAD); for (let i = 0; i < qty; i++) { got += pr; pr /= 1 + ITEMS[res].impact; } return got; }
 function applyAction(S, pid, a, fx, late) {
   const err = validate(S, pid, a); if (err) return err;
   const p = S.players[pid];
   if (a.type === 'open') {
     const lot = LOTS[a.lot], cost = openCost(lot.d, a.g);
     p.cash -= cost;
-    const s = { id: S.nextShop++, owner: pid, lot: a.lot, d: lot.d, g: a.g, priceLv: a.priceLv ?? 2, staff: a.staff ?? 2, ads: 0, qual: 0, rep: 0.5, months: 0, hist: [], boost: 1, helper: 0, saleNow: 0, under: 0, last: null, openedT: S.t, route: null };
+    const s = { id: S.nextShop++, owner: pid, lot: a.lot, d: lot.d, g: a.g, res: a.g === 'work' ? a.res : null, autoSell: a.g === 'work' ? 1 : 0, useProc: 1, home: 0, priceLv: a.priceLv ?? 2, staff: a.staff ?? 2, ads: 0, qual: 0, rep: 0.5, months: 0, hist: [], boost: 1, helper: 0, saleNow: 0, under: 0, last: null, openedT: S.t, route: null };
     S.shops.push(s); fx.push({ kind: 'open', pid, shop: s.id });
   }
   if (a.type === 'set') {
@@ -287,6 +367,8 @@ function applyAction(S, pid, a, fx, late) {
     if (a.priceLv != null) s.priceLv = clamp(a.priceLv | 0, 0, 4);
     if (a.staff != null) s.staff = clamp(a.staff | 0, 1, 5);
     if (a.ads != null) s.ads = clamp(a.ads | 0, 0, 2);
+    if (a.autoSell != null) s.autoSell = clamp(+a.autoSell, 0, 1);
+    if (a.useProc != null) s.useProc = a.useProc ? 1 : 0;
   }
   if (a.type === 'route') {
     const s = S.shops.find(x => x.id === a.shop), lv = s.route ? s.route.lv + 1 : 1;
@@ -298,42 +380,49 @@ function applyAction(S, pid, a, fx, late) {
   }
   if (a.type === 'buy') {
     const c = quote(S, a.res, a.qty); p.cash -= c; p.inv[a.res] += a.qty; p.invCost[a.res] += c;
-    S.market[a.res].price *= Math.pow(1 + RES[a.res].impact, a.qty);
+    S.market[a.res].price *= Math.pow(1 + ITEMS[a.res].impact, a.qty);
     fx.push({ kind: 'buy', pid, res: a.res, qty: a.qty });
   }
   if (a.type === 'sell') {
-    let got = 0, pr = S.market[a.res].price; for (let i = 0; i < a.qty; i++) { got += pr * 0.97; pr /= 1 + RES[a.res].impact; }
+    const got = sellQuote(S, a.res, a.qty), pr = S.market[a.res].price / Math.pow(1 + ITEMS[a.res].impact, a.qty);
     const avg = p.inv[a.res] ? p.invCost[a.res] / p.inv[a.res] : 0;
     p.invCost[a.res] -= avg * a.qty; p.inv[a.res] -= a.qty; p.cash += got; S.market[a.res].price = pr;
     fx.push({ kind: 'sell', pid, res: a.res, qty: a.qty, got });
   }
   if (a.type === 'repay') { const amt = Math.min(a.amt, p.debt); p.cash -= amt; p.debt -= amt; }
+  if (a.type === 'deal') {
+    const o = p.offers.find(x => x.id === a.id);
+    if (o.kind === 'buy') { const avg = p.invCost[o.item] / p.inv[o.item]; p.inv[o.item] -= o.qty; p.invCost[o.item] -= avg * o.qty; p.cash += o.qty * o.price; }
+    else { p.cash -= o.qty * o.price; p.inv[o.item] += o.qty; p.invCost[o.item] += o.qty * o.price; }
+    p.offers = p.offers.filter(x => x !== o); p.deals++;
+    fx.push({ kind: 'deal', pid, offer: o });
+  }
   if (a.type === 'card') {
-    const c = CARDS[a.card]; p.cash -= c.cost; p.hand.splice(p.hand.indexOf(a.card), 1);
+    const c = cardDef(a.card); p.cash -= c.cost; p.hand.splice(p.hand.indexOf(a.card), 1); a = { ...a, card: c.base };
     const s = a.shop != null ? S.shops.find(x => x.id === a.shop) : null;
     if (a.card === 'shout') s.boost *= 1.5;
     if (a.card === 'sale') s.saleNow = 1;
-    if (a.card === 'craft') s.qual = Math.min(2, s.qual + 1);
+    if (a.card === 'craft') { s.qual = Math.min(2, s.qual + 1); s.rep = Math.min(1, s.rep + 0.08); }
     if (a.card === 'helper') s.helper = 3;
     if (a.card === 'remodel') s.rep = Math.min(1, s.rep + 0.2);
     if (a.card === 'scout') p.scout = S.t + 1;
     if (a.card === 'loan') { p.cash += 500; p.debt += 500; }
     if (a.card === 'contract') { const need = monthlyUse(S, pid, a.res) * 3 || 60; p.contracts.push({ res: a.res, price: S.market[a.res].price, left: 3, qty: Math.ceil(need / 3), stock: 0 }); }
     if (a.card === 'poach') { s.boost *= 0.7; for (const m of S.shops) if (m.owner === pid && m.d === s.d && m.g === s.g) m.boost *= 1.4; }
-    if (a.card === 'headhunt') { s.under = 2; const best = shopsOf(S, pid).sort((x, y) => (y.last ? y.last.want : 0) - (x.last ? x.last.want : 0))[0]; if (best) best.helper = Math.max(best.helper, 2); }
+    if (a.card === 'headhunt') { s.under = 2; const best = storesOf(S, pid).sort((x, y) => (y.last ? y.last.want : 0) - (x.last ? x.last.want : 0))[0]; if (best) best.helper = Math.max(best.helper, 2); }
     if (a.card === 'dump') { late.push(() => { S.market[a.res].price *= 0.7; }); }
     fx.push({ kind: 'card', pid, card: a.card, shop: a.shop, res: a.res, target: s ? s.owner : null });
   }
   return null;
 }
-function monthlyUse(S, pid, res) { return shopsOf(S, pid).filter(s => GOODS[s.g].res === res).reduce((a, s) => a + (s.last ? s.last.units : s.staff * GOODS[s.g].capPer * 0.6), 0); }
+function monthlyUse(S, pid, res) { return storesOf(S, pid).filter(s => GOODS[s.g].res === res).reduce((a, s) => a + (s.last ? s.last.units : s.staff * GOODS[s.g].capPer * 0.6), 0); }
 
 // お客の取り合い(1つの地区・1つの業種の中で)
-function demandOf(S, d, g, noise) { return DISTRICTS[d].demand[g] * 1.25 * season(S, g, d) * activeMult(S, 'dem', g, d) * activeMult(S, 'dist', d, d) * noise; }
+function demandOf(S, d, g, noise) { return DISTRICTS[d].demand[g] * 1.25 * weatherMult(S, d, g) * season(S, g, d) * activeMult(S, 'dem', g, d) * activeMult(S, 'dist', d, d) * noise; }
 function attraction(S, s, pm) {
   const G = GOODS[s.g], R = routeFx(s);
   const kd = kindOf(s.d), repExp = kd === 'hill' ? 1.7 : 1.2, nob = kd === 'noble' ? 0.55 : 1;
-  return Math.pow(0.35 + s.rep, repExp) * QUALITY[s.qual].k * R.qual * Math.pow(1 / pm, G.elastic * 1.6 * R.elastic * nob) * ADS[s.ads].k * s.boost * streetBonus(S, s);
+  return Math.pow(0.35 + s.rep, repExp) * QUALITY[s.qual].k * R.qual * Math.pow(1 / pm, G.elastic * 1.6 * R.elastic * nob) * ADS[s.ads].k * s.boost * streetBonus(S, s) * (1 + 0.15 * (s.home || 0));
 }
 const capOf = (s) => s.staff * GOODS[s.g].capPer * routeFx(s).cap * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1);
 
@@ -347,11 +436,14 @@ export function step(S, decisions = {}) {
   // 予告されていた出来事が始まる
   if (S.evNext) { S.ev = S.evNext; const e = evDef(S.ev.id); S.evActive.push({ id: S.ev.id, left: e.len }); if (e.tax) for (const p of S.players) { const tx = Math.round(Math.max(0, p.cash) * e.tax); p.cash -= tx; fx.push({ kind: 'tax', pid: p.id, amt: tx }); } }
   S.evNext = pickEvent(S);
+  S.w = S.wNext || 'cloudy'; S.wHist = (S.wHist || []).concat(S.w).slice(-6);
   // 資源の値段
-  for (const k in RES) {
-    const m = S.market[k], r = RES[k];
-    const target = r.base * activeMult(S, 'res', k);
-    m.price = Math.max(r.base * 0.3, m.price + (target - m.price) * 0.4 + m.price * r.vol * gauss(S));
+  for (const k in ITEMS) {
+    const m = S.market[k], r = ITEMS[k];
+    // 加工品の相場は原料の相場にも引っぱられる
+    const follow = r.from ? 0.6 + 0.4 * S.market[r.from].price / RES[r.from].base : 1;
+    const target = r.base * activeMult(S, 'res', k) * follow * weatherRes(S, k);
+    m.price = Math.max(r.base * 0.3, m.price + (target - m.price) * (r.from ? 0.55 : 0.4) + m.price * r.vol * gauss(S));
   }
   for (const f of late) f();
   // 客の取り合い
@@ -378,10 +470,15 @@ export function step(S, decisions = {}) {
   }
   // 損益
   for (const s of S.shops) {
+    if (s.g === 'work') { workMonth(S, s, fx); continue; }
     const p = S.players[s.owner], G = GOODS[s.g], r = res[s.id] || { want: 0, cap: 0, served: 0 }, R = routeFx(s);
     const pm = PRICE_LV[s.priceLv] * (s.saleNow ? 0.8 : 1);
     const units = r.served, revenue = units * G.ref * pm;
     let need = units * QUALITY[s.qual].cost * R.cost, cogs = 0;
+    // 自分の工房の加工品があれば先に使う(自家製: 次の月の客寄せ +15%)
+    const pk = RES[G.res].proc; let homeU = 0;
+    if (s.useProc && p.inv[pk] > 0 && need > 0) { const u = Math.min(need, p.inv[pk]); const avg = p.invCost[pk] / p.inv[pk]; cogs += u * avg * 0.5; p.inv[pk] -= u; p.invCost[pk] -= u * avg; need -= u; homeU = u; }
+    s.home = units > 0 ? homeU / Math.max(1, units * QUALITY[s.qual].cost * R.cost) : 0;
     for (const ct of p.contracts) if (need > 0 && ct.res === G.res && ct.stock > 0) { const u = Math.min(need, ct.stock); cogs += u * ct.price; ct.stock -= u; need -= u; }
     if (need > 0 && p.inv[G.res] > 0) { const u = Math.min(need, p.inv[G.res]); const avg = p.invCost[G.res] / p.inv[G.res]; cogs += u * avg; p.inv[G.res] -= u; p.invCost[G.res] -= u * avg; need -= u; }
     if (need > 0) { const m = S.market[G.res]; cogs += need * m.price; m.price *= Math.pow(1 + RES[G.res].impact * 0.04, need); }
@@ -402,10 +499,17 @@ export function step(S, decisions = {}) {
     p.contracts = p.contracts.filter(c => c.left > 0 || c.stock > 0.5);
     if (p.debt > 0) p.cash -= p.debt * LOAN_RATE;
     if (p.cash < 0) { const need = Math.ceil(-p.cash / 100) * 100; p.debt += need * 1.1; p.cash += need; p.flags.bailed = 1; fx.push({ kind: 'bailout', pid: p.id, amt: need }); }
-    for (const k in p.inv) if (p.inv[k] > 0) p.cash -= p.inv[k] * RES[k].base * 0.02;
+    for (const k in p.inv) if (p.inv[k] > 0) {
+      p.cash -= p.inv[k] * ITEMS[k].base * 0.012;   // 保管料
+      const dc = ITEMS[k].decay; if (dc) { p.inv[k] *= 1 - dc; p.invCost[k] *= 1 - dc; }   // 傷んで減る
+      if (p.inv[k] < 0.5) { p.inv[k] = 0; p.invCost[k] = 0; }
+    }
   }
   for (const a of S.evActive) a.left--; S.evActive = S.evActive.filter(a => a.left > 0);
-  for (const k in RES) { S.market[k].hist.push(S.market[k].price); if (S.market[k].hist.length > 60) S.market[k].hist.shift(); }
+  for (const k in ITEMS) { S.market[k].hist.push(S.market[k].price); if (S.market[k].hist.length > 60) S.market[k].hist.shift(); }
+  for (const p of S.players) p.offers = [];
+  makeOffers(S);
+  forecastWeather(S);
   S.crowns = crownsOf(S);
   if (S.t === S.months - 12) fx.push({ kind: 'grand' });
   S.t++;
@@ -420,11 +524,47 @@ export function step(S, decisions = {}) {
   dealHands(S);
   return { fx, errors };
 }
+// 工房: 原料を加工品にする。作った分の一部を自動で市場に売れる
+export function workCap(s) { return s.staff * PROC[RES[s.res].proc].rate * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1); }
+function workMonth(S, s, fx) {
+  const p = S.players[s.owner], raw = s.res, pk = RES[raw].proc, P = PROC[pk];
+  const cap = workCap(s), units = Math.min(cap, p.inv[raw]);
+  const labor = s.staff * WAGE, rent = DISTRICTS[s.d].rent;
+  let rawCost = 0;
+  if (units > 0) { const avg = p.invCost[raw] / p.inv[raw]; rawCost = units * avg; p.inv[raw] -= units; p.invCost[raw] -= rawCost; p.inv[pk] += units; p.invCost[pk] += rawCost + labor + rent; p.flags.made += units; }
+  p.cash -= labor + rent;
+  let sold = 0, got = 0;
+  if (s.autoSell > 0 && p.inv[pk] > 0) { sold = Math.floor(p.inv[pk] * s.autoSell); if (sold > 0) { got = sellQuote(S, pk, sold); const avg = p.invCost[pk] / p.inv[pk]; p.inv[pk] -= sold; p.invCost[pk] -= avg * sold; p.cash += got; S.market[pk].price /= Math.pow(1 + P.impact, sold); } }
+  const value = units * S.market[pk].price * (1 - SPREAD) - rawCost - labor - rent;
+  s.last = { units, want: units, cap, D: 0, revenue: got, cogs: rawCost, labor, rent, ads: 0, profit: value, made: units, sold, got, short: Math.max(0, cap - units) };
+  s.hist.push(value); if (s.hist.length > 24) s.hist.shift();
+  s.months++; s.boost = 1; if (s.helper > 0) s.helper--; if (s.under > 0) s.under--;
+  fx.push({ kind: 'made', pid: s.owner, shop: s.id, units, profit: value, item: pk });
+}
+// 旅の商人からの申し出(プレイヤーごとに別々。今月中に受けるかどうか決める)
+function makeOffers(S) {
+  for (const p of S.players) {
+    const n = rnd(S) < 0.55 ? 1 : 2;
+    for (let i = 0; i < n; i++) {
+      const held = Object.keys(ITEMS).filter(k => p.inv[k] >= 20);
+      const buy = held.length && rnd(S) < 0.6;
+      const keys = buy ? held : Object.keys(ITEMS);
+      const item = keys[Math.floor(rnd(S) * keys.length)];
+      const big = rnd(S) < 0.18;
+      const k = buy ? (big ? 1.35 + rnd(S) * 0.25 : 1.08 + rnd(S) * 0.22) : (big ? 0.6 + rnd(S) * 0.1 : 0.72 + rnd(S) * 0.16);
+      const unit = Math.max(0.01, S.market[item].price * k);
+      const baseQ = isProc(item) ? 40 : 90;
+      let qty = Math.round((baseQ * (0.5 + rnd(S) * 1.2)) / 10) * 10 * (item === 'wheat' || item === 'flour' ? 2 : 1);
+      if (buy) qty = Math.max(10, Math.min(qty, Math.floor(p.inv[item] / 10) * 10 || 10));
+      p.offers.push({ id: S.nextOffer++, kind: buy ? 'buy' : 'sell', item, qty, price: Math.round(unit * 100) / 100, k, who: MERCHANTS[Math.floor(rnd(S) * MERCHANTS.length)] });
+    }
+  }
+}
 // 各地区で今いちばん客を集めている商会(大祭の「地区の覇者」の目安)
 export function crownsOf(S) {
   const out = {};
   for (const d in DISTRICTS) {
-    const by = {}; for (const s of S.shops) if (s.d === d && s.last) by[s.owner] = (by[s.owner] || 0) + s.last.units;
+    const by = {}; for (const s of S.shops) if (s.d === d && s.last && s.g !== 'work') by[s.owner] = (by[s.owner] || 0) + s.last.units;
     const top = Object.entries(by).sort((a, b) => b[1] - a[1])[0];
     out[d] = top ? { pid: +top[0], units: top[1] } : null;
   }
@@ -434,13 +574,15 @@ export function missionDone(S, p) {
   const mine = shopsOf(S, p.id), inv = Object.values(p.inv).reduce((a, b) => a + b, 0);
   switch (p.mission) {
     case 'port2': return mine.filter(s => kindOf(s.d) === 'port').length >= 2;
-    case 'allg': return new Set(mine.map(s => s.g)).size >= 3;
+    case 'allg': return new Set(mine.filter(s => s.g !== 'work').map(s => s.g)).size >= 3;
     case 'bigm': return !!p.flags.bigm;
     case 'hoard': return inv >= 300;
     case 'clean': return !p.flags.bailed && p.debt <= 0.5;
     case 'route2': return !!p.flags.route2;
     case 'crown': return !!p.flags.crown || (S.crowns && Object.values(S.crowns).some(c => c && c.pid === p.id) && !S.over);
     case 'street': return streetPairs(S, p.id) >= 2;
+    case 'maker': return p.flags.made >= 400;
+    case 'trader': return p.deals >= 5;
   }
   return false;
 }
@@ -448,13 +590,15 @@ export function missionProgress(S, p) {
   const mine = shopsOf(S, p.id), inv = Object.values(p.inv).reduce((a, b) => a + b, 0);
   switch (p.mission) {
     case 'port2': return `いま ${mine.filter(s => kindOf(s.d) === 'port').length}/2 店`;
-    case 'allg': return `いま ${new Set(mine.map(s => s.g)).size}/3 業種`;
+    case 'allg': return `いま ${new Set(mine.filter(s => s.g !== 'work').map(s => s.g)).size}/3 業種`;
     case 'bigm': return p.flags.bigm ? '達成!' : `最高 ${Math.round(Math.max(0, ...mine.map(s => Math.max(0, ...s.hist))))}G`;
     case 'hoard': return `いま ${Math.round(inv)}/300`;
     case 'clean': return p.flags.bailed ? '救済されたので失敗' : `借金 ${Math.round(p.debt)}G`;
     case 'route2': return p.flags.route2 ? '達成!' : 'まだ';
     case 'crown': return S.t < S.months - 12 ? '最後の年の大祭で' : 'いまの覇者の地区: ' + (Object.entries(S.crowns || {}).filter(([, c]) => c && c.pid === p.id).map(([d]) => DISTRICTS[d].short).join('・') || 'なし');
     case 'street': return `いま ${streetPairs(S, p.id)}/2 組`;
+    case 'maker': return `いま ${Math.round(p.flags.made)}/400 個`;
+    case 'trader': return `いま ${p.deals}/5 回`;
   }
   return '';
 }
@@ -482,6 +626,7 @@ export function aiDecide(S, pid) {
   }
   for (const s of mine) {
     const l = s.last; if (!l) continue;
+    if (s.g === 'work') { if (p.inv[s.res] < workCap(s) * 0.5 && cash > 300) { const q = Math.round(workCap(s)); acts.push({ type: 'buy', res: s.res, qty: q }); cash -= q * S.market[s.res].price; } continue; }
     let best = { pl: s.priceLv, st: s.staff, ad: s.ads, v: estimateShop(S, s).profit };
     for (const dp of [-1, 0, 1]) for (const ds of [-1, 0, 1]) for (const da of [-1, 0, 1]) {
       const pl = s.priceLv + dp, st = s.staff + ds, ad = s.ads + da;
@@ -500,7 +645,7 @@ export function aiDecide(S, pid) {
   }
   for (const k in RES) {
     const m = S.market[k], r = RES[k];
-    const uses = mine.some(s => GOODS[s.g].res === k);
+    const uses = mine.some(s => (GOODS[s.g] && GOODS[s.g].res === k) || s.res === k);
     if ((uses || p.ai === 'hoarder') && m.price < r.base * (p.ai === 'hoarder' ? 0.95 : 0.85) && cash > 400) {
       const q = Math.min(p.ai === 'hoarder' ? 120 : 50, Math.floor((cash - 300) / m.price / 2));
       if (q > 5) { acts.push({ type: 'buy', res: k, qty: q }); cash -= q * m.price; }
@@ -508,21 +653,33 @@ export function aiDecide(S, pid) {
     if (p.inv[k] > 0 && m.price > r.base * 1.3) acts.push({ type: 'sell', res: k, qty: Math.floor(p.inv[k] * 0.6) });
   }
   // カード(攻撃もする)
-  const best = mine.slice().sort((a, b) => (b.last ? b.last.profit : 0) - (a.last ? a.last.profit : 0))[0];
-  for (const c of p.hand) {
-    const cd = CARDS[c]; if (cash < cd.cost + 150) continue;
+  const best = mine.filter(s => s.g !== 'work').sort((a, b) => (b.last ? b.last.profit : 0) - (a.last ? a.last.profit : 0))[0];
+  for (const c0 of p.hand) {
+    const cd = cardDef(c0), c = cd.base; if (cash < cd.cost + 150) continue;
     if (cd.need === 'shop' && !best) continue;
+    if (cd.spec) { const t = mine.find(s => s.g === cd.spec && s.qual < 2); if (!t) continue; acts.push({ type: 'card', card: c0, shop: t.id }); break; }
     if (c === 'loan' && (p.debt > 0 || cash > 400 || !mine.some(x => x.last && x.last.profit > 40))) continue;
     if (c === 'scout') continue;
-    if (c === 'contract') { const r = best ? GOODS[best.g].res : null; if (!r || S.market[r].price > RES[r].base * 0.95) continue; acts.push({ type: 'card', card: c, res: r }); break; }
-    if (c === 'dump') { const r = Object.keys(RES).find(k => S.market[k].price > RES[k].base * 1.25 && mine.some(s => GOODS[s.g].res === k)); if (!r) continue; acts.push({ type: 'card', card: c, res: r }); break; }
+    if (c === 'contract') { const r = best ? GOODS[best.g].res : null; if (!r || S.market[r].price > RES[r].base * 0.95) continue; acts.push({ type: 'card', card: c0, res: r }); break; }
+    if (c === 'dump') { const r = Object.keys(RES).find(k => S.market[k].price > RES[k].base * 1.25 && mine.some(s => GOODS[s.g] && GOODS[s.g].res === k)); if (!r) continue; acts.push({ type: 'card', card: c0, res: r }); break; }
     if (c === 'poach' || c === 'headhunt') {
       // 同じ地区・業種で一番お客を集めているライバルを狙う
-      const tgt = S.shops.filter(t => t.owner !== pid && t.last && (c === 'headhunt' || mine.some(m => m.d === t.d && m.g === t.g))).sort((a, b) => b.last.units - a.last.units)[0];
-      if (!tgt) continue; acts.push({ type: 'card', card: c, shop: tgt.id }); break;
+      const tgt = S.shops.filter(t => t.owner !== pid && t.last && t.g !== 'work' && (c === 'headhunt' || mine.some(m => m.d === t.d && m.g === t.g))).sort((a, b) => b.last.units - a.last.units)[0];
+      if (!tgt) continue; acts.push({ type: 'card', card: c0, shop: tgt.id }); break;
     }
     if (c === 'helper' && best && best.last && best.last.want < best.last.cap) continue;
-    acts.push({ type: 'card', card: c, shop: best ? best.id : null }); break;
+    acts.push({ type: 'card', card: c0, shop: best ? best.id : null }); break;
+  }
+  // 商人の申し出: 高く買ってくれるなら売る・安く売ってくれて自分が使うなら買う
+  for (const o of p.offers) {
+    if (o.kind === 'buy' && o.k > 1.15 && p.inv[o.item] >= o.qty) acts.push({ type: 'deal', id: o.id });
+    if (o.kind === 'sell' && o.k < 0.8 && cash > o.qty * o.price + 300 && (mine.some(s => GOODS[s.g] && (GOODS[s.g].res === o.item || RES[GOODS[s.g].res].proc === o.item)) || p.ai === 'hoarder')) { acts.push({ type: 'deal', id: o.id }); cash -= o.qty * o.price; }
+  }
+  // 買い占め屋は、店が3つ以上になったら工房も持つ
+  if (p.ai === 'hoarder' && mine.length >= 3 && mine.length < MAX_SHOPS && !mine.some(s => s.g === 'work') && cash > 900) {
+    const lot = LOTS.find(l => lotFree(S, l.id) && kindOf(l.d) === 'hill') || LOTS.find(l => lotFree(S, l.id));
+    const raw = Object.keys(RES).sort((a, b) => (S.market[RES[b].proc].price / S.market[b].price) - (S.market[RES[a].proc].price / S.market[a].price))[0];
+    if (lot && !acts.some(a => a.type === 'open')) acts.push({ type: 'open', lot: lot.id, g: 'work', res: raw, staff: 2 });
   }
   if (p.debt > 0 && cash > 700) acts.push({ type: 'repay', amt: Math.min(p.debt, cash - 600) });
   return acts;
@@ -530,6 +687,7 @@ export function aiDecide(S, pid) {
 // 店の損益をざっくり見積もる(画面の「🔮」用)
 export function estimateShop(S, s, patch = {}) {
   const l = s.last; if (!l) return null;
+  if (s.g === 'work') { const st1 = patch.staff ?? s.staff; const cap = st1 * PROC[RES[s.res].proc].rate; const p = S.players[s.owner]; const units = Math.min(cap, p.inv[s.res] || 0); const pk = RES[s.res].proc; const raw = S.market[s.res].price; const labor = st1 * WAGE, rent = DISTRICTS[s.d].rent; return { units, want: units, cap, revenue: units * S.market[pk].price * (1 - SPREAD), cogs: units * raw, labor, rent, ads: 0, profit: units * (S.market[pk].price * (1 - SPREAD) - raw) - labor - rent, margin: S.market[pk].price * (1 - SPREAD) - raw }; }
   const G = GOODS[s.g], R = routeFx(s);
   const pm0 = PRICE_LV[s.priceLv], pm1 = PRICE_LV[patch.priceLv ?? s.priceLv];
   const st1 = patch.staff ?? s.staff, ad1 = patch.ads ?? s.ads;

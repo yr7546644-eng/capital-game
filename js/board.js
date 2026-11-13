@@ -2,10 +2,14 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { LOTS, DISTRICTS, GOODS, STAGES } from './engine.js';
+import { LOTS, DISTRICTS, GOODS, STAGES, RES, PROC, COLOR_HEX } from './engine.js';
 
 const HEX = 'assets/kaykit/hex/', CH = 'assets/kaykit/chars/';
 const BUILDING = { bread: 'windmill', potion: 'church', tool: 'blacksmith', cloth: 'market' };
+const WORKB = { wheat: 'watermill', wool: 'watermill', iron: 'lumbermill', herb: 'lumbermill' };
+// 看板(業種のアイコン + 持ち主の色)
+const signCache = new Map();
+function signTex(icon, color, isNew) { const key = icon + color + isNew; if (signCache.has(key)) return signCache.get(key); const c = document.createElement('canvas'); c.width = 128; c.height = isNew ? 168 : 128; const x = c.getContext('2d'); if (isNew) { x.fillStyle = '#ff3b5c'; x.beginPath(); x.roundRect(24, 0, 80, 34, 12); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 24px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('NEW', 64, 18); } const oy = isNew ? 40 : 0; x.fillStyle = '#fff'; x.beginPath(); x.arc(64, oy + 64, 54, 0, 7); x.fill(); x.lineWidth = 12; x.strokeStyle = color; x.stroke(); x.font = '62px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(icon, 64, oy + 68); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; signCache.set(key, t); return t; }
 const CHAR_OF = ['Knight', 'Mage', 'Barbarian', 'Rogue'];
 const loader = new GLTFLoader();
 const cache = new Map();
@@ -47,6 +51,7 @@ export class Board {
   }
   fit() { const w = this.el.clientWidth, h = this.el.clientHeight; this.R.setSize(w, h); this.cam.aspect = w / h; this.cam.fov = w / h < 0.7 ? 46 : 36; this.cam.updateProjectionMatrix(); }
   async build(stageId = 'rose') {
+    this.signs = new Map();
     const st = STAGES[stageId] || STAGES.rose;
     THEME.snow = st.theme === 'snow';
     if (this.world) this.scene.remove(this.world);
@@ -126,13 +131,24 @@ export class Board {
       if (this.shopObjs.has(s.id)) continue;
       const color = S.players[s.owner].color, l = LOTS[s.lot];
       this.shopObjs.set(s.id, null);
-      jobs.push(model(`building_${BUILDING[s.g]}_${color}`).then(o => {
+      const bname = s.g === 'work' ? `building_${WORKB[s.res]}_${color}` : `building_${BUILDING[s.g]}_${color}`;
+      jobs.push(model(bname).then(o => {
         o.position.copy(hexPos(l.q, l.r)); o.rotation.y = (s.lot % 6) * Math.PI / 3 + Math.PI / 6;
         o.traverse(m => { m.userData.shop = s.id; m.userData.lot = s.lot; });
         o.scale.setScalar(0.01); o.userData.pop = 0; this.world.add(o); this.shopObjs.set(s.id, o);
       }));
     }
     await Promise.all(jobs);
+    // 看板: 業種と持ち主がひと目でわかる。開いたばかりの店には NEW
+    this.signs = this.signs || new Map();
+    for (const [id, sp] of this.signs) if (!want.has(id)) { this.world.remove(sp); this.signs.delete(id); }
+    for (const s of S.shops) {
+      const isNew = s.owner !== myId && S.t - s.openedT <= 1;
+      const icon = s.g === 'work' ? PROC[RES[s.res].proc].icon : GOODS[s.g].icon, col = COLOR_HEX[S.players[s.owner].color];
+      let sp = this.signs.get(s.id);
+      if (!sp) { sp = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true })); sp.renderOrder = 9; this.world.add(sp); this.signs.set(s.id, sp); const l = LOTS[s.lot]; sp.position.copy(hexPos(l.q, l.r)).add(new THREE.Vector3(0, 2.0, 0)); sp.userData.shop = s.id; sp.userData.lot = s.lot; }
+      if (sp.userData.key !== icon + col + isNew) { sp.material.map = signTex(icon, col, isNew); sp.material.needsUpdate = true; sp.userData.key = icon + col + isNew; sp.scale.set(0.75, isNew ? 0.98 : 0.75, 1); sp.userData.isNew = isNew; }
+    }
     for (const l of LOTS) { const used = S.shops.some(s => s.lot === l.id); this.plus.get(l.id).visible = !used && S.players[myId] && !S.over; if (this.rings) this.rings.get(l.id).visible = !used; }
   }
   // 開業予定の土地に足場を出す
@@ -149,6 +165,27 @@ export class Board {
   }
   clearPreview() { if (!this.previews) return; for (const [, o] of this.previews) this.world.remove(o); this.previews.clear(); }
   async reset() { this.clearPreview(); for (const [, o] of this.shopObjs) if (o) this.world.remove(o); this.shopObjs.clear(); }
+  // 天気の見た目(雨・雪の粒、空の色、光)
+  setWeather(w) {
+    this.weather = w;
+    if (!this.precip) {
+      const n = 1400, g = new THREE.BufferGeometry(), pos = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { pos[i * 3] = (Math.random() - 0.5) * 40; pos[i * 3 + 1] = Math.random() * 18; pos[i * 3 + 2] = (Math.random() - 0.5) * 40; }
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      this.precip = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 0.12, transparent: true, opacity: 0.8, depthWrite: false }));
+      this.scene.add(this.precip);
+    }
+    const snowT = THEME.snow;
+    const sky = { sun: snowT ? 0xcfe4f5 : 0x8fd3f4, cloudy: 0xb9c6d2, rain: 0x8e9eae, storm: 0x5d6b7d, heat: 0xffd9a8, snow: 0xdfe8f2 }[w] || 0x8fd3f4;
+    this.scene.background.setHex(sky); this.scene.fog.color.setHex(sky);
+    this.sun.intensity = { sun: 1.7, cloudy: 1.0, rain: 0.7, storm: 0.45, heat: 2.1, snow: 1.0 }[w] || 1.4;
+    this.sun.color.setHex(w === 'heat' ? 0xffd2a0 : 0xfff4e2);
+    const show = w === 'rain' || w === 'storm' || w === 'snow';
+    this.precip.visible = show;
+    this.precip.material.size = w === 'snow' ? 0.2 : 0.13; this.precip.material.color.setHex(w === 'snow' ? 0xffffff : 0xb8d4ff);
+    this.precipSpeed = w === 'snow' ? 1.6 : w === 'storm' ? 16 : 11;
+    this.flash = 0;
+  }
   highlightLot(id) { for (const [k, s] of this.plus) s.scale.setScalar(k === id ? 0.8 : 0.55); }
   // シートが下半分をおおうので、店が画面の上半分に来るようにずらす
   focus(lotId) { const l = LOTS[lotId]; const p = hexPos(l.q, l.r); this.tween = { tx: p.x + 4.5 * Math.sin(this.view.yaw), tz: p.z + 4.5 * Math.cos(this.view.yaw), dist: 17, t: 0 }; }
@@ -160,18 +197,18 @@ export class Board {
     if (!this.charProto) return;
     const spawn = [];
     for (const it of list) {
-      const s = S.shops.find(x => x.id === it.shop); if (!s) continue;
+      const s = S.shops.find(x => x.id === it.shop); if (!s || s.g === 'work') continue;
       const l = LOTS[s.lot], dest = hexPos(l.q, l.r);
-      const n = Math.max(1, Math.min(5, Math.round(it.units / (GOODS[s.g].capPer * 0.55))));
+      const n = Math.max(1, Math.min(6, Math.round(it.units / (GOODS[s.g].capPer * 0.5))));
       for (let i = 0; i < n; i++) spawn.push({ dest, delay: i * 260 + Math.random() * 200, owner: s.owner });
     }
-    for (const sp of spawn.slice(0, 28)) {
+    for (const sp of spawn.slice(0, 40)) {
       const proto = this.charProto[Math.floor(Math.random() * 4)]; if (!proto) continue;
       const o = SkeletonUtils.clone(proto.scene); o.scale.setScalar(0.22);
-      const a = Math.random() * Math.PI * 2, from = sp.dest.clone().add(new THREE.Vector3(Math.cos(a) * 2.6, 0, Math.sin(a) * 2.6));
+      const a = Math.random() * Math.PI * 2, from = sp.dest.clone().add(new THREE.Vector3(Math.cos(a) * 3.4, 0, Math.sin(a) * 3.4));
       o.position.copy(from); o.lookAt(sp.dest.x, 0, sp.dest.z); o.visible = false; this.scene.add(o);
       const mx = new THREE.AnimationMixer(o); const cl = proto.animations.find(c => c.name === 'Walking_A'); if (cl) mx.clipAction(cl).play();
-      this.walkers.push({ o, mx, from, to: sp.dest.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.4, 0, (Math.random() - 0.5) * 0.4)), t: -sp.delay / 1000, dur: 1.6 + Math.random() * 0.5 });
+      this.walkers.push({ o, mx, from, to: sp.dest.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.4, 0, (Math.random() - 0.5) * 0.4)), t: -sp.delay / 1000, dur: 2.0 + Math.random() * 0.6 });
     }
     // 建物がはねる
     for (const it of list) { const o = this.shopObjs.get(it.shop); if (o) o.userData.bounce = 0.0001; }
@@ -219,7 +256,7 @@ export class Board {
     const r = this.R.domElement.getBoundingClientRect();
     const m = new THREE.Vector2((x - r.left) / r.width * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
     const ray = new THREE.Raycaster(); ray.setFromCamera(m, this.cam);
-    const objs = [...this.shopObjs.values()].filter(Boolean).concat([...(this.previews || new Map()).values()]).concat([...this.lotObjs.values()]).concat([...this.plus.values()].filter(s => s.visible));
+    const objs = [...this.shopObjs.values()].filter(Boolean).concat([...(this.signs || new Map()).values()]).concat([...(this.previews || new Map()).values()]).concat([...this.lotObjs.values()]).concat([...this.plus.values()].filter(s => s.visible));
     const hit = ray.intersectObjects(objs, true)[0];
     if (!hit) return;
     let o = hit.object; while (o && o.userData.shop == null && o.userData.lot == null) o = o.parent;
@@ -239,8 +276,15 @@ export class Board {
       if (o.userData.bounce) { o.userData.bounce += dt * 3; const b = o.userData.bounce; o.scale.set(1 + Math.sin(b * 6) * 0.06 * Math.max(0, 1 - b), 1 - Math.sin(b * 6) * 0.06 * Math.max(0, 1 - b), 1 + Math.sin(b * 6) * 0.06 * Math.max(0, 1 - b)); if (b > 1) { o.userData.bounce = 0; o.scale.setScalar(1); } }
     }
     if (this.popIn) for (const o of this.popIn) { if (o.userData.pop < 1) { o.userData.pop = Math.min(1, o.userData.pop + dt * 2.5); o.scale.setScalar(Math.max(0.01, 1 - Math.pow(1 - o.userData.pop, 3))); } }
+    if (this.signs) for (const [, sp] of this.signs) if (sp.userData.isNew) sp.position.y = 2.05 + Math.abs(Math.sin(t * 3)) * 0.18;
     for (const [, s] of this.plus) if (s.visible) s.position.y = 0.95 + Math.sin(t * 2.4 + s.userData.lot) * 0.08;
     if (this.clouds) for (const c of this.clouds) { c.position.x += c.userData.cloud * dt; if (c.position.x > 24) c.position.x = -24; }
+    if (this.precip && this.precip.visible) {
+      const a = this.precip.geometry.attributes.position, sp = this.precipSpeed * dt, sway = this.weather === 'snow' ? Math.sin(t) * 0.01 : 0;
+      for (let i = 0; i < a.count; i++) { let y = a.getY(i) - sp; if (y < 0) y += 18; a.setY(i, y); if (sway) a.setX(i, a.getX(i) + sway); }
+      a.needsUpdate = true; this.precip.position.set(v.tx, 0, v.tz);
+      if (this.weather === 'storm') { if (Math.random() < 0.004) this.flash = 1; if (this.flash > 0) { this.flash -= dt * 4; this.scene.background.setHex(this.flash > 0.5 ? 0xdde6f5 : 0x5d6b7d); } }
+    }
     for (const w of this.walkers) {
       w.t += dt; if (w.t < 0) continue; w.o.visible = true; w.mx.update(dt);
       const k = Math.min(1, w.t / w.dur); w.o.position.lerpVectors(w.from, w.to, k);
