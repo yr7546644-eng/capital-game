@@ -1201,7 +1201,7 @@ function aiStrong(S, pid) {
     for (const o of opts) { const key = LOTS[o.lot].d + o.g; if (seen.has(key)) continue; seen.add(key); cands.push({ acts: base.concat([{ type: 'open', lot: o.lot, g: o.g, priceLv: 2, staff: Math.max(1, Math.min(3, o.staff)) }]), label: key }); if (cands.length >= P.nc) break; }
     const old = acts.find(a => a.type === 'open'); if (old && !cands.some(c => c.acts.some(a => a.type === 'open' && a.lot === old.lot && a.g === old.g))) cands.push({ acts, label: 'old' });
     if (cands.length > 1) {
-      let best = null; for (const c of cands) { const v = rollout(S, pid, c.acts, P.H, P.run); if (!best || v > best.v) best = { ...c, v }; }
+      let best = null; for (const c of cands) { const v = P.lookRel ? rollout2(S, pid, c.acts, P.H, P) : rollout(S, pid, c.acts, P.H, P.run); if (!best || v > best.v) best = { ...c, v }; }
       acts = best.acts;
     }
   }
@@ -1333,8 +1333,9 @@ function deepMuts(S, pid, p, P, acts, stores) {
 export const AIP_BASE = { buf: 250, thr: 0.02, pw: 6, ropen: 300, H: 8, nc: 6, run: 0.5 };
 export const AIP_LEARNED = { ...AIP_BASE, H: 12, nc: 9 };   // つよい: 12か月先まで、9通りの出店案を試算する
 // 鬼: さらに毎月の手を一つずつ変えて試算し、ライバルとの差が一番開く手を選ぶ(自己対戦で「つよい」相手に平均順位1.9・勝率46%)
-export const AIP_DEEP = { ...AIP_LEARNED, deep: 1, rel: 1 };
-export const AIP_MAOU = { ...AIP_DEEP, Hm: 10, nm: 14, ns: 4 };
+// さらに「育て方の選び方・レア素材の仕入れ・ライバルの店の買収」も試算に入れる(深読みAI同士で平均順位2.04・勝率42%)
+export const AIP_DEEP = { ...AIP_LEARNED, deep: 1, rel: 1, mx: 1, nm: 16 };
+export const AIP_MAOU = { ...AIP_DEEP, Hm: 10, nm: 20, ns: 4 };
 const AIP_OF_LEVEL = { hard: AIP_LEARNED, oni: AIP_DEEP, maou: AIP_MAOU };
 const aipOf = (p) => p.aip || AIP_BASE;
 export function aiDecide(S, pid) {
