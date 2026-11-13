@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { LOTS, DISTRICTS, GOODS, STAGES, RES, PROC, COLOR_HEX } from './engine.js';
+import { LOTS, DISTRICTS, GOODS, STAGES, RES, PROC, COLOR_HEX, ROADS, ROAD_CELLS, MARKS } from './engine.js';
 
 const HEX = 'assets/kaykit/hex/', CH = 'assets/kaykit/chars/';
 const BUILDING = { bread: 'windmill', potion: 'church', tool: 'blacksmith', cloth: 'market' };
@@ -68,7 +68,15 @@ export class Board {
       if (st.water === 'capital') return d >= R || (hdist(q - 3, r + 4) <= 0);
       return d >= R || (q >= 8 && r >= -4) || (q + r >= 5 && q >= 3);
     };
-    const grassAt = [], waterAt = [];
+    const grassAt = [], waterAt = [], tintAt = [];
+    const roadSet = new Set(ROAD_CELLS.map(c => c.join(',')));
+    const centers = Object.keys(DISTRICTS).map(d => { const ls = LOTS.filter(l => l.d === d); return { d, q: ls.reduce((a, l) => a + l.q, 0) / ls.length, r: ls.reduce((a, l) => a + l.r, 0) / ls.length }; });
+    const h0 = (q, r) => (((q * 73856093) ^ (r * 19349663)) >>> 0) % 1000 / 1000;
+    const groundColor = (q, r) => {
+      if (roadSet.has(q + ',' + r)) return THEME.snow ? 0xb9b1a6 : 0xd6bf8e;
+      let best = null; for (const c of centers) { const dd = hdist(q - c.q, r - c.r); if (dd <= 2.2 && (!best || dd < best.dd)) best = { dd, d: c.d }; }
+      return best && DISTRICTS[best.d].ground != null ? DISTRICTS[best.d].ground : null;
+    };
     const deco = ['trees_A_large', 'trees_B_large', 'trees_A_medium', 'trees_B_medium', 'tree_single_A', 'tree_single_B', 'rock_single_A', 'hill_single_A'];
     let k = 0;
     const R = 10;
@@ -76,10 +84,12 @@ export class Board {
       const d = hdist(q, r); if (d > R + 1) continue;
       const p = hexPos(q, r);
       const water = isWater(q, r, d);
-      (water ? waterAt : grassAt).push(p);
+      if (water) waterAt.push(p);
+      else { const gc = groundColor(q, r); if (gc != null) tintAt.push([p, gc, h0(q, r)]); else grassAt.push(p); }
       if (water || lotSet.has(q + ',' + r)) continue;
       // 町の中心近くはあけて、外側に木や丘を置く
       const h = (q * 73856093 ^ r * 19349663) >>> 0;
+      if (roadSet.has(q + ',' + r) || MARKS.some(m => m.at[0] === q && m.at[1] === r)) continue;
       if (nearLot(q, r)) { if (h % 11 === 0) jobs.push(model(['barrel', 'crate_A_big', 'sack'][h % 3]).then(o => { o.position.copy(p).add(new THREE.Vector3(0.4, 0, 0.3)); o.rotation.y = h % 5; W.add(o); })); continue; }
       const mtn = THEME.snow && (r <= -8 || d >= 8);
       const edge = d >= R - 2;
@@ -91,6 +101,16 @@ export class Board {
       }
     }
     // 地面はまとめて描く(スマホでも軽い)
+    if (tintAt.length) jobs.push(model('hex_grass').then(o => {
+      const meshes = []; o.updateMatrixWorld(true); o.traverse(m => { if (m.isMesh) meshes.push(m); });
+      for (const m of meshes) {
+        const mat = m.material.clone(); mat.map = null; mat.color.setHex(0xffffff);
+        const im = new THREE.InstancedMesh(m.geometry, mat, tintAt.length); im.receiveShadow = true;
+        const mm = new THREE.Matrix4(), t = new THREE.Matrix4(), col = new THREE.Color();
+        tintAt.forEach(([p, c, h], i) => { t.makeTranslation(p.x, p.y, p.z); mm.multiplyMatrices(t, m.matrixWorld); im.setMatrixAt(i, mm); col.setHex(c).multiplyScalar(0.93 + h * 0.1); im.setColorAt(i, col); });
+        W.add(im);
+      }
+    }));
     for (const [name, list] of [['hex_grass', grassAt], ['hex_water', waterAt]]) {
       if (!list.length) continue;
       jobs.push(model(name).then(o => {
@@ -106,7 +126,7 @@ export class Board {
     // 空き地(区画)
     for (const l of LOTS) {
       const p = hexPos(l.q, l.r);
-      jobs.push(model('hex_grass').then(o => { o.position.copy(p); W.add(o); this.lotObjs.set(l.id, o); o.traverse(m => { m.userData.lot = l.id; }); }));
+      jobs.push(model('hex_grass').then(o => { o.position.copy(p); W.add(o); this.lotObjs.set(l.id, o); const gc = DISTRICTS[l.d].ground; o.traverse(m => { m.userData.lot = l.id; if (m.isMesh && gc != null) { const k = 'lot' + gc; if (!tinted.has(k)) { const c = m.material.clone(); c.map = null; c.color.setHex(gc); tinted.set(k, c); } m.material = tinted.get(k); } }); }));
       const ring = new THREE.Mesh(this.ringGeo || (this.ringGeo = new THREE.RingGeometry(0.78, 0.9, 6, 1)), this.ringMat || (this.ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, depthWrite: false })));
       ring.rotation.x = -Math.PI / 2; ring.rotation.z = Math.PI / 6; ring.position.copy(p).add(new THREE.Vector3(0, 0.03, 0)); ring.userData.lot = l.id; W.add(ring); (this.rings = this.rings || new Map()).set(l.id, ring);
     }
@@ -117,10 +137,83 @@ export class Board {
     this.plusMat = new THREE.SpriteMaterial({ map: plusTex, depthTest: false, transparent: true });
     for (const l of LOTS) { const s = new THREE.Sprite(this.plusMat); s.scale.set(0.55, 0.55, 1); s.position.copy(hexPos(l.q, l.r)).add(new THREE.Vector3(0, 0.9, 0)); s.userData.lot = l.id; s.renderOrder = 10; W.add(s); this.plus.set(l.id, s); }
     await Promise.all(jobs);
-    // 客(4 人の見た目を使い回す)
+    await this.buildMarks(W);
     this.frame();
     if (!this.charProto) this.charProto = await Promise.all(CHAR_OF.map(n => load(CH + n + '.glb')));
     this.rings = this.rings || new Map();
+    this.spawnTraffic();
+  }
+  // 町の目印(噴水・桟橋・船・井戸・鉱山・トロッコ・城・城門)
+  async buildMarks(W) {
+    this.anim = [];
+    const M = (geo, c) => { const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 })); m.castShadow = true; m.receiveShadow = true; return m; };
+    for (const mk of MARKS) {
+      const [q, r] = mk.at, g = new THREE.Group();
+      if (mk.k === 'fountain') {
+        const b = M(new THREE.CylinderGeometry(0.85, 0.92, 0.28, 24), 0xd8d0c4); b.position.y = 0.14; g.add(b);
+        const w = M(new THREE.CylinderGeometry(0.74, 0.74, 0.05, 24), 0x5fb3ea); w.position.y = 0.27; g.add(w);
+        const c = M(new THREE.CylinderGeometry(0.12, 0.16, 0.8, 12), 0xe6dfd2); c.position.y = 0.6; g.add(c);
+        const bowl = M(new THREE.CylinderGeometry(0.38, 0.18, 0.14, 16), 0xe6dfd2); bowl.position.y = 0.98; g.add(bowl);
+        const sp = M(new THREE.SphereGeometry(0.2, 12, 10), 0xa8dcff); sp.material.transparent = true; sp.material.opacity = 0.8; sp.position.y = 1.12; g.add(sp);
+        this.anim.push((t) => { sp.scale.setScalar(1 + Math.sin(t * 6) * 0.15); });
+      }
+      if (mk.k === 'pier') {
+        for (let i = 0; i < 4; i++) { const pl = M(new THREE.BoxGeometry(0.36, 0.08, 1.7), 0x9a6b3f); pl.position.set(-0.6 + i * 0.4, 0.22, 0); g.add(pl); }
+        for (const x of [-0.75, 0.75]) for (const z of [-0.7, 0.7]) { const po = M(new THREE.CylinderGeometry(0.07, 0.07, 0.7, 8), 0x6b4a2f); po.position.set(x, -0.05, z); g.add(po); }
+        g.rotation.y = 0.5;
+      }
+      if (mk.k === 'boat') {
+        const hull = M(new THREE.BoxGeometry(0.6, 0.3, 1.5), 0x8a5a3a); hull.position.y = 0.1; g.add(hull);
+        const mast = M(new THREE.CylinderGeometry(0.04, 0.04, 1.4, 8), 0x6b4a2f); mast.position.y = 0.9; g.add(mast);
+        const sail = M(new THREE.PlaneGeometry(0.9, 0.9), 0xfffaf0); sail.material.side = THREE.DoubleSide; sail.position.set(0, 1.0, 0.05); sail.rotation.y = Math.PI / 2; g.add(sail);
+        const ph = Math.random() * 6; this.anim.push((t) => { g.position.y = Math.sin(t * 1.6 + ph) * 0.06; g.rotation.z = Math.sin(t * 1.3 + ph) * 0.05; });
+      }
+      if (mk.k === 'well') {
+        const ring = M(new THREE.CylinderGeometry(0.42, 0.46, 0.45, 18), 0xa8a094); ring.position.y = 0.22; g.add(ring);
+        const wt = M(new THREE.CylinderGeometry(0.34, 0.34, 0.04, 18), 0x3a6a9a); wt.position.y = 0.42; g.add(wt);
+        for (const x of [-0.36, 0.36]) { const p = M(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 8), 0x7a5a3a); p.position.set(x, 0.8, 0); g.add(p); }
+        const roof = M(new THREE.ConeGeometry(0.6, 0.4, 4), 0xc0584a); roof.position.y = 1.35; roof.rotation.y = Math.PI / 4; g.add(roof);
+      }
+      if (mk.k === 'mine') {
+        const rock = M(new THREE.DodecahedronGeometry(1.1, 0), 0x7d776f); rock.scale.set(1.2, 0.9, 1); rock.position.y = 0.6; g.add(rock);
+        const hole = M(new THREE.BoxGeometry(0.7, 0.8, 0.3), 0x1d1a18); hole.position.set(0, 0.4, 0.95); g.add(hole);
+        const beam = M(new THREE.BoxGeometry(0.95, 0.12, 0.14), 0x8a5a3a); beam.position.set(0, 0.86, 1.05); g.add(beam);
+        for (const x of [-0.42, 0.42]) { const p = M(new THREE.BoxGeometry(0.12, 0.85, 0.14), 0x8a5a3a); p.position.set(x, 0.42, 1.05); g.add(p); }
+        g.rotation.y = Math.PI;
+      }
+      if (mk.k === 'cart') {
+        for (const x of [-0.25, 0.25]) { const rl = M(new THREE.BoxGeometry(0.05, 0.04, 1.8), 0x5a5a62); rl.position.set(x, 0.03, 0); g.add(rl); }
+        const cart = new THREE.Group(); const box = M(new THREE.BoxGeometry(0.55, 0.32, 0.7), 0x7a5232); box.position.y = 0.32; cart.add(box);
+        const ore = M(new THREE.DodecahedronGeometry(0.22, 0), 0x6b6f78); ore.position.y = 0.52; cart.add(ore);
+        for (const x of [-0.3, 0.3]) for (const z of [-0.22, 0.22]) { const wh = M(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 12), 0x2f2f33); wh.rotation.z = Math.PI / 2; wh.position.set(x, 0.12, z); cart.add(wh); }
+        g.add(cart); const ph = Math.random() * 6; this.anim.push((t) => { cart.position.z = Math.sin(t * 0.5 + ph) * 0.6; });
+      }
+      if (mk.k === 'castle') {
+        const base = M(new THREE.BoxGeometry(1.4, 1.1, 1.4), 0xe8e4dc); base.position.y = 0.55; g.add(base);
+        for (const [x, z] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) { const tw = M(new THREE.CylinderGeometry(0.28, 0.3, 1.7, 14), 0xf2efe8); tw.position.set(x, 0.85, z); g.add(tw); const rf = M(new THREE.ConeGeometry(0.36, 0.6, 14), 0x7a5cc8); rf.position.set(x, 2.0, z); g.add(rf); }
+        const keep = M(new THREE.CylinderGeometry(0.4, 0.45, 2.4, 16), 0xf2efe8); keep.position.y = 1.2; g.add(keep); const kr = M(new THREE.ConeGeometry(0.52, 0.9, 16), 0x7a5cc8); kr.position.y = 2.85; g.add(kr);
+        const fl = M(new THREE.PlaneGeometry(0.35, 0.22), 0xffd34d); fl.material.side = THREE.DoubleSide; fl.position.set(0.18, 3.4, 0); g.add(fl);
+        this.anim.push((t) => { fl.rotation.y = Math.sin(t * 3) * 0.4; });
+        g.scale.setScalar(1.25);
+      }
+      if (mk.k === 'gate') { const o = await model('wall_straight_gate'); o.rotation.y = Math.PI / 2 + 0.5; g.add(o); }
+      g.position.copy(hexPos(q, r)); W.add(g);
+    }
+  }
+  // 道を行き来する人(商人や冒険者)
+  spawnTraffic() {
+    this.traffic = [];
+    if (!this.charProto) return;
+    for (const rd of ROADS) {
+      const pts = rd.path.map(([q, r]) => hexPos(q, r)); if (pts.length < 2) continue;
+      for (let i = 0; i < 2; i++) {
+        const proto = this.charProto[(i + pts.length) % 4]; if (!proto) continue;
+        const o = SkeletonUtils.clone(proto.scene); o.scale.setScalar(0.2); this.world.add(o);
+        o.traverse(m => { if (m.isMesh) m.castShadow = true; });
+        const mx = new THREE.AnimationMixer(o); const cl = proto.animations.find(c => c.name === 'Walking_A'); if (cl) mx.clipAction(cl).play();
+        this.traffic.push({ o, mx, pts, u: i * 0.5 * (pts.length - 1), dir: i ? -1 : 1, off: i ? 0.25 : -0.25 });
+      }
+    }
   }
   // 状態に合わせて建物を置く
   async sync(S, myId) {
@@ -284,6 +377,13 @@ export class Board {
       for (let i = 0; i < a.count; i++) { let y = a.getY(i) - sp; if (y < 0) y += 18; a.setY(i, y); if (sway) a.setX(i, a.getX(i) + sway); }
       a.needsUpdate = true; this.precip.position.set(v.tx, 0, v.tz);
       if (this.weather === 'storm') { if (Math.random() < 0.004) this.flash = 1; if (this.flash > 0) { this.flash -= dt * 4; this.scene.background.setHex(this.flash > 0.5 ? 0xdde6f5 : 0x5d6b7d); } }
+    }
+    if (this.anim) for (const f of this.anim) f(t);
+    if (this.traffic) for (const w of this.traffic) {
+      const n = w.pts.length - 1; w.u += w.dir * dt * 0.45; if (w.u > n) { w.u = n; w.dir = -1; } if (w.u < 0) { w.u = 0; w.dir = 1; }
+      const i = Math.min(n - 1, Math.floor(w.u)), f = w.u - i, a = w.pts[i], b = w.pts[i + 1];
+      const dx = (b.x - a.x) * w.dir, dz = (b.z - a.z) * w.dir, L = Math.hypot(dx, dz) || 1;
+      w.o.position.set(a.x + (b.x - a.x) * f + (-dz / L) * w.off, 0, a.z + (b.z - a.z) * f + (dx / L) * w.off); w.o.rotation.y = Math.atan2(dx, dz); w.mx.update(dt);
     }
     for (const w of this.walkers) {
       w.t += dt; if (w.t < 0) continue; w.o.visible = true; w.mx.update(dt);
