@@ -57,7 +57,7 @@ function hud() {
   $('#hud').innerHTML = `
     <button class="pill month" data-a="menu"><svg class="ring" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="#e3e8f5" stroke-width="4"/><circle cx="15" cy="15" r="12" fill="none" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round" stroke-dasharray="${C * prog} ${C}" transform="rotate(-90 15 15)"/></svg><span><div class="m1">${E.STAGES[S.stage].icon} ${S.over ? '終わり' : `${Math.floor(S.t / 12) + 1}年目 · のこり${S.months - S.t}か月`}</div><div class="m2">${S.over ? '最終結果' : `${S.t % 12 + 1}月 ${S.t ? wx(S.w).icon : ''}`}</div></span></button>
     <div class="pill cash"><span class="coin">G</span><span class="num" id="cashv">${fmt(p.cash)}</span>${pc ? `<span class="pend">(予定 −${fmt(pc)})</span>` : ''}</div>
-    <button class="pill rank" data-a="ranking"><b class="num">${pos}</b>位</button>`;
+    <button class="pill rank" data-a="ranking"><b class="num">${pos}</b>位 <span class="rt">${E.RANKS[E.rankOf(E.netWorth(S, p))][2]}</span></button>`;
 }
 // ── 下のドック
 function dock() {
@@ -202,6 +202,7 @@ function districtInsight(d) {
   const hint = S.t === 0 ? '📊 まだ誰も店を出していない。家賃・客の多さ・材料の相場から考えよう' : '📊 先月: ' + facts.map(f => `${f.G.name}${f.n}軒・${f.G.item}の買い逃し 約${fmt(Math.round(f.miss / 5) * 5)}件・${f.R.name} 前月比${f.ch >= 0 ? '+' : '−'}${Math.round(Math.abs(f.ch) * 100)}%`).join('<br>📊 ');
   const crowded = [];
   return `<div class="box insight"><div class="row" style="gap:14px;margin-bottom:8px"><div><div class="lbl">客の多さ</div><div class="stars" style="font-size:16px">${'★'.repeat(crowd)}<span style="opacity:.25">${'★'.repeat(5 - crowd)}</span></div></div><div><div class="lbl">家賃</div><div style="font-size:16px">${D.rent}G<small class="t3"> /月 · ${rentLv}</small></div></div><div class="grow"></div></div>
+    ${(() => { const h = (S.prospHist && S.prospHist[d]) || [], k = E.prosperK(S, d), tr = h.length > 3 ? k - h[h.length - 4] : 0; return `<div class="t3" style="margin-bottom:6px">🏘️ 景気 <b class="${k >= 1 ? 'up' : 'down'}">${k >= 1.06 ? 'にぎわっている' : k >= 1 ? 'ふつう' : k >= 0.95 ? 'やや冷えている' : 'さびれている'}</b>(客 ${k >= 1 ? '+' : '−'}${Math.round(Math.abs(k - 1) * 100)}%)${tr > 0.005 ? ' ↗ 上向き' : tr < -0.005 ? ' ↘ 下向き' : ''} · 店がお給料を払うほど住民の財布がうるおう</div>`; })()}
     <div class="t3" style="margin-bottom:8px">${D.trait}</div>
     <div class="lbl">業種ごとの売れやすさ と ライバル</div>${rows}
     <div class="hint">${hint}${crowded.length ? `<br>⚠️ ${crowded.join('・')}は取り合いになっている` : ''}</div>
@@ -380,7 +381,8 @@ function missionBox() {
 // 月の結果
 SHEETS.result = ({ r }) => {
   const mine = r.mine, sum = mine.reduce((a, x) => a + x.profit, 0);
-  return `<div class="mhead"><div class="mt">${ym(S.t - 1)}の結果 · ${wx(S.w).icon} ${wx(S.w).name}</div><div class="mv num ${cls(sum)}" id="cntup">${sign(0)}G</div><div class="t3">店の利益の合計 · 現金 ${fmt(me().cash)}G</div></div>
+  const tierBox = r.tier1 !== r.tier0 ? `<div class="box tierbox ${r.tier1 > r.tier0 ? 'up' : 'down'}"><div style="font-size:34px">${E.RANKS[r.tier1][2]}</div><div><div class="lbl">${r.tier1 > r.tier0 ? '商会の格が上がった!' : '商会の格が下がった…'}</div><div style="font-size:18px">${E.RANKS[r.tier0][1]} → <b>${E.RANKS[r.tier1][1]}</b></div></div></div>` : '';
+  return tierBox + `<div class="mhead"><div class="mt">${ym(S.t - 1)}の結果 · ${wx(S.w).icon} ${wx(S.w).name}</div><div class="mv num ${cls(sum)}" id="cntup">${sign(0)}G</div><div class="t3">店の利益の合計 · 現金 ${fmt(me().cash)}G</div></div>
     ${r.alerts && r.alerts.length ? `<div class="box alertbox"><div class="lbl">⚠️ 判断が必要なこと</div>${r.alerts.map(a => `<button class="news" style="width:100%;text-align:left" data-a="alert" data-k="${a.a || ''}" data-id="${a.id || ''}">${a.t}${a.a ? ' ›' : ''}</button>`).join('')}</div>` : '<div class="box" style="padding:10px 14px"><div class="t2" style="margin:0">✅ 今月は判断が必要なことはない。方針はそのまま引き継がれる</div></div>'}
     ${r.auto && r.auto.length ? `<div class="box"><div class="lbl">🤵 店長がしたこと</div>${r.auto.map(t => `<div class="news">${t}</div>`).join('')}</div>` : ''}
     ${mine.length ? `<div class="box">${mine.map(x => `<div class="shoprow"><span class="ic">${x.icon}</span><div class="grow"><div>${x.name} <span class="t3">${x.dist}</span></div><div class="t3">${x.work ? `${fmt(x.units)}個つくった${x.sold ? ` · ${fmt(x.sold)}個売った` : ''}` : `お客 ${fmt(x.units)}人${x.lost > 3 ? ` · <span class="down">${fmt(x.lost)}人を逃した</span>` : ''}`}</div></div><div class="num ${cls(x.profit)}">${sign(x.profit)}</div></div>${x.why ? `<div class="why">💬 ${x.why}${!x.work ? funnelBox(x.s, true) + sourcesBox(x.s, true) : ''}</div>` : ''}`).join('')}</div>` : ''}
@@ -470,6 +472,7 @@ const H = {
   pickstage: (d) => { F.pv = null; $('.title') && $('.title').remove(); closeSheet(); startNew(d.v); },
   stagepv: (d) => previewStage(d.v),
   setmonths: (d) => { F.months = +d.v; renderSheet(); },
+  setlevel: (d) => { F.level = d.v; renderSheet(); },
   restart2: () => { closeSheet(); startNew(S.stage); },
   restart: () => { if (confirm('最初からやり直す?(同じ町)')) { closeSheet(); startNew(S.stage); } },
   stagesel: () => { if (!S.t || S.over || confirm('今のゲームをやめて、別の町で始める?')) openSheet('stages'); },
@@ -485,6 +488,7 @@ async function nextMonth() {
   if (F.busy || S.over) return;
   F.busy = true; closeSheet();
   const before = E.ranking(S).map(x => x.p.id);
+  const tier0 = E.rankOf(E.netWorth(S, me()));
   const fc = { wFore: me().scout === S.t ? S.wNext : S.wFore, ev: S.evNext ? S.evNext.id : null, prices: Object.fromEntries(Object.keys(E.ITEMS).map(k => [k, S.market[k].price])) };
   const autoDone = autoManage();
   const acts = F.acts.map(({ idx, ...a }) => a);
@@ -498,6 +502,7 @@ async function nextMonth() {
   board.clearPreview();
   await board.sync(S, ME);
   board.setWeather(S.w);
+  board.setProsperity(avgProsper());
   render();
   // 客の動きと数字のポップ
   const sales = fx.filter(f => f.kind === 'sales' || f.kind === 'made');
@@ -515,13 +520,16 @@ async function nextMonth() {
     rank: after.map((x, i) => ({ name: x.p.name, color: x.p.color, nw: x.nw, move: before.indexOf(x.p.id) - i })),
     news: newsOf(fx, pre), tip: tipOf(), check: checkOf(fc), auto: autoDone, alerts: F.alerts,
   };
+  r.tier0 = tier0; r.tier1 = E.rankOf(E.netWorth(S, me()));
   openSheet('result', { r });
+  if (r.tier1 > r.tier0) { sfx('rankup'); confetti(); } else if (r.tier1 < r.tier0) sfx('whoosh');
   countUp($('#cntup'), r.mine.reduce((a, x) => a + x.profit, 0));
   const pos = after.findIndex(x => x.p.id === ME);
   if (pos < before.indexOf(ME)) { sfx('rankup'); confetti(); }
   F.busy = false;
 }
 function afterResult() { render(); }
+const avgProsper = () => { const ks = Object.keys(E.DISTRICTS); return ks.reduce((a, d) => a + E.prosperK(S, d), 0) / ks.length; };
 // 店長と仕入れ係: 決めたルールで毎月の作業を任せる
 const pol = () => { me().policy = me().policy || { staff: {}, buy: {} }; return me().policy; };
 function autoManage() {
@@ -633,7 +641,7 @@ function updateLabels() {
   for (const el of document.querySelectorAll('.dlabel')) {
     const k = el.dataset.d, D = E.DISTRICTS[k]; if (!D) continue; const c = S.crowns && S.crowns[k];
     const md = D.kind === 'plaza' && E.marketDay({ t: S.t }) ? ' 🛍️' : '';
-    el.innerHTML = `${D.name}${md}${E.finalYear(S) && c ? ` <span style="color:${E.COLOR_HEX[S.players[c.pid].color]}">👑</span>` : ''}<small>家賃${D.rent}</small>`;
+    const pk = E.prosperK(S, k); el.innerHTML = `${pk >= 1.06 ? '✨' : pk < 0.96 ? '🍂' : ''}${D.name}${md}${E.finalYear(S) && c ? ` <span style="color:${E.COLOR_HEX[S.players[c.pid].color]}">👑</span>` : ''}<small>家賃${D.rent}</small>`;
   }
 }
 // ── 地区の名前と自分の店の印(毎フレーム位置を合わせる)
@@ -656,7 +664,7 @@ function labels() {
 async function startNew(stage) {
   stage = stage || (S && S.stage) || 'rose';
   const seed = Math.floor(Math.random() * 1e9);
-  S = E.newGame({ seed, stage, months: F.months || 60 }); F.acts = []; save();
+  S = E.newGame({ seed, stage, months: F.months || 60, level: F.level || 'hard' }); F.acts = []; save();
   $('#loading').classList.remove('off');
   await board.build(stage); await board.sync(S, ME);
   labels(); render(); board.home(); board.setWeather('sun');
@@ -666,7 +674,8 @@ async function startNew(stage) {
 SHEETS.stages = () => {
   const rec = records(), pv = F.pv || null;
   const mo = F.months || 60;
-  return head('🗺️', 'ステージを選ぶ', '町ごとに地区・客・事件がちがう') + `<div class="lbl">期間</div><div class="seg" style="margin-bottom:10px">${[[12, '1年(さくっと)'], [36, '3年'], [60, '5年(本番)']].map(([m, n]) => `<button class="${mo === m ? 'on' : ''}" data-a="setmonths" data-v="${m}">${n}</button>`).join('')}</div>` + Object.entries(E.STAGES).map(([k, st]) => { const r = rec[k]; return `<button class="good ${pv === k ? 'on' : ''}" style="width:100%;margin-bottom:10px;display:flex;gap:12px;align-items:center" data-a="stagepv" data-v="${k}"><div class="gi" style="font-size:38px">${st.icon}</div><div class="grow"><div class="gn">${st.name} <span class="stars">${'★'.repeat(st.diff)}<span style="opacity:.25">${'★'.repeat(3 - st.diff)}</span></span></div><div class="gs">${st.sub} · ${st.desc}</div><div class="gs">${Object.values(st.districts).map(d => d.name).join('・')} · 店は${st.maxShops || 5}つまで</div>${r && r.pos ? `<div class="gs" style="color:var(--pri)">🏆 最高 ${r.pos}位(${fmt(r.nw)}G)</div>` : ''}</div></button>${pv === k ? `<button class="btn warm wide" style="margin:-4px 0 12px" data-a="pickstage" data-v="${k}">${st.icon} この町で始める</button>` : ''}`; }).join('') + '<div class="t3" style="text-align:center">町をタップすると、うしろの地図がその町に変わる</div>';
+  const lv = F.level || 'hard';
+  return head('🗺️', 'ステージを選ぶ', '町ごとに地区・客・事件がちがう') + `<div class="lbl">ライバルの強さ</div><div class="seg" style="margin-bottom:6px">${Object.entries(E.AI_LEVEL).map(([k, L]) => `<button class="${lv === k ? 'on' : ''}" data-a="setlevel" data-v="${k}">${L.name}</button>`).join('')}</div><div class="t3" style="margin-bottom:10px">${E.AI_LEVEL[lv].desc}${lv !== 'normal' ? '。出店の前に、先の数か月を頭の中で試算してから動く' : ''}</div><div class="lbl">期間</div><div class="seg" style="margin-bottom:10px">${[[12, '1年(さくっと)'], [36, '3年'], [60, '5年(本番)']].map(([m, n]) => `<button class="${mo === m ? 'on' : ''}" data-a="setmonths" data-v="${m}">${n}</button>`).join('')}</div>` + Object.entries(E.STAGES).map(([k, st]) => { const r = rec[k]; return `<button class="good ${pv === k ? 'on' : ''}" style="width:100%;margin-bottom:10px;display:flex;gap:12px;align-items:center" data-a="stagepv" data-v="${k}"><div class="gi" style="font-size:38px">${st.icon}</div><div class="grow"><div class="gn">${st.name} <span class="stars">${'★'.repeat(st.diff)}<span style="opacity:.25">${'★'.repeat(3 - st.diff)}</span></span></div><div class="gs">${st.sub} · ${st.desc}</div><div class="gs">${Object.values(st.districts).map(d => d.name).join('・')} · 店は${st.maxShops || 5}つまで</div>${r && r.pos ? `<div class="gs" style="color:var(--pri)">🏆 最高 ${r.pos}位(${fmt(r.nw)}G)</div>` : ''}</div></button>${pv === k ? `<button class="btn warm wide" style="margin:-4px 0 12px" data-a="pickstage" data-v="${k}">${st.icon} この町で始める</button>` : ''}`; }).join('') + '<div class="t3" style="text-align:center">町をタップすると、うしろの地図がその町に変わる</div>';
 };
 async function previewStage(k) {
   if (F.pvBusy) return; F.pvBusy = 1; F.pv = k; renderSheet(); sfx('tap');
@@ -688,7 +697,7 @@ async function boot() {
   await board.build(S.stage); bar.style.width = '80%';
   await board.sync(S, ME);
   for (const a of F.acts) if (a.type === 'open') board.preview(a.lot, a.g, me().color);
-  labels(); render(); board.setWeather(S.t ? S.w : 'sun'); bar.style.width = '100%';
+  labels(); render(); board.setWeather(S.t ? S.w : 'sun'); board.setProsperity(avgProsper()); bar.style.width = '100%';
   setTimeout(() => { $('#loading').classList.add('off'); }, 250);
   const tl = document.createElement('div'); tl.className = 'title';
   tl.innerHTML = `<div class="tl">CAPITAL</div><div class="ts">商会バトル</div><div class="tb">${sv && S.t && !S.over ? `<button class="btn warm" data-a="start">つづきから<br><small>${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name} · ${ym(S.t)}</small></button><button class="btn ghost" data-a="newgame">🗺️ 新しく始める(町を選ぶ)</button>` : `<button class="btn warm" data-a="newgame">はじめる(町を選ぶ)</button>`}</div>`;
