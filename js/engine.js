@@ -394,16 +394,16 @@ export const AI_KIND = {
   luxury: { name: '高級志向', price: 3, risk: 0.4, route: 'lux' },
   hoarder: { name: '買い占め屋', price: 2, risk: 0.7, route: 'mass' },
 };
-const AI_NAMES = [['ベルナ', 'red', 'cheap'], ['グスタフ', 'yellow', 'luxury'], ['ミレイユ', 'green', 'hoarder']];
+export const AI_NAMES = [['ベルナ', 'red', 'cheap'], ['グスタフ', 'yellow', 'luxury'], ['ミレイユ', 'green', 'hoarder']];
 
-export const AI_LEVEL = { normal: { name: 'ふつう', desc: 'のんびりした商人たち' }, hard: { name: 'つよい', desc: '在庫・予報・季節を読んで動く' }, oni: { name: '鬼', desc: 'つよいAIに加え、ライバルの開始資金 +30%' } };
+export const AI_LEVEL = { normal: { name: 'ふつう', desc: 'のんびりした商人たち' }, hard: { name: 'つよい', desc: '12か月先まで試算して、出店の場所と業種を選ぶ' }, oni: { name: '鬼', desc: '毎月、値段・人手・カード・撤退まで一手ずつ未来を試算し、あなたとの差が一番開く手を選ぶ' }, maou: { name: '魔王', desc: '鬼より深く読み、開始資金も +30%。勝てたら本物' } };
 export function newGame({ seed = 1, players = null, months = MONTHS, stage = 'rose', level = 'normal' } = {}) {
   const st = useStage(stage);
   const S = { v: 10, level, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
   const ps = players || [{ name: 'あなた', human: true }, ...AI_NAMES.map(([n, c, k]) => ({ name: n, ai: k }))];
   const mk = Object.keys(MISSIONS).sort(() => 0);
   const deck = mk.slice(); for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(rnd(S) * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
-  ps.forEach((p, i) => S.players.push({ id: i, name: p.name, color: p.color || COLORS[i], human: !!p.human, ai: p.human ? null : (p.ai || 'balanced'), smart: !p.human && (p.smart || level !== 'normal'), aip: p.aip || (!p.human && level === 'oni' ? AIP_LEARNED : undefined), cash: Math.round((st.cash || 1000) * (!p.human && level === 'oni' ? 1.3 : 1)), debt: 0, inv: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), invCost: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), offers: [], deals: 0, contracts: [], hand: [], scout: -1, nw: [st.cash || 1000], rankHist: [], mission: deck[i % deck.length], flags: { bigm: 0, bailed: 0, route2: 0, crown: 0, made: 0 } }));
+  ps.forEach((p, i) => S.players.push({ id: i, name: p.name, color: p.color || COLORS[i], human: !!p.human, ai: p.human ? null : (p.ai || 'balanced'), smart: !p.human && (p.smart || level !== 'normal'), aip: p.aip || (p.human ? undefined : AIP_OF_LEVEL[level]), cash: Math.round((st.cash || 1000) * (!p.human && level === 'maou' ? 1.3 : 1)), debt: 0, inv: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), invCost: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), offers: [], deals: 0, contracts: [], hand: [], scout: -1, nw: [st.cash || 1000], rankHist: [], mission: deck[i % deck.length], flags: { bigm: 0, bailed: 0, route2: 0, crown: 0, made: 0 } }));
   S.mk = {};
   for (const k in ITEMS) { S.mk[k] = { stock: normalStock(k) * (RARES[k] ? 0.6 : 1), prod: 0, need: 0, shop: 0, buy: 0, sell: 0 }; S.market[k] = { price: 0, hist: [], k: 1 }; setPrice(S, k); S.market[k].hist.push(S.market[k].price); }
   // AI の好みはゲームごとにちがう(毎回同じ手を打たないように)
@@ -508,7 +508,15 @@ export function validate(S, pid, a) {
     if (p.cash < ROUTES[a.k].cost[lv - 1]) return 'お金が足りない';
     return null;
   }
-  if (a.type === 'deal') { const o = p.offers.find(x => x.id === a.id); if (!o) return 'その取引はもう終わった'; if (o.kind === 'buy' && (p.inv[o.item] || 0) < o.qty) return `${ITEMS[o.item].name}が足りない`; if (o.kind === 'sell' && p.cash < o.qty * o.price) return 'お金が足りない'; return null; }
+  if (a.type === 'propose') {
+    const to = S.players[a.to]; if (!to || a.to === pid) return '相手がちがう'; if (!ITEMS[a.item] || isRare(a.item)) return 'その品は契約できない';
+    if (!(a.qty >= 5 && a.qty <= 400) || !(a.price > 0) || ![3, 6].includes(a.months) || ![0, 1].includes(a.pay) || !['sell', 'buy'].includes(a.role)) return '条件がちがう';
+    if ((S.pacts || []).filter(x => x.left > 0 && (x.seller === pid || x.buyer === pid)).length >= 4) return '契約は同時に4つまで';
+    return null;
+  }
+  if (a.type === 'factor') { const r = (S.recv || []).find(x => x.id === a.id && x.to === pid); return r ? null : 'その売掛金はもうない'; }
+  if (a.type === 'bridge') { if (!(a.amt >= 100 && a.amt <= BRIDGE_MAX)) return '金額がちがう'; if ((S.recv || []).some(x => x.from === pid && x.bridge)) return 'つなぎ融資は返してから'; return null; }
+  if (a.type === 'deal') { const o = p.offers.find(x => x.id === a.id); if (!o) return 'その取引はもう終わった'; if (o.kind === 'pact') return null; if (o.kind === 'buy' && (p.inv[o.item] || 0) < o.qty) return `${ITEMS[o.item].name}が足りない`; if (o.kind === 'sell' && p.cash < o.qty * o.price) return 'お金が足りない'; return null; }
   if (a.type === 'buy') { if (!ITEMS[a.res] || !(a.qty > 0)) return '数がちがう'; if (p.cash < quote(S, a.res, a.qty)) return 'お金が足りない'; return null; }
   if (a.type === 'sell') { if (!(a.qty > 0) || (p.inv[a.res] || 0) < a.qty) return '在庫が足りない'; return null; }
   if (a.type === 'card') {
@@ -583,7 +591,15 @@ function applyAction(S, pid, a, fx, late) {
   if (a.type === 'vote') { S.vote.ballots[pid] = a.bill; }
   if (a.type === 'hire') { const sh = S.shops.find(x => x.id === a.shop), c = p.cands.find(x => x.id === a.cand); crewOf(S, sh).push({ ...c }); sh.staff = sh.crew.length; p.cands = p.cands.filter(x => x !== c); fx.push({ kind: 'hire', pid, shop: sh.id, who: c }); }
   if (a.type === 'fire') { const sh = S.shops.find(x => x.id === a.shop); sh.crew = sh.crew.filter(x => x.id !== a.staffId); sh.staff = sh.crew.length; }
-  if (a.type === 'deal') {
+  if (a.type === 'propose') {
+    const to = S.players[a.to], c = { seller: a.role === 'sell' ? pid : a.to, buyer: a.role === 'sell' ? a.to : pid, item: a.item, qty: Math.round(a.qty), price: Math.round(a.price * 100) / 100, months: a.months, pay: a.pay, from: pid };
+    if (to.ai) { const ok = aiPactOk(S, a.to, c); if (ok) newPact(S, c); fx.push({ kind: ok ? 'pactYes' : 'pactNo', pid, to: a.to, pact: c }); }
+    else (S.pactQ = S.pactQ || []).push(c);   // 人どうし: 相手の「申し出」に届く
+  }
+  if (a.type === 'factor') { const r = S.recv.find(x => x.id === a.id); const got = Math.round(r.amt * (1 - FACTOR_FEE)); p.cash += got; r.to = -1; fx.push({ kind: 'factor', pid, amt: r.amt, got }); }
+  if (a.type === 'bridge') { p.cash += a.amt; (S.recv = S.recv || []).push({ id: S.nextOffer++, from: pid, to: -1, amt: Math.round(a.amt * (1 + BRIDGE_RATE)), due: S.t + 1, bridge: 1 }); fx.push({ kind: 'bridge', pid, amt: a.amt }); }
+  if (a.type === 'deal' && p.offers.find(x => x.id === a.id).kind === 'pact') { const o = p.offers.find(x => x.id === a.id); newPact(S, o.pact); p.offers = p.offers.filter(x => x !== o); fx.push({ kind: 'pactYes', pid: o.pact.from, to: pid, pact: o.pact }); }
+  else if (a.type === 'deal') {
     const o = p.offers.find(x => x.id === a.id);
     if (o.kind === 'buy') { const avg = p.invCost[o.item] / p.inv[o.item]; p.inv[o.item] -= o.qty; p.invCost[o.item] -= avg * o.qty; p.cash += o.qty * o.price;
       if (o.rival != null) { const rv = S.players[o.rival]; rv.inv[o.item] += o.qty; rv.invCost[o.item] += o.qty * o.price; rv.cash -= o.qty * o.price; const sh = shopsOf(S, rv.id).find(x => x.g === RARES[o.item].use); if (sh) { sh.feat = o.item; sh.featQty = Math.max(sh.featQty, Math.min(10, o.qty)); } } }
@@ -608,6 +624,55 @@ function applyAction(S, pid, a, fx, late) {
     fx.push({ kind: 'card', pid, card: a.card, shop: a.shop, res: a.res, target: s ? s.owner : null });
   }
   return null;
+}
+// ── 商人どうしの契約: 毎月 決まった数を決まった値段で受け渡す。払いは「その月」か「翌月(売掛金)」
+export const FACTOR_FEE = 0.05, BRIDGE_RATE = 0.04, BRIDGE_MAX = 800, PACT_SHORT = 0.2;
+export function useOf(S, pid, item) {
+  if (RES[item]) return monthlyUse(S, pid, item) + shopsOf(S, pid).filter(s => s.g === 'work' && s.res === item).reduce((a, s) => a + workCap(s), 0);
+  if (PROC[item]) return storesOf(S, pid).filter(s => s.useProc && RES[GOODS[s.g].res].proc === item).reduce((a, s) => a + (s.last ? s.last.units : 0) * 0.6, 0);
+  return 0;
+}
+export function makeOf(S, pid, item) { return PROC[item] ? shopsOf(S, pid).filter(s => s.g === 'work' && RES[s.res].proc === item).reduce((a, s) => a + workCap(s), 0) : 0; }
+function newPact(S, c) { (S.pacts = S.pacts || []).push({ id: S.nextOffer++, ...c, left: c.months, done: 0, short: 0, t0: S.t }); }
+// AI が契約を受けるか: 使う(作る)見込みがあり、市場の値段と比べて得なら受ける。翌月払いは、払う側に得・受け取る側に損
+function aiPactOk(S, aid, c) {
+  const m = S.market[c.item].price, q = S.players[aid];
+  if (c.buyer === aid) { const use = useOf(S, aid, c.item); if (use < c.qty * 0.7) return false; return c.price <= m * (c.pay ? 1.04 : 0.99) && q.cash > c.qty * c.price * (c.pay ? 0.5 : 1.5); }
+  const have = (q.inv[c.item] || 0) + makeOf(S, aid, c.item) * c.months; if (have < c.qty * c.months * 0.8) return false;
+  return c.price >= m * (c.pay ? 1.07 : 1.02);
+}
+// ライバルからの契約の申し出(人の商会へ)
+function pactOffers(S) {
+  for (const p of S.players) {
+    if (p.ai || rnd(S) > 0.45) continue;
+    for (const rv of S.players.filter(o => o.ai && o.id !== p.id)) {
+      // 自分が作るものを、それを使うあなたに売りたい
+      for (const k of Object.keys(PROC)) { const mk = makeOf(S, rv.id, k), use = useOf(S, p.id, k) + useOf(S, p.id, Object.keys(RES).find(r => RES[r].proc === k)) * 0.3; if (mk >= 10 && use >= 8 && rnd(S) < 0.5) { const qty = Math.max(5, Math.round(Math.min(mk * 0.7, use) / 5) * 5), pay = rnd(S) < 0.5 ? 1 : 0; const c = { seller: rv.id, buyer: p.id, item: k, qty, price: Math.round(S.market[k].price * (pay ? 1.06 : 1.01 + rnd(S) * 0.04) * 100) / 100, months: rnd(S) < 0.5 ? 3 : 6, pay, from: rv.id }; p.offers.push({ id: S.nextOffer++, kind: 'pact', pact: c, item: k, qty, price: c.price, who: rv.name + '(ライバル)' }); return; } }
+      // あなたが作る・抱えているものを、使いたい
+      for (const k of Object.keys(ITEMS).filter(x => !isRare(x))) { const have = makeOf(S, p.id, k) + (p.inv[k] || 0) / 3, use = useOf(S, rv.id, k); if (have >= 10 && use >= 10 && rnd(S) < 0.5) { const qty = Math.max(5, Math.round(Math.min(have, use) * 0.6 / 5) * 5), pay = rnd(S) < 0.6 ? 1 : 0; const c = { seller: p.id, buyer: rv.id, item: k, qty, price: Math.round(S.market[k].price * (pay ? 1.02 + rnd(S) * 0.04 : 0.95 + rnd(S) * 0.05) * 100) / 100, months: rnd(S) < 0.5 ? 3 : 6, pay, from: rv.id }; p.offers.push({ id: S.nextOffer++, kind: 'pact', pact: c, item: k, qty, price: c.price, who: rv.name + '(ライバル)' }); return; } }
+    }
+  }
+}
+function settlePacts(S, fx) {
+  S.recv = S.recv || []; S.pacts = S.pacts || [];
+  // 期日の来た売掛金・つなぎ融資を払う(お金が足りなくても払う。足りない分は救済融資になる)
+  for (const r of S.recv.filter(x => x.due <= S.t)) {
+    if (r.from >= 0) S.players[r.from].cash -= r.amt; if (r.to >= 0) S.players[r.to].cash += r.amt;
+    fx.push({ kind: 'recvPaid', from: r.from, to: r.to, amt: r.amt, bridge: r.bridge });
+  }
+  S.recv = S.recv.filter(x => x.due > S.t);
+  for (const c of S.pacts) {
+    if (c.left <= 0) continue;
+    const se = S.players[c.seller], bu = S.players[c.buyer];
+    const q = Math.max(0, Math.min(c.qty, Math.floor(se.inv[c.item] || 0)));
+    if (q > 0) { const avg = se.invCost[c.item] / se.inv[c.item]; se.inv[c.item] -= q; se.invCost[c.item] -= avg * q; bu.inv[c.item] += q; bu.invCost[c.item] += q * c.price; }
+    const amt = Math.round(q * c.price);
+    if (c.pay) S.recv.push({ id: S.nextOffer++, from: c.buyer, to: c.seller, amt, due: S.t + 1, pact: c.id }); else { bu.cash -= amt; se.cash += amt; }
+    const short = c.qty - q; if (short > 0) { const pen = Math.round(short * c.price * PACT_SHORT); se.cash -= pen; bu.cash += pen; c.short += short; }
+    c.done += q; c.left--;
+    fx.push({ kind: 'pactDeliver', pact: c.id, seller: c.seller, buyer: c.buyer, item: c.item, q, amt, pay: c.pay, short });
+  }
+  S.pacts = S.pacts.filter(c => c.left > 0 || c.t0 > S.t - 12).slice(-20);
 }
 function monthlyUse(S, pid, res) { return storesOf(S, pid).filter(s => GOODS[s.g].res === res).reduce((a, s) => a + (s.last ? s.last.units : s.staff * GOODS[s.g].capPer * 0.6), 0); }
 
@@ -722,6 +787,7 @@ export function step(S, decisions = {}) {
     s.months++; s.boost = 1; s.saleNow = 0; s.promo = 0; s.promoK = 1; s.promoName = null; if (s.helper > 0) s.helper--; if (s.under > 0) s.under--;
     fx.push({ kind: 'sales', pid: s.owner, shop: s.id, units, profit });
   }
+  settlePacts(S, fx);
   for (const p of S.players) {
     for (const c of p.contracts) { if (c.left > 0) { c.stock += c.qty; p.cash -= c.qty * c.price; c.left--; } }
     p.contracts = p.contracts.filter(c => c.left > 0 || c.stock > 0.5);
@@ -759,6 +825,9 @@ export function step(S, decisions = {}) {
   }
   for (const p of S.players) p.offers = [];
   makeOffers(S);
+  for (const c of (S.pactQ || [])) S.players[c.from === c.seller ? c.buyer : c.seller].offers.push({ id: S.nextOffer++, kind: 'pact', pact: c, item: c.item, qty: c.qty, price: c.price, who: S.players[c.from].name });
+  S.pactQ = [];
+  pactOffers(S);
   // 店員: 新人は育ち、気まぐれは月ごとに調子が変わる。求職者が毎月入れかわる
   const trs = Object.keys(TRAITS).filter(k => k !== 'plain');
   for (const sh of S.shops) for (const c of crewOf(S, sh)) { c.months++; const T = TRAITS[c.trait]; if (T.grow) c.skill = Math.min(1.25 / T.cap, (c.skill || 1) + T.grow); c.moodK = T.moody ? 0.7 + rnd(S) * 0.6 : 1; }
@@ -943,7 +1012,7 @@ export function billScore(S, pid, b) {
 function aiVote(S, pid) { return S.vote.bills.slice().sort((a, b) => billScore(S, pid, b) - billScore(S, pid, a))[0]; }
 // ── 強いAI(見えている情報だけで判断する。ズルはしない)
 // 出店先の見積もり・予報への先回り・季節の買いだめ・工房・レア素材・攻撃・資金管理
-function fixedCosts(S, pid) { return shopsOf(S, pid).reduce((a, s) => a + crewWage(s) + DISTRICTS[s.d].rent + ADS[s.ads].cost, 0) + (S.players[pid].debt || 0) * LOAN_RATE; }
+export function fixedCosts(S, pid) { return shopsOf(S, pid).reduce((a, s) => a + crewWage(s) + DISTRICTS[s.d].rent + ADS[s.ads].cost, 0) + (S.players[pid].debt || 0) * LOAN_RATE; }
 function seasonAvg(S, g, d) { let a = 0; const t0 = S.t; for (let i = 0; i < 12; i++) { S.t = t0 + i; a += season(S, g, d); } S.t = t0; return a / 12; }
 // 新しい店を出したときの、ふだんの月の儲けの見積もり
 export function lotValue(S, pid, lotId, g) {
@@ -1174,12 +1243,81 @@ function aiStrong(S, pid) {
   }
   return acts;
 }
+// 試算の値: 自分の伸び −(rel × いちばん伸びたライバル)。seeds 回ぶん乱数を変えて平均し、偶然に左右されにくくする
+function rollout2(S, pid, acts, H, P) {
+  let sum = 0;
+  for (let k = 0; k < (P.seeds || 1); k++) {
+    const T = JSON.parse(JSON.stringify(S)); T.look = 1; if (k) T.rs = (T.rs * 1103515245 + 12345 * k) >>> 0 || 1;
+    for (const q of T.players) q.smart = false;
+    const nw0 = T.players.map(q => netWorth(T, q));
+    step(T, { [pid]: acts });
+    for (let i = 1; i < H && !T.over; i++) step(T, {});
+    const left = Math.max(0, S.months - T.t);
+    const val = (q) => netWorth(T, q) - nw0[q.id] + Math.max(0, shopsOf(T, q.id).reduce((a, s) => a + (s.hist.length ? s.hist.slice(-3).reduce((x, y) => x + y, 0) / Math.min(3, s.hist.length) : 0), 0)) * Math.min(left, 12) * (P.run ?? 0.5);
+    const me = val(T.players[pid]), riv = Math.max(...T.players.filter(q => q.id !== pid).map(val));
+    sum += me - (P.rel || 0) * riv;
+  }
+  return sum / (P.seeds || 1);
+}
+// 深読みAI: 強いAIの手を土台に、手を1つずつ変えた案を試算して、良くなるものだけ採用する
+function aiDeep(S, pid) {
+  const p = S.players[pid], P = aipOf(p);
+  let acts = aiStrong(S, pid);
+  if (S.look) return acts;
+  const stores = shopsOf(S, pid).filter(s => s.g !== 'work' && s.last);
+  const H = P.Hm || 6, nm = P.nm || 10;
+  let bestV = rollout2(S, pid, acts, H, P);
+  for (let pass = 0; pass < (P.iter || 1); pass++) {
+    const muts = deepMuts(S, pid, p, P, acts, stores);
+    let imp = null;
+    for (const m of muts.slice(0, nm)) { const v = rollout2(S, pid, m, H, P); if (v > bestV + (P.margin ?? 5)) { bestV = v; imp = m; } }
+    if (!imp) break; acts = imp;
+  }
+  return acts;
+}
+function deepMuts(S, pid, p, P, acts, stores) {
+  const muts = [];
+  const setOf = (A, s) => A.find(a => a.type === 'set' && a.shop === s.id);
+  const withSet = (A, s, patch) => { const cur = setOf(A, s) || { type: 'set', shop: s.id, priceLv: s.priceLv, staff: s.staff, ads: s.ads }; const nx = { ...cur, ...patch }; return A.filter(a => a !== cur).concat([nx]); };
+  // 稼ぎの大きい店から順に、値段・人手・宣伝を1段ずつ動かす案
+  const top = stores.slice().sort((a, b) => b.last.revenue - a.last.revenue).slice(0, P.ns || 3);
+  for (const s of top) {
+    const cur = setOf(acts, s) || s;
+    for (const d of [-1, 1]) {
+      if (cur.priceLv + d >= 0 && cur.priceLv + d <= 4) muts.push(withSet(acts, s, { priceLv: cur.priceLv + d }));
+      if (cur.staff + d >= 1 && cur.staff + d <= 5) muts.push(withSet(acts, s, { staff: cur.staff + d }));
+    }
+    if (cur.ads < 2) muts.push(withSet(acts, s, { ads: cur.ads + 1 })); else muts.push(withSet(acts, s, { ads: cur.ads - 1 }));
+  }
+  // 手を引く案: カード・育て方・出店・売買をやめる
+  for (const t of ['card', 'route', 'open', 'buy', 'sell', 'hire']) if (acts.some(a => a.type === t)) muts.push(acts.filter(a => a.type !== t));
+  // 別のカードを使う案
+  const cAct = acts.find(a => a.type === 'card'), best = stores.slice().sort((a, b) => b.last.profit - a.last.profit)[0];
+  for (const c0 of p.hand) {
+    if (cAct && cAct.card === c0) continue; const cd = cardDef(c0); if (p.cash < cd.cost + 150) continue;
+    let a = null;
+    if (cd.spec) { const t = stores.find(s => s.g === cd.spec && s.qual < 2); if (t) a = { type: 'card', card: c0, shop: t.id }; }
+    else if (cd.base === 'poach' || cd.base === 'headhunt') { const tgt = S.shops.filter(t => t.owner !== pid && t.last && t.g !== 'work').sort((x, y) => y.last.units - x.last.units)[0]; if (tgt) a = { type: 'card', card: c0, shop: tgt.id }; }
+    else if (cd.base === 'contract' || cd.base === 'dump') { if (best) a = { type: 'card', card: c0, res: GOODS[best.g].res }; }
+    else if (cd.base === 'scout') a = { type: 'card', card: c0 };
+    else if (best) a = { type: 'card', card: c0, shop: best.id };
+    if (a) muts.push(acts.filter(x => x.type !== 'card').concat([a]));
+  }
+  // 赤字続きの店をたたむ案
+  const worst = stores.filter(s => s.hist.length >= 3 && s.hist.slice(-3).reduce((a, x) => a + x, 0) < 0).sort((a, b) => a.last.profit - b.last.profit)[0];
+  if (worst && !acts.some(a => a.type === 'close' && a.shop === worst.id)) muts.push(acts.concat([{ type: 'close', shop: worst.id }]));
+  return muts;
+}
 // AI の判断のくせ(自己対戦で学習して決める)。buf=出店時に残す現金, thr=出店の基準, pw=値付けのくせの強さ, ropen=育て方に残す現金, H=何か月先まで読むか, nc=試算する候補数, run=店の稼ぐ力の重み
 export const AIP_BASE = { buf: 250, thr: 0.02, pw: 6, ropen: 300, H: 8, nc: 6, run: 0.5 };
-export const AIP_LEARNED = { ...AIP_BASE, H: 12, nc: 9 };   // 鬼: 12か月先まで、9通りの手を試算する
+export const AIP_LEARNED = { ...AIP_BASE, H: 12, nc: 9 };   // つよい: 12か月先まで、9通りの出店案を試算する
+// 鬼: さらに毎月の手を一つずつ変えて試算し、ライバルとの差が一番開く手を選ぶ(自己対戦で「つよい」相手に平均順位1.9・勝率46%)
+export const AIP_DEEP = { ...AIP_LEARNED, deep: 1, rel: 1 };
+export const AIP_MAOU = { ...AIP_DEEP, Hm: 10, nm: 14, ns: 4 };
+const AIP_OF_LEVEL = { hard: AIP_LEARNED, oni: AIP_DEEP, maou: AIP_MAOU };
 const aipOf = (p) => p.aip || AIP_BASE;
 export function aiDecide(S, pid) {
-  if (S.players[pid].smart) return aiStrong(S, pid);
+  if (S.players[pid].smart) return aipOf(S.players[pid]).deep && !S.look ? aiDeep(S, pid) : aiStrong(S, pid);
   const p = S.players[pid], K = AI_KIND[p.ai] || AI_KIND.balanced, acts = [], P = aipOf(p);
   const mine = shopsOf(S, pid);
   let cash = p.cash;

@@ -2,6 +2,7 @@
 import * as E from './engine.js';
 import { Board, hexPos } from './board.js';
 import { sfx, unlockAudio, bgm, haptic, audioPref, setAudioPref } from './sfx.js';
+import { NET, joinRoom, leaveRoom, send as netSend, newCode } from './net.js';
 
 const $ = (s) => document.querySelector(s);
 const fmt = (n) => Math.round(n).toLocaleString('ja-JP');
@@ -9,7 +10,7 @@ const sign = (n) => (n >= 0 ? '+' : '−') + fmt(Math.abs(n));
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const ym = (t) => `${Math.floor(t / 12) + 1}年目 ${t % 12 + 1}月`;
 const cls = (n) => (n >= 0 ? 'up' : 'down');
-const ME = 0;
+let ME = 0;
 const gd = (s) => s.g === 'work' ? { icon: '🏭', name: `工房(${E.PROC[E.RES[s.res].proc].name})`, short: '工房' } : E.GOODS[s.g];
 const wx = (k) => E.WEATHER[k] || E.WEATHER.cloudy;
 
@@ -19,7 +20,7 @@ const SAVE = 'capital-battle-v3';
 const REC = 'capital-records';
 const records = () => { try { return JSON.parse(localStorage.getItem(REC) || '{}'); } catch (e) { return {}; } };
 const setRecord = (stage, pos, nw) => { try { const r = records(); const o = r[stage] || {}; const best = !o.pos || pos < o.pos || (pos === o.pos && nw > (o.nw || 0)); r[stage] = { pos: best ? pos : o.pos, nw: best ? nw : o.nw, plays: (o.plays || 0) + 1 }; localStorage.setItem(REC, JSON.stringify(r)); } catch (e) { } };
-const save = () => { try { localStorage.setItem(SAVE, JSON.stringify({ S, acts: F.acts })); } catch (e) { } };
+const save = () => { if (F.mp) return; try { localStorage.setItem(SAVE, JSON.stringify({ S, acts: F.acts })); } catch (e) { } };
 const loadSave = () => { try { const j = JSON.parse(localStorage.getItem(SAVE) || 'null'); return j && j.S && j.S.v === 10 ? j : null; } catch (e) { return null; } };
 
 // ── 決断(月末にまとめて実行される)
@@ -32,6 +33,8 @@ function pendCost() {
     if (a.type === 'card') c += E.cardDef(a.card).cost;
     if (a.type === 'repay') c += a.amt;
     if (a.type === 'buyshop') c += a.price;
+    if (a.type === 'bridge') c -= a.amt;
+    if (a.type === 'factor') { const r = (S.recv || []).find(x => x.id === a.id); if (r) c -= Math.round(r.amt * (1 - E.FACTOR_FEE)); }
     if (a.type === 'deal') { const o = (me().offers || []).find(x => x.id === a.id); if (o && o.kind === 'sell') c += o.qty * o.price; if (o && o.kind === 'buy') c -= o.qty * o.price; }
     if (a.type === 'route') { const s = S.shops.find(x => x.id === a.shop); const lv = s && s.route ? s.route.lv + 1 : 1; c += E.ROUTES[a.k].cost[lv - 1]; }
   }
@@ -57,7 +60,7 @@ function hud() {
   const pc = pendCost();
   $('#hud').innerHTML = `
     <button class="pill month" data-a="menu"><svg class="ring" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="#e3e8f5" stroke-width="4"/><circle cx="15" cy="15" r="12" fill="none" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round" stroke-dasharray="${C * prog} ${C}" transform="rotate(-90 15 15)"/></svg><span><div class="m1">${E.STAGES[S.stage].icon} ${S.over ? '終わり' : `${Math.floor(S.t / 12) + 1}年目 · のこり${S.months - S.t}か月`}</div><div class="m2">${S.over ? '最終結果' : `${S.t % 12 + 1}月 ${S.t ? wx(S.w).icon : ''}`}</div></span></button>
-    <div class="pill cash"><span class="coin">G</span><span class="num" id="cashv">${fmt(p.cash)}</span>${pc ? `<span class="pend">(予定 −${fmt(pc)})</span>` : ''}</div>
+    <div class="pill cash"><span class="coin">G</span><span class="num" id="cashv">${fmt(p.cash)}</span>${pc ? `<span class="pend">(予定 ${pc > 0 ? '−' : '+'}${fmt(Math.abs(pc))})</span>` : ''}</div>
     <button class="pill rank" data-a="ranking"><b class="num">${pos}</b>位 <span class="rt">${E.RANKS[E.rankOf(E.netWorth(S, p))][2]}</span></button>`;
 }
 // ── 下のドック
@@ -324,7 +327,7 @@ function rivalSheet(s) {
 SHEETS.market = () => {
   const p = me(), tab = F.mtab || 'raw';
   const offers = p.offers || [];
-  const tabs = `<div class="seg" style="margin-bottom:10px">${[['raw', '🌾 原料'], ['proc', '🏭 加工'], ['rare', '💎 レア'], ['ledger', '📜 帳'], ['deal', `🤝 申し出${offers.length ? ` <span class="badge">${offers.length}</span>` : ''}`]].map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" data-a="mtab" data-v="${k}">${n}</button>`).join('')}</div>`;
+  const tabs = `<div class="seg tabs6" style="margin-bottom:10px">${[['raw', '🌾 原料'], ['proc', '🏭 加工'], ['rare', '💎 レア'], ['ledger', '📜 帳'], ['pact', `📝 契約${(S.pacts || []).some(c => c.left > 0 && (c.seller === ME || c.buyer === ME)) ? ' <span class="badge g">●</span>' : ''}`], ['deal', `🤝 申し出${offers.length ? ` <span class="badge">${offers.length}</span>` : ''}`]].map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" data-a="mtab" data-v="${k}">${n}</button>`).join('')}</div>`;
   const pendQ = (k) => F.acts.filter(a => (a.type === 'buy' || a.type === 'sell') && a.res === k).reduce((a, x) => a + (x.type === 'buy' ? x.qty : -x.qty), 0);
   const row = (k) => {
     const r = E.ITEMS[k], m = S.market[k], h = m.hist.slice(-12), mn = Math.min(...h), mx = Math.max(...h);
@@ -349,11 +352,125 @@ SHEETS.market = () => {
     const stock = S.players.filter(pp => pp.id !== ME).map(pp => { const big = Object.entries(pp.inv).filter(([, v]) => v >= 40).sort((a, b) => b[1] - a[1]).slice(0, 3); return `<div class="kv"><span class="k">${pname(pp)}</span><span>${big.length ? big.map(([k, v]) => `${E.ITEMS[k].icon}${E.ITEMS[k].name} 約${fmt(Math.round(v / 10) * 10)}`).join(' ') : '<span class="t3">ほぼなし</span>'}</span></div>`; }).join('');
     body = `<div class="box"><div class="lbl">先月のライバルの売り買い</div>${lines.length ? lines.map(x => `<div class="news">${x}</div>`).join('') : '<div class="t3">目立った動きはない</div>'}</div><div class="box"><div class="lbl">ライバルの倉(うわさ)</div>${stock}</div><div class="t3">誰かが原料を買い込んでいたら、来月はその原料が値上がりしやすい。倉にたくさんある相手は、売りに出して値を崩すかも。</div>`;
   }
-  if (tab === 'deal') body = offers.length ? `<div class="box">${offers.map(o => { const r = E.ITEMS[o.item], m = S.market[o.item].price, on = F.acts.some(a => a.type === 'deal' && a.id === o.id), k = o.price / m; const ok = o.kind === 'buy' ? p.inv[o.item] >= o.qty : freeCash() >= o.qty * o.price || on;
+  if (tab === 'pact') body = pactTab();
+  if (tab === 'deal') body = offers.length ? `<div class="box">${offers.map(o => { if (o.kind === 'pact') return pactOfferRow(o); const r = E.ITEMS[o.item], m = S.market[o.item].price, on = F.acts.some(a => a.type === 'deal' && a.id === o.id), k = o.price / m; const ok = o.kind === 'buy' ? p.inv[o.item] >= o.qty : freeCash() >= o.qty * o.price || on;
       return `<div class="res"><span class="ri">${r.icon}</span><div class="grow"><div style="font-size:14px">${esc(o.who)}${o.rival != null ? ' <span class="tagg r">前金つき</span>' : ''}${E.isRare(o.item) ? ' <span class="tagg y">レア</span>' : ''}</div>${o.rival != null ? `<div class="t3">納めると、${esc(S.players[o.rival].name)}の${E.GOODS[E.RARES[o.item].use].name}が目玉商品で強くなる</div>` : ''}<div class="t2" style="margin:0">${o.kind === 'buy' ? `あなたの<b>${r.name}</b>を <b>${fmt(o.qty)}</b>個、1個 <b>${o.price.toFixed(2)}G</b> で買いたい` : `<b>${r.name}</b>を <b>${fmt(o.qty)}</b>個、1個 <b>${o.price.toFixed(2)}G</b> で売りたい`}</div><div class="t3">相場 ${m.toFixed(2)}G の <b class="${(o.kind === 'buy') === (k > 1) ? 'up' : 'down'}">${Math.round(k * 100)}%</b> · 合計 ${fmt(o.qty * o.price)}G${o.kind === 'buy' && !ok ? ` · <span class="down">在庫 ${fmt(p.inv[o.item])} では足りない</span>` : ''}</div></div>
         <button class="btn sm ${on ? 'warm' : 'pri'}" data-a="deal" data-v="${o.id}" ${ok || on ? '' : 'disabled'}>${on ? '受ける ✓' : '受ける'}</button></div>`; }).join('')}</div><div class="t3">申し出は今月だけ。「次の月へ」で決まる。相場より高く買ってくれる相手には売り、安く売ってくれる相手からは買うのが基本。でも相場が動く前に…?</div>` : '<div class="box t2">今月は申し出がない。</div>';
   return head('🛒', '市場', '値段は町の倉の在庫で決まる。在庫が減ると値上がり、増えると値下がり') + tabs + body + `<div class="t3" style="margin-top:8px">📦 在庫は「生産(季節・天気・出来事)」で増え、「町の人の消費(高いと控える)」と「みんなの店の仕入れ」で減る。プレイヤーが買えば減り、売れば増える。</div>`;
 };
+// ── オンライン対戦
+const MPNAME = 'capital-mp-name';
+const mpName = () => { try { return localStorage.getItem(MPNAME) || ''; } catch (e) { return ''; } };
+SHEETS.online = () => {
+  const head0 = head('🌐', '友だちと対戦', 'ひとりがホストになり、部屋の番号を友だちに送る');
+  if (!NET.on || NET.status !== 'live') return head0 + `<div class="box"><div class="lbl">あなたの名前</div><input id="mpname" class="inp" maxlength="10" value="${esc(mpName() || '')}" placeholder="例: たろう商会"></div>
+    <div class="box"><button class="btn wide warm" data-a="mpcreate">🏠 部屋を作る(ホスト)</button></div>
+    <div class="box"><div class="lbl">部屋の番号</div><div class="row" style="gap:8px"><input id="mpcode" class="inp" maxlength="5" style="text-transform:uppercase;letter-spacing:.2em;flex:1" value="${esc(F.joinCode || '')}" placeholder="ABCDE"><button class="btn pri" data-a="mpjoin">入る</button></div></div>
+    ${NET.status === 'connecting' ? '<div class="t2">⏳ つないでいます…</div>' : NET.status === 'error' ? '<div class="alertbox">つながらなかった。電波を確認して、もう一度ためしてね</div>' : ''}
+    <div class="t3">最大4人。空いた席はAIの商会が入る。ホストのスマホが月を進める計算をするので、ホストはアプリを閉じないでね。</div>`;
+  const mem = NET.members, url = location.origin + location.pathname + '?room=' + NET.code;
+  let h = head0 + `<div class="box" style="text-align:center"><div class="lbl">部屋の番号</div><div style="font-size:34px;font-weight:800;letter-spacing:.25em">${NET.code}</div><button class="btn sm" data-a="mpshare" style="margin-top:6px">📨 友だちに送る</button></div>`;
+  h += `<div class="box"><div class="lbl">いる人(${mem.length}/4)</div>${mem.map((m, i) => `<div class="t2" style="margin:4px 0">${m.host ? '👑' : '🙂'} ${esc(m.name || '名なし')}${m.cid === NET.cid ? '(あなた)' : ''}${F.mp && NET.ready && NET.seats ? (NET.seats.findIndex(x => x.cid === m.cid) >= 0 && NET.ready[NET.seats.findIndex(x => x.cid === m.cid)] ? ' ✅' : '') : ''}</div>`).join('')}</div>`;
+  if (!F.mp) {
+    if (NET.host) { const st = F.mpStage || 'rose', mo = F.months || 36, lv = F.level || 'hard';
+      h += `<div class="box"><div class="lbl">町</div><div class="seg" style="margin-bottom:8px">${Object.entries(E.STAGES).map(([k, v]) => `<button class="${st === k ? 'on' : ''}" data-a="mpset" data-k="mpStage" data-v="${k}">${v.icon}<small>${v.name}</small></button>`).join('')}</div>
+      <div class="lbl">長さ</div><div class="seg" style="margin-bottom:8px">${[24, 36, 60].map(v => `<button class="${mo === v ? 'on' : ''}" data-a="mpset" data-k="months" data-v="${v}">${v / 12}年</button>`).join('')}</div>
+      <div class="lbl">AIの強さ(空いた席)</div><div class="seg">${Object.entries(E.AI_LEVEL).map(([k, L]) => `<button class="${lv === k ? 'on' : ''}" data-a="mpset" data-k="level" data-v="${k}">${L.name}</button>`).join('')}</div></div>
+      <button class="btn wide warm" data-a="mpstart">この顔ぶれで始める</button>`; }
+    else h += `<div class="box t2">⏳ ホストが始めるのを待っています…</div>`;
+  }
+  h += `<button class="btn wide" data-a="mpleave" style="margin-top:10px">部屋を出る</button>`;
+  return h;
+};
+async function mpConnect(code, host) {
+  const nm = (($('#mpname') && $('#mpname').value) || mpName() || 'ゲスト').trim().slice(0, 10); try { localStorage.setItem(MPNAME, nm); } catch (e) { }
+  NET.status = 'connecting'; renderSheet();
+  const ok = await joinRoom(code, nm, host);
+  if (!ok) { NET.on = false; NET.status = 'error'; renderSheet(); return; }
+  sfx('notify'); renderSheet();
+}
+NET.on_('members', () => { if (F.sheet === 'online') renderSheet(); });
+NET.on_('status', () => { if (F.sheet === 'online') renderSheet(); if (NET.status === 'error' && F.mp) toast('通信が切れた。部屋のようすから入り直してね'); });
+// ホスト: 途中から入った人・入り直した人に、いまの町を送る
+NET.on_('hello', (m) => { if (!F.mp) return; let seat = F.mpSeats.findIndex(x => x.cid === m.cid); if (seat < 0) { seat = F.mpSeats.findIndex(x => x.ai && x.open); } if (seat >= 0) netSend({ k: 'state', to: m.cid, S, seats: F.mpSeats, fx: [], errors: [], t: S.t }); });
+NET.on_('syncReq', (m) => { if (F.mp) netSend({ k: 'state', to: m.cid, S, seats: F.mpSeats, fx: [], errors: [], t: S.t }); });
+// 参加者: 始まり・入り直し
+async function mpAdopt(m) {
+  if (NET.mySeat < 0) { toast('この対戦はもう始まっていて、席が空いていない'); return; }
+  F.mp = true; F.mpSeats = m.seats; ME = NET.mySeat; S = m.S; F.acts = []; E.useStage(S.stage);
+  closeSheet(); $('.title') && $('.title').remove(); $('#loading').classList.remove('off');
+  await board.build(S.stage); await board.sync(S, ME); labels(); render(); board.home(); board.setWeather(S.t ? S.w : 'sun'); board.setProsperity(avgProsper());
+  setTimeout(() => $('#loading').classList.add('off'), 200);
+  toast(`🌐 ${E.STAGES[S.stage].name}で対戦開始! あなたは ${S.players[ME].name}`);
+}
+NET.on_('start', (m) => { mpAdopt(m); });
+NET.on_('state', (m) => { if (F.mpWait) { F.mpWait(m); return; } if (!F.mp || m.t !== S.t) mpAdopt(m); });
+NET.on_('ready', () => { updateWait(); if (F.sheet === 'online') renderSheet(); });
+function updateWait() {
+  let w = $('#mpwait'); if (!F.mpWaiting) { if (w) w.remove(); return; }
+  if (!w) { w = document.createElement('div'); w.id = 'mpwait'; document.body.appendChild(w); }
+  const humans = (F.mpSeats || []).map((x, i) => ({ ...x, i })).filter(x => !x.ai), r = NET.ready || {};
+  w.innerHTML = `<div>⏳ みんなの決断を待っています(${humans.filter(x => r[x.i]).length}/${humans.length})</div><div class="t3">${humans.map(x => `${r[x.i] ? '✅' : '💭'} ${esc(x.name)}`).join(' · ')}</div>${NET.host && F.mpWaitSince && Date.now() - F.mpWaitSince > 30000 ? '<button class="btn sm" data-a="mpskip">待たずに進める</button>' : ''}`;
+}
+// 1か月すすめる(オンライン)。ホストが計算して全員に配る
+async function mpStep(acts) {
+  if (NET.status !== 'live') { toast('通信が切れている。メニュー→部屋のようす'); return null; }
+  F.mpWaiting = true; F.mpWaitSince = Date.now();
+  const tick = setInterval(updateWait, 1000);
+  try {
+    if (NET.host) {
+      NET.ready[ME] = { acts, policy: me().policy || null }; netSend({ k: 'ready', ready: Object.fromEntries(Object.keys(NET.ready).map(k => [k, 1])) }); updateWait();
+      await new Promise((res) => { F.mpGo = res; const chk = () => { const need = F.mpSeats.map((x, i) => i).filter(i => !F.mpSeats[i].ai); if (need.every(i => NET.ready[i])) res(); }; F.mpChk = chk; chk(); });
+      const dec = {};
+      for (const [seat, m] of Object.entries(NET.ready)) { if (+seat !== ME && m.t !== S.t) continue; dec[seat] = m.acts || []; if (m.policy) S.players[seat].policy = m.policy; }
+      for (const [i, x] of F.mpSeats.entries()) if (!x.ai && !dec[i]) dec[i] = [];
+      const think = await aiThink();
+      const r = E.step(S, { ...think, ...dec });
+      NET.ready = {}; netSend({ k: 'state', S, seats: F.mpSeats, fx: r.fx, errors: r.errors, t: S.t }); netSend({ k: 'ready', ready: {} });
+      return r;
+    } else {
+      const t0 = S.t;
+      const m = await new Promise((res) => { F.mpWait = (m) => { if (m.t > t0) res(m); }; netSend({ k: 'acts', seat: ME, t: t0, acts, policy: me().policy || null }); });
+      S = m.S; return { fx: m.fx || [], errors: m.errors || [] };
+    }
+  } finally { clearInterval(tick); F.mpWaiting = false; F.mpWait = null; F.mpGo = null; F.mpChk = null; updateWait(); }
+}
+NET.on_('acts', (m) => { netSend({ k: 'ready', ready: Object.fromEntries(Object.keys(NET.ready).map(k => [k, 1])) }); updateWait(); if (F.mpChk) F.mpChk(); });
+// 契約: いま結んでいる契約・売掛金と買掛金・来月の資金繰り・新しい契約の申し込み
+const pactLine = (c) => { const r = E.ITEMS[c.item], sell = c.seller === ME, who = S.players[sell ? c.buyer : c.seller]; return `<b>${esc(who.name)}</b>${sell ? 'に' : 'から'} ${r.icon}${r.name} 毎月<b>${fmt(c.qty)}</b>個 · 1個 <b>${c.price.toFixed(2)}G</b> · ${c.pay ? '<span class="tagg y">翌月払い</span>' : '<span class="tagg">その月払い</span>'}`; };
+function pactOfferRow(o) {
+  const c = o.pact, on = F.acts.some(a => a.type === 'deal' && a.id === o.id), m = S.market[c.item].price, k = c.price / m, sell = c.seller === ME;
+  return `<div class="res"><span class="ri">📝</span><div class="grow"><div style="font-size:14px">${esc(o.who)} <span class="tagg b">契約の申し込み</span></div><div class="t2" style="margin:0">${sell ? 'あなたが売る' : 'あなたが買う'}: ${pactLine(c)} · ${c.months}か月</div><div class="t3">相場の${Math.round(k * 100)}%。${sell ? (c.pay ? '代金は翌月に入る(その間の資金繰りに注意)' : '代金はその月に入る') : (c.pay ? '支払いは翌月でいい(手元のお金に余裕ができる)' : 'その月に払う')}。足りない月は不足分の${Math.round(E.PACT_SHORT * 100)}%を違約金として払う</div></div>
+    <button class="btn sm ${on ? 'warm' : 'pri'}" data-a="deal" data-v="${o.id}">${on ? '結ぶ ✓' : '結ぶ'}</button></div>`;
+}
+function pactTab() {
+  const p = me(), mine = (S.pacts || []).filter(c => c.left > 0 && (c.seller === ME || c.buyer === ME));
+  const recvIn = (S.recv || []).filter(r => r.to === ME), recvOut = (S.recv || []).filter(r => r.from === ME);
+  const flow = mine.reduce((a, c) => a + (c.pay ? 0 : (c.seller === ME ? 1 : -1) * c.qty * c.price), 0) + recvIn.reduce((a, r) => a + r.amt, 0) - recvOut.reduce((a, r) => a + r.amt, 0);
+  const fixed = E.fixedCosts ? E.fixedCosts(S, ME) : 0;
+  let h = `<div class="box"><div class="t1" style="margin-bottom:4px">💰 来月の資金繰り</div><div class="kv"><span class="k">いまの現金(予定込み)</span><span class="num">${fmt(freeCash())}G</span></div><div class="kv"><span class="k">契約・売掛金の出入り</span><span class="num ${cls(flow)}">${sign(Math.round(flow))}G</span></div><div class="kv"><span class="k">家賃とお給料(目安)</span><span class="num down">-${fmt(Math.round(fixed))}G</span></div>${freeCash() + flow - fixed < 0 ? '<div class="alertbox">⚠️ このままだと来月お金が足りなくなる。足りない分は高い利息の救済融資になる</div>' : ''}</div>`;
+  h += `<div class="box"><div class="t1" style="margin-bottom:4px">📝 結んでいる契約</div>${mine.length ? mine.map(c => `<div class="t2" style="margin:6px 0">${c.seller === ME ? '📤' : '📥'} ${pactLine(c)}<br><span class="t3">のこり${c.left}か月 · これまで${fmt(c.done)}個${c.short ? ` · 不足${fmt(c.short)}個` : ''}</span></div>`).join('') : '<div class="t3">まだない。下から申し込める</div>'}</div>`;
+  if (recvIn.length || recvOut.length) h += `<div class="box"><div class="t1" style="margin-bottom:4px">🧾 売掛金と支払い</div>${recvIn.map(r => { const on = F.acts.some(a => a.type === 'factor' && a.id === r.id); return `<div class="row" style="align-items:center;gap:8px;margin:6px 0"><div class="grow t2" style="margin:0">📥 ${esc(S.players[r.from].name)}から来月 <b>${fmt(r.amt)}G</b></div><button class="btn sm ${on ? 'warm' : ''}" data-a="factor" data-v="${r.id}">${on ? '今すぐ受け取る ✓' : `今すぐ ${fmt(Math.round(r.amt * (1 - E.FACTOR_FEE)))}G`}</button></div>`; }).join('')}${recvOut.map(r => `<div class="t2" style="margin:6px 0">📤 来月 <b>${fmt(r.amt)}G</b> を払う(${r.bridge ? 'つなぎ融資' : r.to >= 0 ? esc(S.players[r.to].name) + 'へ' : 'ギルドへ'})</div>`).join('')}<div class="t3">売掛金はギルドに${Math.round(E.FACTOR_FEE * 100)}%引きで売れば、今月お金になる(ファクタリング)</div></div>`;
+  const brOn = F.acts.find(a => a.type === 'bridge'), brOut = (S.recv || []).some(r => r.from === ME && r.bridge);
+  h += `<div class="box"><div class="t1" style="margin-bottom:4px">🏦 つなぎ融資</div><div class="t3" style="margin-bottom:6px">1か月だけ借りて、翌月に${Math.round(E.BRIDGE_RATE * 100)}%の利息をつけて返す。仕入れや出店のお金が一時的に足りないときに</div><div class="seg">${[200, 500, E.BRIDGE_MAX].map(v => `<button class="${brOn && brOn.amt === v ? 'on' : ''}" data-a="bridge" data-v="${v}" ${brOut ? 'disabled' : ''}>${fmt(v)}G<small>来月 ${fmt(Math.round(v * (1 + E.BRIDGE_RATE)))}G</small></button>`).join('')}</div></div>`;
+  // 申し込み
+  const f = F.pf = F.pf || { to: S.players.find(x => x.id !== ME).id, role: 'sell', item: 'flour', qty: 20, pk: 1, months: 3, pay: 0 };
+  const items = Object.keys(E.ITEMS).filter(k => !E.isRare(k)), to = S.players[f.to], m = S.market[f.item].price, price = Math.round(m * f.pk * 100) / 100;
+  const use = f.role === 'sell' ? E.useOf(S, f.to, f.item) : (to.inv[f.item] || 0) / 3 + E.makeOf(S, f.to, f.item), lvl = use >= f.qty ? 'たくさん' : use >= f.qty * 0.5 ? 'すこし' : use > 0 ? 'わずか' : 'ほぼない';
+  const pend = F.acts.filter(a => a.type === 'propose');
+  h += `<div class="box"><div class="t1" style="margin-bottom:6px">✍️ 契約を持ちかける</div>
+    <div class="lbl">相手</div><div class="seg" style="margin-bottom:8px">${S.players.filter(x => x.id !== ME).map(x => `<button class="${f.to === x.id ? 'on' : ''}" data-a="pf" data-k="to" data-v="${x.id}"><span style="color:${x.color}">●</span>${esc(x.name)}</button>`).join('')}</div>
+    <div class="seg" style="margin-bottom:8px"><button class="${f.role === 'sell' ? 'on' : ''}" data-a="pf" data-k="role" data-v="sell">📤 売る</button><button class="${f.role === 'buy' ? 'on' : ''}" data-a="pf" data-k="role" data-v="buy">📥 買う</button></div>
+    <div class="lbl">品物</div><div class="chips" style="margin-bottom:8px">${items.map(k => `<button class="chip ${f.item === k ? 'on' : ''}" data-a="pf" data-k="item" data-v="${k}">${E.ITEMS[k].icon}${E.ITEMS[k].name}</button>`).join('')}</div>
+    <div class="row" style="gap:8px;align-items:center;margin-bottom:8px"><div class="lbl" style="flex:1">毎月の数</div><div class="stepper"><button data-a="pfq" data-v="-1">−</button><b style="min-width:44px;text-align:center">${fmt(f.qty)}</b><button data-a="pfq" data-v="1">+</button></div></div>
+    <div class="lbl">値段(相場 ${m.toFixed(2)}G の)</div><div class="seg" style="margin-bottom:8px">${[0.9, 0.95, 1, 1.05, 1.1].map(k => `<button class="${f.pk === k ? 'on' : ''}" data-a="pf" data-k="pk" data-v="${k}">${Math.round(k * 100)}%<small>${(m * k).toFixed(2)}G</small></button>`).join('')}</div>
+    <div class="seg" style="margin-bottom:8px">${[3, 6].map(v => `<button class="${f.months === v ? 'on' : ''}" data-a="pf" data-k="months" data-v="${v}">${v}か月</button>`).join('')}${[[0, 'その月払い'], [1, '翌月払い']].map(([v, n]) => `<button class="${f.pay === v ? 'on' : ''}" data-a="pf" data-k="pay" data-v="${v}">${n}</button>`).join('')}</div>
+    <div class="insight">🔎 ${esc(to.name)}は${E.ITEMS[f.item].name}を ${f.role === 'sell' ? `使う量が<b>${lvl}</b>` : `売れる量が<b>${lvl}</b>`}(毎月${fmt(f.qty)}個に対して)。${f.role === 'sell' ? '使わない相手は買わない。翌月払いにすると相手は受けやすいが、あなたのお金が入るのは1か月あと' : '翌月払いだと相手は高めの値段を求める'}</div>
+    <div class="t3" style="margin:6px 0">合計 毎月 ${fmt(f.qty * price)}G × ${f.months}か月。${f.role === 'sell' ? '在庫が足りない月は不足分の20%を違約金で払う' : ''}</div>
+    <button class="btn wide pri" data-a="propose" ${pend.length >= 2 ? 'disabled' : ''}>月末に申し込む</button>
+    ${pend.map(a => `<div class="t2" style="margin-top:6px">⏳ ${esc(S.players[a.to].name)}に ${E.ITEMS[a.item].name} ${fmt(a.qty)}個/月 を${a.role === 'sell' ? '売る' : '買う'}契約を申し込む予定 <button class="btn sm" data-a="unpropose" data-v="${a.to}:${a.item}">やめる</button></div>`).join('')}</div>`;
+  return h;
+}
 // 帳簿(自分の店の一覧・借金)
 SHEETS.books = () => {
   const p = me(), mine = E.shopsOf(S, ME), sum = mine.reduce((a, s) => a + (s.last ? s.last.profit : 0), 0);
@@ -436,7 +553,7 @@ SHEETS.weather = () => {
     <div class="box"><div class="lbl">天気のきまり</div>${Object.values(E.WEATHER).map(w => `<div class="news">${w.icon} <b>${w.name}</b> — ${w.text}</div>`).join('')}<div class="t3" style="margin-top:6px">住宅街(🏡)は天気の影響が半分。夏の猛暑が続くと小麦が値上がり、春の雨は豊作。季節で出やすい天気がちがう(冬は雪、6月は梅雨、秋は台風)。</div></div>`;
 };
 SHEETS.grand = () => head('🏰', E.GRAND.name, E.finalYear(S) ? `のこり${S.months - S.t}か月` : `始まるまで あと${S.months - 12 - S.t}か月`) + `<div class="box"><div class="t2">${E.GRAND.text}</div></div>` + crownBox();
-SHEETS.menu = () => head('⚙️', 'メニュー', `${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name}`) + (() => { const a = audioPref(), sw = (k, l) => `<button class="sw ${a[k] ? 'on' : ''}" data-a="aud" data-v="${k}"><span>${l}</span><i></i></button>`; return `<div class="box"><div class="t1" style="margin-bottom:6px">🎵 音と手ざわり</div>${sw('bgm', 'BGM')}${sw('sfx', '効果音')}${sw('haptic', 'タップで振動')}<div class="row" style="gap:8px;margin-top:8px;align-items:center"><div class="t2" style="flex:1">♪ ${esc(bgm.name || '—')}${F.bgmLock ? '' : '<small>(場面で自動)</small>'}</div><button class="btn sm" data-a="nexttrack">曲を変える</button>${F.bgmLock ? '<button class="btn sm" data-a="autobgm">自動に戻す</button>' : ''}</div></div>`; })() + `<div class="box"><button class="btn wide" data-a="howto" style="margin-bottom:8px">遊び方</button><button class="btn wide" data-a="stagesel" style="margin-bottom:8px">🗺️ 別の町(ステージ)で遊ぶ</button><button class="btn wide" data-a="credits" style="margin-bottom:8px">クレジット</button><button class="btn wide" data-a="restart">最初からやり直す</button></div>`;
+SHEETS.menu = () => head('⚙️', 'メニュー', `${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name}`) + (() => { const a = audioPref(), sw = (k, l) => `<button class="sw ${a[k] ? 'on' : ''}" data-a="aud" data-v="${k}"><span>${l}</span><i></i></button>`; return `<div class="box"><div class="t1" style="margin-bottom:6px">🎵 音と手ざわり</div>${sw('bgm', 'BGM')}${sw('sfx', '効果音')}${sw('haptic', 'タップで振動')}<div class="row" style="gap:8px;margin-top:8px;align-items:center"><div class="t2" style="flex:1">♪ ${esc(bgm.name || '—')}${F.bgmLock ? '' : '<small>(場面で自動)</small>'}</div><button class="btn sm" data-a="nexttrack">曲を変える</button>${F.bgmLock ? '<button class="btn sm" data-a="autobgm">自動に戻す</button>' : ''}</div></div>`; })() + `<div class="box">${F.mp ? `<div class="t2" style="margin-bottom:8px">🌐 オンライン対戦中 · 部屋 <b>${esc(NET.code || '')}</b>${NET.host ? '(ホスト)' : ''}</div><button class="btn wide" data-a="online" style="margin-bottom:8px">部屋のようす</button>` : `<button class="btn wide" data-a="online" style="margin-bottom:8px">🌐 友だちと対戦</button>`}<button class="btn wide" data-a="howto" style="margin-bottom:8px">遊び方</button><button class="btn wide" data-a="stagesel" style="margin-bottom:8px">🗺️ 別の町(ステージ)で遊ぶ</button><button class="btn wide" data-a="credits" style="margin-bottom:8px">クレジット</button><button class="btn wide" data-a="restart">最初からやり直す</button></div>`;
 SHEETS.howto = () => head('📖', '遊び方', '5年で町いちばんの商会に') + `<div class="box t2">
   ① 町の<b>「+」</b>をタップして店を開く(4つまで)。同じ地区・同じ業種の店どうしでお客を取り合う。<br>
   ② 店をタップして<b>値段・店員・広告</b>を決める。🔮で来月の利益の見積もりが出る。<br>
@@ -448,8 +565,11 @@ SHEETS.howto = () => head('📖', '遊び方', '5年で町いちばんの商会�
   ⑦' <b>ついで買い</b>: パン屋の客は道具屋・仕立て屋に、道具屋の客は薬屋に寄る。ライバルの店が繁盛するほど、相性のいい店は儲かる。<br>
   ⑧ 地区ごとに性格がちがう(港=季節で大波・広場=祭りと市の日・住宅街=安定)。<br>
   ⑨ <b>🤫秘密の目標</b>を達成すると最後に +${E.MISSION_BONUS}G。最後の年は<b>🏰王都の大祭</b>。最終月に各地区で一番客を集めると +${E.CROWN_BONUS}G。<br>
-  ⑩「次の月へ」で、決めたことが全部いっしょに実行される。60か月後の純資産で勝負!</div>`;
-SHEETS.credits = () => head('🎨', 'クレジット', '') + `<div class="box t2">3D モデル: KayKit — Kay Lousberg(CC0)<br>Quaternius(CC0)<br>3D 表示: three.js(MIT)<br>フォント: M PLUS Rounded 1c(SIL OFL)</div>`;
+  ⑩ <b>📝契約</b>(市場→契約): ライバルと「毎月◯個を◯Gで」の取引を結べる。翌月払いにすると相手は受けやすいが、お金が入るのは1か月あと。足りないときは<b>売掛金の前倒し</b>(5%引き)や<b>つなぎ融資</b>で資金繰りする。<br>
+  ⑪ <b>🏛️町</b>: 依頼・ギルドの投票・年末の税。ライバルの店を<b>買い取る</b>こともできる。<br>
+  ⑫ <b>🌐友だちと対戦</b>: メニュー→部屋を作って番号を送るだけ。空いた席にはAIが入る。<br>
+  ⑬「次の月へ」で、決めたことが全部いっしょに実行される。最後の月の純資産で勝負! 地図は2本指で回転・拡大、シートは下にスワイプで閉じる。</div>`;
+SHEETS.credits = () => head('🎨', 'クレジット', '') + `<div class="box t2">3D モデル: KayKit — Kay Lousberg(CC0)<br>Quaternius(CC0)<br>3D 表示: three.js(MIT)<br>フォント: M PLUS Rounded 1c(SIL OFL)<br>音楽・効果音: ゲーム内でその場で合成(オリジナル)<br>オンライン対戦: Supabase Realtime</div>`;
 
 // ── 操作
 const H = {
@@ -485,6 +605,31 @@ const H = {
   seta: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: +d.v }); sfx('tap'); render(); },
   closeshop: (d) => { if (!confirm('この店をたたむ?(月末に売れる)')) return; F.acts = F.acts.filter(a => !(a.type === 'set' && a.shop === +d.id)); F.acts.push({ type: 'close', shop: +d.id }); save(); closeSheet(); render(); toast('月末に店をたたむ'); },
   mtab: (d) => { F.mtab = d.v; renderSheet(); },
+  online: () => { $('.title') && $('.title').remove(); unlockAudio(); openSheet('online'); },
+  mpcreate: () => mpConnect(newCode(), true),
+  mpjoin: () => { const c = ($('#mpcode').value || '').trim().toUpperCase(); if (c.length < 4) return toast('部屋の番号を入れてね'); F.joinCode = c; mpConnect(c, false); },
+  mpshare: async () => { const url = location.origin + location.pathname + '?room=' + NET.code, txt = `CAPITAL 商会バトルで勝負! 部屋の番号 ${NET.code}`; try { if (navigator.share) await navigator.share({ title: 'CAPITAL 商会バトル', text: txt, url }); else { await navigator.clipboard.writeText(txt + ' ' + url); toast('リンクをコピーした'); } } catch (e) { } },
+  mpset: (d) => { F[d.k] = d.k === 'months' ? +d.v : d.v; sfx('tap'); renderSheet(); },
+  mpstart: async () => {
+    const mem = NET.members.slice(0, 4), lv = F.level || 'hard', seats = mem.map(m => ({ cid: m.cid, name: m.name || 'ゲスト' }));
+    for (let i = seats.length; i < 4; i++) { const [n, c, k] = E.AI_NAMES[i - 1] || E.AI_NAMES[0]; seats.push({ ai: k, name: n, open: 1 }); }
+    // ホストは必ず席0
+    const hi = seats.findIndex(x => x.cid === NET.cid); if (hi > 0) { const [h0] = seats.splice(hi, 1); seats.unshift(h0); }
+    const players = seats.map(x => x.ai ? { name: x.name, ai: x.ai } : { name: x.name, human: true });
+    S = E.newGame({ seed: Math.floor(Math.random() * 1e9), stage: F.mpStage || 'rose', months: F.months || 36, level: lv, players });
+    F.mp = true; F.mpSeats = seats; ME = 0; F.acts = []; NET.seats = seats; NET.mySeat = 0;
+    netSend({ k: 'start', S, seats, t: 0 });
+    closeSheet(); $('#loading').classList.remove('off'); await board.build(S.stage); await board.sync(S, ME); labels(); render(); board.home(); board.setWeather('sun'); setTimeout(() => $('#loading').classList.add('off'), 200);
+    toast('🌐 対戦開始!');
+  },
+  mpleave: async () => { if (F.mp && !confirm('部屋を出る?(この対戦から抜ける)')) return; await leaveRoom(); const was = F.mp; F.mp = false; ME = 0; closeSheet(); if (was) { const sv = loadSave(); if (sv) { S = sv.S; F.acts = sv.acts || []; E.useStage(S.stage); } else S = E.newGame({ seed: 1, stage: 'rose' }); await board.build(S.stage); await board.sync(S, ME); labels(); render(); } toast('部屋を出た'); },
+  mpskip: () => { if (F.mpGo) F.mpGo(); },
+  pf: (d) => { const f = F.pf; f[d.k] = ['to', 'months', 'pay', 'pk'].includes(d.k) ? +d.v : d.v; if (d.k === 'item') f.qty = E.isProc(d.v) ? 20 : 60; sfx('tap'); renderSheet(); },
+  pfq: (d) => { const f = F.pf, st = E.isProc(f.item) ? 5 : 20; f.qty = Math.max(5, Math.min(400, f.qty + st * +d.v)); sfx('tap'); renderSheet(); },
+  propose: () => { const f = F.pf; F.acts.push({ type: 'propose', to: f.to, role: f.role, item: f.item, qty: f.qty, price: Math.round(S.market[f.item].price * f.pk * 100) / 100, months: f.months, pay: f.pay }); sfx('card'); save(); toast('月末に返事が来る'); render(); },
+  unpropose: (d) => { const [to, item] = d.v.split(':'); F.acts = F.acts.filter(a => !(a.type === 'propose' && a.to === +to && a.item === item)); sfx('tap'); save(); render(); },
+  factor: (d) => { const id = +d.v; if (F.acts.some(a => a.type === 'factor' && a.id === id)) F.acts = F.acts.filter(a => !(a.type === 'factor' && a.id === id)); else F.acts.push({ type: 'factor', id }); sfx('coin'); save(); render(); },
+  bridge: (d) => { const v = +d.v, on = F.acts.find(a => a.type === 'bridge'); F.acts = F.acts.filter(a => a.type !== 'bridge'); if (!on || on.amt !== v) F.acts.push({ type: 'bridge', amt: v }); sfx('coin'); save(); render(); },
   deal: (d) => { const id = +d.v; if (F.acts.some(a => a.type === 'deal' && a.id === id)) F.acts = F.acts.filter(a => !(a.type === 'deal' && a.id === id)); else F.acts.push({ type: 'deal', id }); sfx('coin'); save(); render(); },
   buy: (d) => { const q = E.isRare(d.v) ? 2 : E.isProc(d.v) ? 20 : 50, c = E.quote(S, d.v, q); if (freeCash() < c) return toast('お金が足りない'); F.acts.push({ type: 'buy', res: d.v, qty: q }); sfx('coin'); save(); render(); },
   sell: (d) => { const have = me().inv[d.v] - F.acts.filter(a => a.type === 'sell' && a.res === d.v).reduce((a, x) => a + x.qty, 0); const q = Math.min(E.isRare(d.v) ? 2 : E.isProc(d.v) ? 20 : 50, Math.floor(have)); if (q <= 0) return toast('在庫がない'); F.acts.push({ type: 'sell', res: d.v, qty: q }); sfx('coin'); save(); render(); },
@@ -512,8 +657,8 @@ const H = {
   setmonths: (d) => { F.months = +d.v; renderSheet(); },
   setlevel: (d) => { F.level = d.v; renderSheet(); },
   restart2: () => { closeSheet(); startNew(S.stage); },
-  restart: () => { if (confirm('最初からやり直す?(同じ町)')) { closeSheet(); startNew(S.stage); } },
-  stagesel: () => { if (!S.t || S.over || confirm('今のゲームをやめて、別の町で始める?')) openSheet('stages'); },
+  restart: () => { if (F.mp) return toast('オンライン対戦中は、部屋を出てから'); if (confirm('最初からやり直す?(同じ町)')) { closeSheet(); startNew(S.stage); } },
+  stagesel: () => { if (F.mp) return toast('オンライン対戦中は、部屋を出てから'); if (!S.t || S.over || confirm('今のゲームをやめて、別の町で始める?')) openSheet('stages'); },
   start: () => { $('.title') && $('.title').remove(); unlockAudio(); sfx('open'); if (!S.t && !F.acts.length) setTimeout(() => openSheet('howto'), 400); },
 };
 // ── 手ざわり: 押した瞬間に沈む・波紋・小さな振動と音
@@ -562,7 +707,9 @@ async function nextMonth() {
   const acts = F.acts.map(({ idx, ...a }) => a);
   const pre = new Set(S.shops.map(s => s.id));
   const shopsBefore = S.shops.map(s => ({ id: s.id, d: s.d, g: s.g, owner: s.owner, lot: s.lot }));
-  const { fx, errors } = E.step(S, { [ME]: acts });
+  let fx, errors;
+  if (F.mp) { const r = await mpStep(acts); if (!r) { F.busy = false; render(); return; } ({ fx, errors } = r); }
+  else { const think = await aiThink(); ({ fx, errors } = E.step(S, { ...think, [ME]: acts })); }
   F.alerts = alertsOf(fx, shopsBefore, autoDone);
   F.acts = []; save();
   for (const er of errors.filter(x => x.pid === ME)) toast(er.e);
@@ -597,6 +744,22 @@ async function nextMonth() {
   F.busy = false;
 }
 function afterResult() { render(); }
+// ライバルの思考は別スレッドで(使えない環境ではその場で)
+let aiW = null, aiSeq = 0;
+function aiThink() {
+  if (!S.players.some(p => p.ai)) return Promise.resolve({});
+  try { if (!aiW) aiW = new Worker('js/aiworker.js', { type: 'module' }); } catch (e) { aiW = false; }
+  if (!aiW) return Promise.resolve({});
+  const id = ++aiSeq, t0 = performance.now();
+  const ind = setTimeout(() => toast('🤔 ライバルたちが考えている…'), 700);
+  return new Promise((res) => {
+    const done = (v) => { clearTimeout(ind); aiW.removeEventListener('message', on); res(v); };
+    const on = ({ data }) => { if (data.id !== id) return; if (data.ok) { S.rs = data.rs; done(data.dec); } else { console.warn('ai worker', data.err); done({}); } };
+    aiW.addEventListener('message', on);
+    aiW.onerror = (e) => { console.warn('ai worker failed', e.message); aiW = false; done({}); };
+    aiW.postMessage({ S: JSON.parse(JSON.stringify(S)), id });
+  });
+}
 const avgProsper = () => { const ks = Object.keys(E.DISTRICTS); return ks.reduce((a, d) => a + E.prosperK(S, d), 0) / ks.length; };
 // 店長と仕入れ係: 決めたルールで毎月の作業を任せる
 const pol = () => { me().policy = me().policy || { staff: {}, buy: {} }; return me().policy; };
@@ -702,6 +865,12 @@ function newsOf(fx, pre) {
     if (f.kind === 'buyshop') out.unshift(`🤝 ${pname(S.players[f.from])} の店を ${fmt(f.price)}G で買い取った!`);
     if (f.kind === 'buyshopNo') out.unshift(`🤝 ${pname(S.players[f.from])} に店の買い取りを断られた(${fmt(f.price)}G では安すぎた)`);
   }
+  for (const f of fx) {
+    if ((f.kind === 'pactYes' || f.kind === 'pactNo') && (f.pid === ME || f.to === ME)) { const c = f.pact, other = S.players[f.pid === ME ? f.to : f.pid]; out.unshift(f.kind === 'pactYes' ? `📝 ${esc(other.name)}と契約: ${E.ITEMS[c.item].name} 毎月${fmt(c.qty)}個 · ${c.price.toFixed(2)}G · ${c.months}か月${c.pay ? '(翌月払い)' : ''}` : `📝 ${esc(other.name)}は契約を断った(${E.ITEMS[c.item].name} ${c.price.toFixed(2)}G${c.pay ? '・翌月払い' : ''})`); }
+    if (f.kind === 'pactDeliver' && f.short > 0 && (f.seller === ME || f.buyer === ME)) out.push(f.seller === ME ? `⚠️ 契約の${E.ITEMS[f.item].name}が${fmt(f.short)}個足りず、違約金を払った` : `📦 ${esc(S.players[f.seller].name)}の納品が${fmt(f.short)}個足りず、違約金を受け取った`);
+    if (f.kind === 'recvPaid' && f.bridge && f.from === ME) out.push(`🏦 つなぎ融資 ${fmt(f.amt)}G を返した`);
+    if (f.kind === 'factor' && f.pid === ME) out.push(`🧾 売掛金 ${fmt(f.amt)}G を ${fmt(f.got)}G で前倒しで受け取った`);
+  }
   for (const f of fx) if (f.kind === 'deal' && f.pid === ME) { const o = f.offer, r = E.ITEMS[o.item]; out.unshift(`🤝 ${esc(o.who)}に${r.name} ${fmt(o.qty)}個を${o.kind === 'buy' ? '売った' : '買った'}(${fmt(o.qty * o.price)}G)`); }
   if (S.w === 'storm' || S.w === 'snow' || S.w === 'heat') out.unshift(`${wx(S.w).icon} ${wx(S.w).name}の月だった — ${wx(S.w).text}`);
   const ev = S.ev && E.evDef(S.ev.id); if (ev && ev.id !== 'calm') out.unshift(`${ev.icon} ${esc(ev.name)}が始まった`);
@@ -794,10 +963,11 @@ async function boot() {
   labels(); render(); board.setWeather(S.t ? S.w : 'sun'); board.setProsperity(avgProsper()); bar.style.width = '100%';
   setTimeout(() => { $('#loading').classList.add('off'); }, 250);
   const tl = document.createElement('div'); tl.className = 'title';
-  tl.innerHTML = `<div class="tl">CAPITAL</div><div class="ts">商会バトル</div><div class="tb">${sv && S.t && !S.over ? `<button class="btn warm" data-a="start">つづきから<br><small>${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name} · ${ym(S.t)}</small></button><button class="btn ghost" data-a="newgame">🗺️ 新しく始める(町を選ぶ)</button>` : `<button class="btn warm" data-a="newgame">はじめる(町を選ぶ)</button>`}</div>`;
+  tl.innerHTML = `<div class="tl">CAPITAL</div><div class="ts">商会バトル</div><div class="tb">${sv && S.t && !S.over ? `<button class="btn warm" data-a="start">つづきから<br><small>${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name} · ${ym(S.t)}</small></button><button class="btn ghost" data-a="newgame">🗺️ 新しく始める(町を選ぶ)</button>` : `<button class="btn warm" data-a="newgame">はじめる(町を選ぶ)</button>`}<button class="btn ghost" data-a="online">🌐 友だちと対戦</button></div>`;
   document.body.appendChild(tl);
   if (S.over) setTimeout(() => openSheet('final'), 600);
-  window.__game = { get S() { return S; }, F, E, board, H };
+  window.__game = { get S() { return S; }, F, E, board, H, NET, get ME() { return ME; } };
+  const q = new URLSearchParams(location.search).get('room'); if (q) { F.joinCode = q.toUpperCase(); setTimeout(() => { $('.title') && $('.title').remove(); unlockAudio(); openSheet('online'); }, 700); }
 }
 boot();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
