@@ -5,7 +5,7 @@ export const COLOR_HEX = { blue: '#4f8cff', red: '#ff5d6c', yellow: '#ffc53d', g
 export const COLOR_JP = { blue: '青', red: '赤', yellow: '黄', green: '緑' };
 
 export const GOODS = {
-  bread: { name: 'パン屋', item: 'パン', icon: '🥖', res: 'wheat', ref: 2.0, capPer: 80, elastic: 1.7, open: 1.0 },
+  bread: { name: 'パン屋', item: 'パン', icon: '🥖', res: 'wheat', ref: 2.0, capPer: 80, elastic: 1.35, open: 1.0 },
   potion: { name: '薬屋', item: '薬', icon: '🧪', res: 'herb', ref: 6.0, capPer: 30, elastic: 1.0, open: 1.15 },
   tool: { name: '鍛冶屋', item: '道具', icon: '⚒️', res: 'iron', ref: 9.0, capPer: 20, elastic: 0.8, open: 1.3 },
   cloth: { name: '仕立て屋', item: '服', icon: '🧵', res: 'wool', ref: 5.0, capPer: 36, elastic: 1.3, open: 1.1 },
@@ -249,9 +249,28 @@ function hexLine(a, b) {
   }
   return out;
 }
+// 地区×業種ごとの「1店だけ出したときの儲け」が極端に偏らないように、客の数をならす
+// (地区の性格の順番は残し、幅だけ縮める。季節や出来事の波はそのまま)
+function standalone(d, g, dem) {
+  const G = GOODS[g], R = RES[G.res], want = dem * 1.25 * 0.6; let best = -1e9;
+  for (let k = 1; k <= 5; k++) { const u = Math.min(want, k * G.capPer); best = Math.max(best, u * (G.ref - R.base) - k * WAGE - DISTRICTS[d].rent); }
+  return best;
+}
+function calibrate() {
+  const rows = [];
+  for (const d in DISTRICTS) { const D = DISTRICTS[d]; if (!D.demand0) D.demand0 = { ...D.demand }; for (const g in GOODS) rows.push({ d, g, p: standalone(d, g, D.demand0[g]) }); }
+  const ps = rows.map(r => r.p), mn = Math.min(...ps), mx = Math.max(...ps);
+  for (const r of rows) {
+    const z = mx > mn ? (r.p - mn) / (mx - mn) - 0.5 : 0, target = 85 * (1 + 0.5 * z);
+    let lo = 5, hi = 3000; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (standalone(r.d, r.g, m) < target) lo = m; else hi = m; }
+    DISTRICTS[r.d].demand[r.g] = Math.round((lo + hi) / 2);
+  }
+}
 export function useStage(id) {
   const st = STAGES[id] || STAGES.rose; STAGE = STAGES[id] ? id : 'rose';
   for (const k of Object.keys(DISTRICTS)) delete DISTRICTS[k]; Object.assign(DISTRICTS, st.districts);
+  for (const k in RES) RES[k].base = (st.res && st.res[k]) || RES_BASE[k];
+  calibrate();
   LOTS.length = 0; LOTS.push(...st.lots);
   NEIGHBORS.length = 0; NEIGHBORS.push(...LOTS.map(a => LOTS.filter(b => b !== a && hd(a, b) === 1).map(b => b.id)));
   // 道: 地区の中心どうしを六角マスの直線でつなぐ。区画以外のマスが道になる
@@ -289,6 +308,9 @@ export function newGame({ seed = 1, players = null, months = MONTHS, stage = 'ro
   const deck = mk.slice(); for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(rnd(S) * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
   ps.forEach((p, i) => S.players.push({ id: i, name: p.name, color: p.color || COLORS[i], human: !!p.human, ai: p.human ? null : (p.ai || 'balanced'), cash: st.cash || 1000, debt: 0, inv: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), invCost: Object.fromEntries(Object.keys(ITEMS).map(k => [k, 0])), offers: [], deals: 0, contracts: [], hand: [], scout: -1, nw: [st.cash || 1000], rankHist: [], mission: deck[i % deck.length], flags: { bigm: 0, bailed: 0, route2: 0, crown: 0, made: 0 } }));
   for (const k in ITEMS) S.market[k] = { price: ITEMS[k].base, hist: [ITEMS[k].base], k: 1 };
+  // AI の好みはゲームごとにちがう(毎回同じ手を打たないように)
+  const gs = Object.keys(GOODS), ds = Object.keys(DISTRICTS);
+  for (const p of S.players) if (p.ai) { p.fav = gs[Math.floor(rnd(S) * gs.length)]; p.favD = ds[Math.floor(rnd(S) * ds.length)]; p.boldness = 0.6 + rnd(S) * 0.8; }
   S.evNext = pickEvent(S);
   dealHands(S);
   S.nextOffer = 1; makeOffers(S);
@@ -453,7 +475,7 @@ function applyAction(S, pid, a, fx, late) {
   if (a.type === 'card') {
     const c = cardDef(a.card); p.cash -= c.cost; p.hand.splice(p.hand.indexOf(a.card), 1); a = { ...a, card: c.base };
     const s = a.shop != null ? S.shops.find(x => x.id === a.shop) : null;
-    if (a.card === 'shout') s.boost *= 1.5;
+    if (a.card === 'shout') { s.boost *= 1.5; s.promo = (s.promo || 0) + c.cost; s.promoK = (s.promoK || 1) * 1.5; s.promoName = '呼び込み'; }
     if (a.card === 'sale') s.saleNow = 1;
     if (a.card === 'craft') { s.qual = Math.min(2, s.qual + 1); s.rep = Math.min(1, s.rep + 0.08); }
     if (a.card === 'helper') s.helper = 3;
@@ -500,7 +522,8 @@ export function step(S, decisions = {}) {
   }
   for (const f of late) f();
   // 客の取り合い
-  const res = {};
+  const res = {}; S.missed = {};
+  for (const d in DISTRICTS) { S.missed[d] = {}; for (const g in GOODS) if (!S.shops.some(s => s.d === d && s.g === g)) S.missed[d][g] = demandOf(S, d, g, 1) * 0.5 + spillOf(S, d, g).add * 0.4; }
   for (const d in DISTRICTS) for (const g in GOODS) {
     const shops = S.shops.filter(s => s.d === d && s.g === g); if (!shops.length) continue;
     const sp = spillOf(S, d, g), D = demandOf(S, d, g, 0.96 + 0.08 * rnd(S)) + sp.add * weatherMult(S, d, g), G = GOODS[g];
@@ -521,6 +544,7 @@ export function step(S, decisions = {}) {
     }
     const why = { spill: sp.add, spillFrom: sp.from, wk: weatherMult(S, d, g), ek: activeMult(S, 'dem', g, d) * activeMult(S, 'dist', d, d), sk: season(S, g, d), n: shops.length };
     shops.forEach((s, i) => { res[s.id] = { D, want: want[i], cap: cap[i], served: served[i], why: { ...why, boost: s.boost, share: want[i] / Math.max(1, D) } }; });
+    S.missed[d][g] = want.reduce((a, w, i) => a + Math.max(0, w - served[i]), 0);
   }
   // 損益
   for (const s of S.shops) {
@@ -541,12 +565,34 @@ export function step(S, decisions = {}) {
     p.cash += profit;
     if (profit >= 250) p.flags.bigm = 1;
     const prev = s.last;
-    s.last = { units, want: r.want, cap: r.cap, D: r.D, revenue, cogs, labor, rent, ads, profit, price: G.ref * pm, why: r.why, unitCost: units > 0 ? cogs / units : 0, resK: S.market[G.res].price / RES[G.res].base, home: s.home, prevUnits: prev ? prev.units : null, prevProfit: prev ? prev.profit : null, sale: s.saleNow };
+    // 集客の4段階(通行→入店→購入→また来た)。それぞれ何が効くかを分けて見せる
+    const road = LOTS[s.lot] && LOTS[s.lot].road;
+    const entry = clamp(0.1 * ADS[s.ads].k * (s.boost || 1) * (road ? ROAD_BONUS * 1.1 : 1) * (0.7 + s.rep * 0.6) * streetBonus(S, s), 0.03, 0.6);
+    const buyR = clamp(0.32 * Math.pow(1 / pm, G.elastic * 0.9 * R.elastic) * QUALITY[s.qual].k * R.qual * (1 + 0.15 * (s.home || 0)), 0.05, 0.9);
+    const buyers = units, visitors = Math.max(buyers, r.want / buyR), passers = Math.max(visitors, visitors / entry);
+    const repeat = Math.min(buyers, buyers * clamp(0.15 + s.rep * 0.45 + R.loyal * 0.6 - (r.want > r.cap * 1.05 ? 0.12 : 0), 0, 0.85));
+    // 集客にかけたお金の成績: 広告・呼び込み・大安売りで増えた購入 × 1件の粗利 − かけたお金
+    const unitGross = units > 0 ? (revenue - cogs) / units : 0;
+    const promoK = ADS[s.ads].k * (s.promoK || 1) * (s.saleNow ? Math.pow(1 / 0.8, G.elastic * 1.6) : 1);
+    const promoCost = ADS[s.ads].cost + (s.promo || 0);
+    let roi = null;
+    if (promoK > 1.01) { const base = Math.min(r.want / promoK, r.cap); const extra = Math.max(0, units - base); const saleLoss = s.saleNow ? units * G.ref * PRICE_LV[s.priceLv] * 0.2 : 0; roi = { extra, unitGross, gain: extra * unitGross, cost: promoCost, saleLoss, net: extra * unitGross - promoCost - (s.saleNow ? 0 : 0), names: [s.ads ? 'ADS' : null, s.promoName || null, s.saleNow ? '大安売り' : null].filter(Boolean) }; }
+    // 客の出どころ別: 入店・購入・粗利(ついで買いの客は買う割合が低い、常連は高い)
+    const w0 = r.why || {}, Dtot = Math.max(1, r.D || 1);
+    const shSpill = clamp((w0.spill || 0) / Dtot, 0, 0.9), shPromo = clamp(1 - 1 / promoK, 0, 0.9), shRoad = road ? 1 - 1 / ROAD_BONUS : 0, shRep = buyers > 0 ? repeat / buyers : 0;
+    const raw = { repeat: shRep, spill: (1 - shRep) * shSpill, promo: (1 - shRep) * (1 - shSpill) * shPromo, road: (1 - shRep) * (1 - shSpill) * (1 - shPromo) * shRoad };
+    raw.walk = Math.max(0, 1 - raw.repeat - raw.spill - raw.promo - raw.road);
+    const rateK = { repeat: 1.8, spill: 0.4, promo: 0.85, road: 0.9, walk: 1 };
+    const srcB = {}, srcV = {}; let vsum = 0;
+    for (const k in raw) { srcB[k] = buyers * raw[k]; srcV[k] = srcB[k] / Math.max(0.03, buyR * rateK[k]); vsum += srcV[k]; }
+    const vk = vsum > 0 ? visitors / vsum : 1;
+    const sources = Object.keys(raw).filter(k => srcB[k] >= 0.5).map(k => ({ k, visitors: srcV[k] * vk, buyers: srcB[k], gross: srcB[k] * unitGross }));
+    s.last = { units, want: r.want, cap: r.cap, D: r.D, revenue, cogs, labor, rent, ads, profit, price: G.ref * pm, why: r.why, funnel: { passers, visitors, buyers, repeat, entry, buyR }, roi, sources, unitCost: units > 0 ? cogs / units : 0, resK: S.market[G.res].price / RES[G.res].base, home: s.home, prevUnits: prev ? prev.units : null, prevProfit: prev ? prev.profit : null, sale: s.saleNow };
     s.hist.push(profit); if (s.hist.length > 24) s.hist.shift();
     const ok = r.want > 0 ? units / r.want : 1;
     const target = clamp(0.5 + 0.22 * s.qual + (R.qual - 1) * 0.6 - 0.9 * R.priceRep * (pm - 1) - 0.45 * Math.max(0, 1 - ok) + (s.saleNow ? 0.08 : 0), 0.05, 0.98);
     s.rep = clamp(s.rep + (target - s.rep) * 0.25 * (target > s.rep ? R.repGain : 1), 0.02, 1);
-    s.months++; s.boost = 1; s.saleNow = 0; if (s.helper > 0) s.helper--; if (s.under > 0) s.under--;
+    s.months++; s.boost = 1; s.saleNow = 0; s.promo = 0; s.promoK = 1; s.promoName = null; if (s.helper > 0) s.helper--; if (s.under > 0) s.under--;
     fx.push({ kind: 'sales', pid: s.owner, shop: s.id, units, profit });
   }
   for (const p of S.players) {
@@ -673,9 +719,11 @@ export function aiDecide(S, pid) {
         const cost = openCost(lot.d, g); if (cash < cost + ((STAGES[S.stage] || {}).aiHard ? 150 : 250) + 300 * (1 - K.risk)) continue;
         const comp = S.shops.filter(s => s.d === lot.d && s.g === g).length;
         const dem = (DISTRICTS[lot.d].demand[g] * 1.25 + spillOf(S, lot.d, g).add) * GOODS[g].ref * 0.36 / (1 + comp * 1.1);
-        const fav = { cheap: 'bread', luxury: 'tool', hoarder: 'potion', balanced: 'cloth' }[p.ai] === g ? 0.08 : 0;
+        const fav = (p.fav === g ? 0.06 : 0) + (p.favD === lot.d ? 0.04 : 0);
         const street = NEIGHBORS[lot.id].some(l => { const o = shopAt(S, l); return o && o.owner === pid && o.g !== g; }) ? 0.04 : 0;
-        const score = (dem - DISTRICTS[lot.d].rent - 2 * WAGE) / cost + fav + street + rnd(S) * 0.08;
+        // 材料が値上がりしていたら、その業種は見送りやすい
+        const rk = S.market[GOODS[g].res].price / RES[GOODS[g].res].base;
+        const score = (dem - DISTRICTS[lot.d].rent - 2 * WAGE) / cost * (p.boldness || 1) + fav + street - Math.max(0, rk - 1) * 0.12 + rnd(S) * 0.1;
         if (!best || score > best.score) best = { lot: lot.id, g, score, cost };
       }
     }
