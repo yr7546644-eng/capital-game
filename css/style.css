@@ -215,3 +215,25 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .quest{padding:8px 0;border-bottom:1px dashed var(--line)}
 .quest:last-child{border-bottom:0}
 .actions .abtn{padding:12px 10px}
+
+/* ── 手ざわり */
+button,[data-a],.card{-webkit-tap-highlight-color:transparent;transition:transform .32s cubic-bezier(.34,1.8,.5,1),filter .2s,box-shadow .2s;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.prs{transform:scale(.93)!important;filter:brightness(.94);transition:transform .07s ease-out,filter .07s!important}
+.rel{animation:relb .42s cubic-bezier(.34,1.8,.5,1)}
+@keyframes relb{0%{transform:scale(.93)}55%{transform:scale(1.04)}100%{transform:scale(1)}}
+.rip{position:absolute;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.55) 0,rgba(255,255,255,.25) 45%,rgba(255,255,255,0) 70%);transform:scale(0);animation:rip .55s ease-out forwards;pointer-events:none}
+@keyframes rip{to{transform:scale(1);opacity:0}}
+.btn:not(.pri):not(.warm) .rip,.seg .rip,.stepper .rip{background:radial-gradient(circle,rgba(58,123,213,.22) 0,rgba(58,123,213,.1) 45%,rgba(58,123,213,0) 70%)}
+#sheetwrap.on #sheet{transform:none;animation:shin .42s cubic-bezier(.22,1.25,.36,1)}
+@keyframes shin{from{transform:translateY(100%)}to{transform:none}}
+.sw{display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 4px;font-size:14.5px;border-bottom:1px solid #eef1f8}
+.sw i{width:46px;height:28px;border-radius:14px;background:#d6dcea;position:relative;transition:background .25s}
+.sw i::after{content:'';position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(20,40,90,.25);transition:transform .35s cubic-bezier(.34,1.8,.5,1)}
+.sw.on i{background:#3ccf8e}.sw.on i::after{transform:translateX(18px)}
+.card{transition:transform .35s cubic-bezier(.34,1.8,.5,1),box-shadow .25s}
+.ripw{position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none}
+#dock .card.fresh{animation:cardin .5s cubic-bezier(.34,1.6,.5,1) backwards}
+#dock .card.fresh:nth-child(2){animation-delay:.05s}#dock .card.fresh:nth-child(3){animation-delay:.1s}#dock .card.fresh:nth-child(4){animation-delay:.15s}#dock .card.fresh:nth-child(5){animation-delay:.2s}
+@keyframes cardin{from{transform:translateY(40px) rotate(-6deg);opacity:0}}
+.go{animation:gopulse 2.4s ease-in-out infinite}
+@keyframes gopulse{0%,100%{box-shadow:0 8px 22px rgba(255,122,89,.45)}50%{box-shadow:0 8px 30px rgba(255,122,89,.75)}}

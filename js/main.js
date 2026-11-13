@@ -1,7 +1,7 @@
 // 画面の操作(一人で AI の商会と戦う)
 import * as E from './engine.js';
 import { Board, hexPos } from './board.js';
-import { sfx, unlockAudio } from './sfx.js';
+import { sfx, unlockAudio, bgm, haptic, audioPref, setAudioPref } from './sfx.js';
 
 const $ = (s) => document.querySelector(s);
 const fmt = (n) => Math.round(n).toLocaleString('ja-JP');
@@ -67,7 +67,7 @@ function dock() {
   $('#dock').innerHTML = `
     <div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="weather"><span class="ei">${wx(me().scout === S.t ? S.wNext : S.wFore).icon}</span><span><span class="et">天気予報${me().scout === S.t ? '(確実)' : ''}</span><br>${wx(me().scout === S.t ? S.wNext : S.wFore).name}</span></button>${ev ? `<button class="evchip" data-a="event"><span class="ei">${ev.icon}</span><span><span class="et">来月の予報${E.marketDay({ t: S.t }) ? ' · 🛍️市の日' : ''}</span><br>${esc(ev.name)}</span></button>` : ''}${S.t >= S.months - 18 ? `<button class="evchip grand" data-a="grand"><span class="ei">🏰</span><span><span class="et">${E.finalYear(S) ? '大祭の年' : '大祭まで'}</span><br>${E.finalYear(S) ? `のこり${S.months - S.t}か月` : `あと${S.months - 12 - S.t}か月`}</span></button>` : ''}</div>
     ${F.alerts && F.alerts.length && !S.over ? `<button class="evchip alertchip" data-a="alerts">⚠️ 判断が必要 ${F.alerts.length}件</button>` : ''}
-    <div class="hand">${p.hand.map((c, i) => { const cd = E.cardDef(c); const isUsed = used && used.card === c && used.idx === i; return `<button class="card ${isUsed ? 'sel' : used ? 'used' : ''}" data-a="card" data-i="${i}">${isUsed ? '<span class="tag">使う</span>' : ''}<div class="ci">${cd.spec ? '🧑‍🍳' : cd.icon}${cd.spec ? `<span class="cspec">${cd.icon}</span>` : ''}</div><div class="cn">${cd.name}</div><div class="cc">${cd.cost ? fmt(cd.cost) + 'G' : '無料'}</div></button>`; }).join('')}</div>
+    <div class="hand">${p.hand.map((c, i) => { const cd = E.cardDef(c); const isUsed = used && used.card === c && used.idx === i; return `<button class="card ${F.handT !== S.t ? 'fresh' : ''} ${isUsed ? 'sel' : used ? 'used' : ''}" data-a="card" data-i="${i}">${isUsed ? '<span class="tag">使う</span>' : ''}<div class="ci">${cd.spec ? '🧑‍🍳' : cd.icon}${cd.spec ? `<span class="cspec">${cd.icon}</span>` : ''}</div><div class="cn">${cd.name}</div><div class="cc">${cd.cost ? fmt(cd.cost) + 'G' : '無料'}</div></button>`; }).join('')}</div>
     <div class="actions">
       <button class="abtn" data-a="market"><span class="ai">🛒</span>市場${(p.offers || []).length ? `<span class="badge">${p.offers.length}</span>` : ''}</button>
       <button class="abtn" data-a="books"><span class="ai">📒</span>帳簿</button>
@@ -75,7 +75,18 @@ function dock() {
       <button class="abtn go" data-a="next">次の月へ${n ? `<small>決めたこと ${n}</small>` : ''}</button>
     </div>`;
 }
-function render() { hud(); dock(); updateLabels(); if (F.sheet) renderSheet(); }
+function render() { hud(); dock(); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
+// 場面に合わせて曲を選ぶ: 大祭の年・雨・町ごとの曲を数か月ごとに入れ替え
+const STAGE_BGM = { rose: ['asa', 'kenso'], marina: ['minato', 'asa'], snow: ['yuki', 'kenso'], capital: ['kenso', 'asa'] };
+function pickBgm() {
+  if (!S || F.bgmLock) return;
+  let k;
+  if (S.over) k = 'matsuri';
+  else if (S.t && E.finalYear(S)) k = S.months - S.t <= 3 ? 'matsuri' : 'ouji';
+  else if (S.t && (S.w === 'rain' || S.w === 'storm')) k = 'ame';
+  else { const L = STAGE_BGM[S.stage] || STAGE_BGM.rose; k = L[Math.floor(S.t / 3) % L.length]; }
+  bgm.play(k);
+}
 
 // ── シート
 const SHEETS = {};
@@ -425,7 +436,7 @@ SHEETS.weather = () => {
     <div class="box"><div class="lbl">天気のきまり</div>${Object.values(E.WEATHER).map(w => `<div class="news">${w.icon} <b>${w.name}</b> — ${w.text}</div>`).join('')}<div class="t3" style="margin-top:6px">住宅街(🏡)は天気の影響が半分。夏の猛暑が続くと小麦が値上がり、春の雨は豊作。季節で出やすい天気がちがう(冬は雪、6月は梅雨、秋は台風)。</div></div>`;
 };
 SHEETS.grand = () => head('🏰', E.GRAND.name, E.finalYear(S) ? `のこり${S.months - S.t}か月` : `始まるまで あと${S.months - 12 - S.t}か月`) + `<div class="box"><div class="t2">${E.GRAND.text}</div></div>` + crownBox();
-SHEETS.menu = () => head('⚙️', 'メニュー', `${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name}`) + `<div class="box"><button class="btn wide" data-a="howto" style="margin-bottom:8px">遊び方</button><button class="btn wide" data-a="stagesel" style="margin-bottom:8px">🗺️ 別の町(ステージ)で遊ぶ</button><button class="btn wide" data-a="credits" style="margin-bottom:8px">クレジット</button><button class="btn wide" data-a="restart">最初からやり直す</button></div>`;
+SHEETS.menu = () => head('⚙️', 'メニュー', `${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name}`) + (() => { const a = audioPref(), sw = (k, l) => `<button class="sw ${a[k] ? 'on' : ''}" data-a="aud" data-v="${k}"><span>${l}</span><i></i></button>`; return `<div class="box"><div class="t1" style="margin-bottom:6px">🎵 音と手ざわり</div>${sw('bgm', 'BGM')}${sw('sfx', '効果音')}${sw('haptic', 'タップで振動')}<div class="row" style="gap:8px;margin-top:8px;align-items:center"><div class="t2" style="flex:1">♪ ${esc(bgm.name || '—')}${F.bgmLock ? '' : '<small>(場面で自動)</small>'}</div><button class="btn sm" data-a="nexttrack">曲を変える</button>${F.bgmLock ? '<button class="btn sm" data-a="autobgm">自動に戻す</button>' : ''}</div></div>`; })() + `<div class="box"><button class="btn wide" data-a="howto" style="margin-bottom:8px">遊び方</button><button class="btn wide" data-a="stagesel" style="margin-bottom:8px">🗺️ 別の町(ステージ)で遊ぶ</button><button class="btn wide" data-a="credits" style="margin-bottom:8px">クレジット</button><button class="btn wide" data-a="restart">最初からやり直す</button></div>`;
 SHEETS.howto = () => head('📖', '遊び方', '5年で町いちばんの商会に') + `<div class="box t2">
   ① 町の<b>「+」</b>をタップして店を開く(4つまで)。同じ地区・同じ業種の店どうしでお客を取り合う。<br>
   ② 店をタップして<b>値段・店員・広告</b>を決める。🔮で来月の利益の見積もりが出る。<br>
@@ -442,8 +453,11 @@ SHEETS.credits = () => head('🎨', 'クレジット', '') + `<div class="box t2
 
 // ── 操作
 const H = {
-  close: () => { const was = F.sheet; closeSheet(); if (was === 'stages') endPreview(); if (was === 'result' && S.over) setTimeout(() => openSheet('final'), 350); if (was === 'result') afterResult(); },
-  menu: () => openSheet('menu'), howto: () => openSheet('howto'), credits: () => openSheet('credits'),
+  close: () => { const was = F.sheet; closeSheet(); sfx('close'); if (was === 'stages') endPreview(); if (was === 'result' && S.over) setTimeout(() => openSheet('final'), 350); if (was === 'result') afterResult(); },
+  menu: () => openSheet('menu'),
+  aud: (d) => { const k = d.v, v = !audioPref()[k]; setAudioPref(k, v); if (k === 'haptic' && v) haptic(20); sfx('toggle'); renderSheet(); },
+  nexttrack: () => { const ks = ['asa', 'kenso', 'minato', 'yuki', 'ame', 'ouji', 'matsuri'], i = ks.indexOf(bgm.want); F.bgmLock = 1; bgm.play(ks[(i + 1) % ks.length]); if (!audioPref().bgm) setAudioPref('bgm', true); sfx('toggle'); setTimeout(renderSheet, 2600); toast('曲を替える…'); },
+  autobgm: () => { F.bgmLock = 0; pickBgm(); sfx('toggle'); setTimeout(renderSheet, 2600); }, howto: () => openSheet('howto'), credits: () => openSheet('credits'),
   ranking: () => openSheet('ranking'), market: () => openSheet('market'), books: () => openSheet('books'), event: () => openSheet('event'),
   card: (d) => openSheet('card', { i: +d.i }),
   cardgo: (d) => {
@@ -502,6 +516,36 @@ const H = {
   stagesel: () => { if (!S.t || S.over || confirm('今のゲームをやめて、別の町で始める?')) openSheet('stages'); },
   start: () => { $('.title') && $('.title').remove(); unlockAudio(); sfx('open'); if (!S.t && !F.acts.length) setTimeout(() => openSheet('howto'), 400); },
 };
+// ── 手ざわり: 押した瞬間に沈む・波紋・小さな振動と音
+const PRESSABLE = 'button, [data-a]:not(#sheetbg), .card';
+document.addEventListener('pointerdown', (e) => {
+  const t = e.target.closest(PRESSABLE); if (!t || t.disabled) return;
+  unlockAudio(); haptic(6); sfx('press');
+  t.classList.remove('rel'); t.classList.add('prs');
+  const r = t.getBoundingClientRect(); if (r.width > 24 && r.height > 18 && !t.classList.contains('nor')) {
+    const d = Math.max(r.width, r.height) * 2.2, i = document.createElement('i'); i.className = 'rip'; i.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX - r.left - d / 2}px;top:${e.clientY - r.top - d / 2}px`;
+    if (getComputedStyle(t).position === 'static') t.style.position = 'relative';
+    const w = document.createElement('span'); w.className = 'ripw'; i.style.left = (e.clientX - r.left - d / 2) + 'px'; w.appendChild(i); t.appendChild(w); setTimeout(() => w.remove(), 600);
+  }
+}, { passive: true });
+const release = (e) => { for (const t of document.querySelectorAll('.prs')) { t.classList.remove('prs'); t.classList.add('rel'); setTimeout(() => t.classList.remove('rel'), 420); } };
+document.addEventListener('pointerup', release, { passive: true }); document.addEventListener('pointercancel', release, { passive: true });
+// シートを下にスワイプして閉じる
+(() => {
+  const sh = $('#sheet'); let y0 = null, dy = 0, t0 = 0, drag = false;
+  sh.addEventListener('touchstart', (e) => { if (sh.scrollTop > 2 || e.touches.length > 1) { y0 = null; return; } y0 = e.touches[0].clientY; t0 = performance.now(); dy = 0; drag = false; }, { passive: true });
+  sh.addEventListener('touchmove', (e) => {
+    if (y0 == null) return; dy = e.touches[0].clientY - y0;
+    if (!drag && dy > 10 && sh.scrollTop <= 0) { drag = true; sh.style.transition = 'none'; }
+    if (drag) { sh.style.transform = `translateY(${Math.max(0, dy - 10) * 0.9}px)`; if (e.cancelable) e.preventDefault(); }
+  }, { passive: false });
+  sh.addEventListener('touchend', () => {
+    if (!drag) { y0 = null; return; }
+    const v = dy / Math.max(1, performance.now() - t0); sh.style.transition = ''; sh.style.transform = '';
+    if ((dy > 110 || v > 0.6) && !F.busy) { haptic(10); sfx('swipe'); H.close(); }
+    y0 = null; drag = false;
+  });
+})();
 document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-a]'); if (!t) return;
   const f = H[t.dataset.a]; if (f) { unlockAudio(); f(t.dataset); }
@@ -535,7 +579,7 @@ async function nextMonth() {
   board.playMonth(S, sales);
   await wait(1500);
   for (const f of sales) { const pos = board.screenOf(f.shop); if (pos) popAt(pos, f.profit, S.players[f.pid].color); }
-  if (sales.some(f => f.pid === ME && f.profit > 0)) sfx('coin');
+  const myUp = sales.filter(f => f.pid === ME && f.profit > 0).length; if (myUp) sfx('coins', Math.min(8, 2 + myUp * 2));
   await wait(1300);
   // 結果
   const after = E.ranking(S);
@@ -545,7 +589,7 @@ async function nextMonth() {
     news: newsOf(fx, pre), tip: tipOf(), check: checkOf(fc), auto: autoDone, alerts: F.alerts,
   };
   r.tier0 = tier0; r.tier1 = E.rankOf(E.netWorth(S, me()));
-  openSheet('result', { r });
+  openSheet('result', { r }); bgm.jingle(r.mine.reduce((a, x) => a + x.profit, 0) >= 0);
   if (r.tier1 > r.tier0) { sfx('rankup'); confetti(); } else if (r.tier1 < r.tier0) sfx('whoosh');
   countUp($('#cntup'), r.mine.reduce((a, x) => a + x.profit, 0));
   const pos = after.findIndex(x => x.p.id === ME);
@@ -739,8 +783,8 @@ async function boot() {
   board = new Board($('#stage'));
   board.onTap = ({ shop, lot }) => {
     if (F.busy) return;
-    if (shop != null) { const s = S.shops.find(x => x.id === shop); if (s) { board.focus(s.lot); openSheet('shop', { id: shop }); sfx('tap'); } return; }
-    if (lot != null && !S.over) { board.highlightLot(lot); const p = pendOpen(lot); openSheet('lot', { lot, g: p ? p.g : null, res: p ? p.res : null }); sfx('tap'); }
+    if (shop != null) { const s = S.shops.find(x => x.id === shop); if (s) { board.focus(s.lot); openSheet('shop', { id: shop }); sfx('pop'); haptic(10); } return; }
+    if (lot != null && !S.over) { board.highlightLot(lot); const p = pendOpen(lot); openSheet('lot', { lot, g: p ? p.g : null, res: p ? p.res : null }); sfx('pop'); haptic(10); }
   };
   const sv = loadSave();
   if (sv) { S = sv.S; F.acts = sv.acts || []; E.useStage(S.stage); } else { S = E.newGame({ seed: Math.floor(Math.random() * 1e9), stage: 'rose' }); }

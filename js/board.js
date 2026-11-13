@@ -371,7 +371,7 @@ export class Board {
     const el = this.R.domElement; const ptrs = new Map(); let down = null, two = null;
     const ang = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
     el.addEventListener('pointerdown', (e) => {
-      el.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      this.vel = null; el.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (ptrs.size === 1) down = { x: e.clientX, y: e.clientY, t: performance.now(), tx: this.view.tx, tz: this.view.tz, moved: false };
       if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; two = { d: Math.hypot(a.x - b.x, a.y - b.y), a: ang(a, b), dist: this.view.dist, yaw: this.view.yaw }; if (down) down.moved = true; }
     });
@@ -386,14 +386,15 @@ export class Board {
           const rx = Math.cos(y), rz = -Math.sin(y), fx = -Math.sin(y), fz = -Math.cos(y);
           let tx = down.tx - (dx * rx - dy * fx) * k * 1, tz = down.tz - (dx * rz - dy * fz) * k * 1;
           const rr = Math.hypot(tx, tz); if (rr > 11) { tx *= 11 / rr; tz *= 11 / rr; }
-          this.view.tx = tx; this.view.tz = tz; this.tween = null;
+          const nt = performance.now(), dtm = Math.max(1, nt - (down.lt || nt - 16)); down.vx = ((tx - this.view.tx) / dtm) * 0.6 + (down.vx || 0) * 0.4; down.vz = ((tz - this.view.tz) / dtm) * 0.6 + (down.vz || 0) * 0.4; down.lt = nt;
+          this.view.tx = tx; this.view.tz = tz; this.tween = null; this.vel = null;
         }
       }
     });
     const up = (e) => {
       ptrs.delete(e.pointerId); if (ptrs.size < 2) two = null;
       if (ptrs.size === 1) { const [p] = [...ptrs.values()]; down = { x: p.x, y: p.y, t: 0, tx: this.view.tx, tz: this.view.tz, moved: true }; }
-      if (down && ptrs.size === 0) { if (!down.moved && performance.now() - down.t < 450) this.tap(e.clientX, e.clientY); down = null; }
+      if (down && ptrs.size === 0) { if (!down.moved && performance.now() - down.t < 450) this.tap(e.clientX, e.clientY); else if (down.vx != null && performance.now() - down.lt < 80) this.vel = { x: down.vx * 1000, z: down.vz * 1000 }; down = null; }
     };
     el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
     el.addEventListener('wheel', (e) => { this.view.dist = Math.max(10, Math.min(46, this.view.dist + e.deltaY * 0.02)); }, { passive: true });
@@ -407,7 +408,15 @@ export class Board {
     if (!hit) return;
     let o = hit.object; while (o && o.userData.shop == null && o.userData.lot == null) o = o.parent;
     if (!o) return;
+    const so = o.userData.shop != null && this.shopObjs.get(o.userData.shop); if (so) so.userData.bounce = 0.0001;
+    this.ripple(o.userData.lot);
     if (this.onTap) this.onTap({ shop: o.userData.shop ?? null, lot: o.userData.lot });
+  }
+  ripple(lotId) {
+    const l = LOTS[lotId]; if (!l) return;
+    if (!this.ripGeo) { this.ripGeo = new THREE.RingGeometry(0.82, 1, 48); this.ripGeo.rotateX(-Math.PI / 2); }
+    const m = new THREE.Mesh(this.ripGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }));
+    m.position.copy(hexPos(l.q, l.r)).add(new THREE.Vector3(0, 0.32, 0)); m.userData.life = 0; this.world.add(m); (this.rips = this.rips || []).push(m);
   }
   loop() {
     requestAnimationFrame(this.loop);
@@ -421,6 +430,8 @@ export class Board {
       if (o.userData.pop < 1) { o.userData.pop = Math.min(1, o.userData.pop + dt * 2.2); const p = o.userData.pop; const s = p < 1 ? 1 + Math.sin(p * Math.PI) * 0.25 * (1 - p) : 1; o.scale.setScalar(Math.max(0.01, (1 - Math.pow(1 - p, 3)) * s)); }
       if (o.userData.bounce) { o.userData.bounce += dt * 3; const b = o.userData.bounce; o.scale.set(1 + Math.sin(b * 6) * 0.06 * Math.max(0, 1 - b), 1 - Math.sin(b * 6) * 0.06 * Math.max(0, 1 - b), 1 + Math.sin(b * 6) * 0.06 * Math.max(0, 1 - b)); if (b > 1) { o.userData.bounce = 0; o.scale.setScalar(1); } }
     }
+    if (this.vel) { v.tx += this.vel.x * dt; v.tz += this.vel.z * dt; const rr = Math.hypot(v.tx, v.tz); if (rr > 11) { v.tx *= 11 / rr; v.tz *= 11 / rr; this.vel.x *= 0.5; this.vel.z *= 0.5; } const f = Math.pow(0.04, dt); this.vel.x *= f; this.vel.z *= f; if (Math.hypot(this.vel.x, this.vel.z) < 0.05) this.vel = null; }
+    if (this.rips) this.rips = this.rips.filter(m => { m.userData.life += dt; const k = m.userData.life / 0.55; m.scale.setScalar(0.4 + k * 0.9); m.material.opacity = 0.9 * (1 - k); if (k >= 1) { this.world.remove(m); m.material.dispose(); return false; } return true; });
     if (this.popIn) for (const o of this.popIn) { if (o.userData.pop < 1) { o.userData.pop = Math.min(1, o.userData.pop + dt * 2.5); o.scale.setScalar(Math.max(0.01, 1 - Math.pow(1 - o.userData.pop, 3))); } }
     if (this.signs) for (const [, sp] of this.signs) if (sp.userData.isNew) sp.position.y = 2.05 + Math.abs(Math.sin(t * 3)) * 0.18;
     for (const [, s] of this.plus) if (s.visible) s.position.y = 0.95 + Math.sin(t * 2.4 + s.userData.lot) * 0.08;
