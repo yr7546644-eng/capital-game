@@ -1335,7 +1335,7 @@ export const AIP_LEARNED = { ...AIP_BASE, H: 12, nc: 9 };   // つよい: 12か�
 // 鬼: さらに毎月の手を一つずつ変えて試算し、ライバルとの差が一番開く手を選ぶ(自己対戦で「つよい」相手に平均順位1.9・勝率46%)
 // さらに「育て方の選び方・レア素材の仕入れ・ライバルの店の買収」も試算に入れる(深読みAI同士で平均順位2.04・勝率42%)
 export const AIP_DEEP = { ...AIP_LEARNED, deep: 1, rel: 1, mx: 1, nm: 16 };
-export const AIP_MAOU = { ...AIP_DEEP, Hm: 10, nm: 20, ns: 4 };
+export const AIP_MAOU = { ...AIP_DEEP, Hm: 4, nm: 24, ns: 5 };   // 魔王: 候補を広げて短く読む(鬼AI相手に平均順位2.19・勝率34%)
 const AIP_OF_LEVEL = { hard: AIP_LEARNED, oni: AIP_DEEP, maou: AIP_MAOU };
 const aipOf = (p) => p.aip || AIP_BASE;
 export function aiDecide(S, pid) {
