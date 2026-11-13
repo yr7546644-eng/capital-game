@@ -45,7 +45,7 @@ function setPending(shopId, patch) {
   let a = pendSet(shopId); if (!a) { a = { type: 'set', shop: shopId }; F.acts.push(a); }
   Object.assign(a, patch);
   const s = S.shops.find(x => x.id === shopId);
-  if (a.priceLv === s.priceLv && a.staff === s.staff && a.ads === s.ads && (a.autoSell == null || a.autoSell === s.autoSell) && (a.useProc == null || a.useProc === s.useProc)) F.acts = F.acts.filter(x => x !== a);
+  if (a.priceLv === s.priceLv && a.staff === s.staff && a.ads === s.ads && (a.autoSell == null || a.autoSell === s.autoSell) && (a.useProc == null || a.useProc === s.useProc) && (a.feat === undefined || (a.feat === s.feat && a.featQty === s.featQty))) F.acts = F.acts.filter(x => x !== a);
   save();
 }
 
@@ -157,6 +157,7 @@ function whyText(s) {
   if (l.resK > 1.15) bad.push(`${R.icon}${R.name}が高く(相場 ${pc(l.resK)})、利益が薄かった`);
   else if (l.resK < 0.87) good.push(`${R.icon}${R.name}が安く仕入れられた`);
   if (l.home > 0.3) good.push('🏠自家製の材料で材料費が浮いた');
+  if (l.featUsed) { const R = E.RARES[l.featKey]; good.unshift(`${R.icon}${R.name}の目玉商品で客寄せ +${Math.min(60, l.featUsed * 8)}%・特別売上 ${fmt(l.featRev)}G`); }
   if (E.LOTS[s.lot].road && !good.length && !bad.length) good.push('🛣️大通り沿いで客が入った');
   const g2 = good.slice(0, 2), b2 = bad.slice(0, 2);
   if (!g2.length && !b2.length) return 'いつもどおりの月';
@@ -243,6 +244,7 @@ SHEETS.shop = ({ id }) => {
       ${est ? `<div class="est"><span class="ev">🔮</span><div class="grow"><div class="t3" style="margin:0">この設定だと来月は(ざっくり)</div><div style="font-size:17px">お客 ${fmt(est.units)}人 · 利益 <span class="${cls(est.profit)}">${sign(est.profit)}G</span>${base != null ? ` <span class="t3">(先月 ${sign(base)})</span>` : ''}</div></div></div>` : ''}
     </div>
     ${(() => { const pk = E.RES[G.res].proc, have = me().inv[pk], on = (pendSet(s0.id) && pendSet(s0.id).useProc != null) ? pendSet(s0.id).useProc : s0.useProc; return have > 0 || s0.home > 0 ? `<div class="box"><div class="lbl">🏠 自家製の材料(${E.PROC[pk].icon}${E.PROC[pk].name} 在庫 ${fmt(have)})</div><div class="seg"><button class="${on ? 'on' : ''}" data-a="setproc" data-id="${s0.id}" data-v="1">使う</button><button class="${!on ? 'on' : ''}" data-a="setproc" data-id="${s0.id}" data-v="0">使わない</button></div><div class="t3" style="margin-top:6px">使うと材料費が半分になり、次の月の客寄せが最大 +15%。${s0.home > 0 ? `先月は材料の ${Math.round(s0.home * 100)}% が自家製だった。` : ''}</div></div>` : ''; })()}
+    ${featBox(s0)}
     ${routeBox(s0)}
     <div class="box"><div class="kv"><span class="k">品質</span><span>${E.QUALITY[s0.qual].name}</span></div><div class="kv"><span class="k">開業</span><span>${ym(s0.openedT)}</span></div><div class="kv"><span class="k">今売ると</span><span class="num">${fmt(E.shopValue(S, s0) * 0.8)}G</span></div></div>
     <button class="btn wide" data-a="closeshop" data-id="${id}">店をたたむ(売る)</button>`;
@@ -264,6 +266,13 @@ function workSheet(s0) {
     </div>
     <button class="btn pri wide" data-a="market" style="margin-bottom:8px">🛒 市場で原料を買う</button>
     <button class="btn wide" data-a="closeshop" data-id="${s0.id}">工房をたたむ(売る)</button>`;
+}
+function featBox(s) {
+  const ks = Object.keys(E.RARES).filter(k => E.RARES[k].use === s.g); if (!ks.length) return '';
+  const p = me(), pend = pendSet(s.id), cur = pend && pend.feat !== undefined ? pend.feat : s.feat, q = pend && pend.featQty != null ? pend.featQty : s.featQty;
+  const have = ks.filter(k => p.inv[k] > 0);
+  return `<div class="box"><div class="lbl">💎 目玉商品(レア素材)</div>${ks.map(k => { const R = E.RARES[k]; return `<div class="kv"><span class="k">${R.icon} ${R.name} <span class="t3">在庫 ${fmt(p.inv[k])} · 相場 ${S.market[k].price.toFixed(0)}G</span></span><span><button class="btn sm ${cur === k ? 'pri' : ''}" data-a="setfeat" data-id="${s.id}" data-v="${k}" ${p.inv[k] > 0 || cur === k ? '' : 'disabled'}>${cur === k ? '並べる ✓' : '並べる'}</button></span></div>`; }).join('')}
+    ${cur ? `<div class="lbl" style="margin-top:8px">毎月いくつ並べる?</div><div class="seg">${[2, 4, 6, 10].map(n => `<button class="${q === n ? 'on' : ''}" data-a="setfeatq" data-id="${s.id}" data-v="${n}">${n}個</button>`).join('')}</div><div class="t3" style="margin-top:6px">1個ごとに客寄せ +8%(最大 +60%)。並べた分は特別な品として素材の相場の約1.7倍で売れる${s.d && E.DISTRICTS[s.d].kind === 'noble' && cur === 'seapearl' ? '(貴族街の真珠は2.3倍)' : ''}。在庫がなくなると外れる。</div><button class="btn sm" style="margin-top:6px" data-a="setfeat" data-id="${s.id}" data-v="">並べるのをやめる</button>` : `<div class="t3" style="margin-top:6px">${have.length ? 'レア素材を並べると、客寄せと特別売上が増える。' : `この店で使えるレア素材: ${ks.map(k => E.RARES[k].icon + E.RARES[k].name).join('・')}。市場の「💎レア」や商人の申し出で手に入る。`}</div>`}</div>`;
 }
 function routeBox(s) {
   const pend = F.acts.find(a => a.type === 'route' && a.shop === s.id);
@@ -288,7 +297,7 @@ function rivalSheet(s) {
 SHEETS.market = () => {
   const p = me(), tab = F.mtab || 'raw';
   const offers = p.offers || [];
-  const tabs = `<div class="seg" style="margin-bottom:10px">${[['raw', '🌾 原料'], ['proc', '🏭 加工品'], ['ledger', '📜 取引帳'], ['deal', `🤝 申し出${offers.length ? ` <span class="badge">${offers.length}</span>` : ''}`]].map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" data-a="mtab" data-v="${k}">${n}</button>`).join('')}</div>`;
+  const tabs = `<div class="seg" style="margin-bottom:10px">${[['raw', '🌾 原料'], ['proc', '🏭 加工'], ['rare', '💎 レア'], ['ledger', '📜 帳'], ['deal', `🤝 申し出${offers.length ? ` <span class="badge">${offers.length}</span>` : ''}`]].map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" data-a="mtab" data-v="${k}">${n}</button>`).join('')}</div>`;
   const pendQ = (k) => F.acts.filter(a => (a.type === 'buy' || a.type === 'sell') && a.res === k).reduce((a, x) => a + (x.type === 'buy' ? x.qty : -x.qty), 0);
   const row = (k) => {
     const r = E.ITEMS[k], m = S.market[k], h = m.hist.slice(-12), mn = Math.min(...h), mx = Math.max(...h);
@@ -300,11 +309,12 @@ SHEETS.market = () => {
       <div class="t3">買 ${(m.price * (1 + E.SPREAD)).toFixed(2)} / 売 ${(m.price * (1 - E.SPREAD)).toFixed(2)} · ふだん ${r.base.toFixed(2)} · ${vsb > 0.12 ? '<span class="down">高い</span>' : vsb < -0.12 ? '<span class="up">安い</span>' : 'ふつう'}${r.decay ? ` · 毎月${Math.round(r.decay * 100)}%傷む` : ' · 傷まない'}</div>
       <div class="t3">在庫 <b>${fmt(have)}</b>${pq ? ` <b>(${pq > 0 ? '+' : ''}${pq})</b>` : ''}${have > 0 ? ` · 平均 ${avg.toFixed(2)}G · 含み<span class="${cls(gain)}">${sign(gain)}G</span>` : ''}</div></div>
       <svg width="72" height="28"><polyline points="${pts}" fill="none" stroke="${vsb > 0 ? '#ff4f64' : '#20b26b'}" stroke-width="2"/></svg>
-      <div style="display:flex;flex-direction:column;gap:4px"><button class="btn sm pri" data-a="buy" data-v="${k}">買う ${E.isProc(k) ? 20 : 50}</button><button class="btn sm" data-a="sell" data-v="${k}" ${have + Math.min(0, pq) > 0 ? '' : 'disabled'}>売る</button></div></div>`;
+      <div style="display:flex;flex-direction:column;gap:4px"><button class="btn sm pri" data-a="buy" data-v="${k}">買う ${E.isRare(k) ? 2 : E.isProc(k) ? 20 : 50}</button><button class="btn sm" data-a="sell" data-v="${k}" ${have + Math.min(0, pq) > 0 ? '' : 'disabled'}>売る</button></div></div>`;
   };
   let body = '';
   if (tab === 'raw') body = `<div class="box">${Object.keys(E.RES).map(row).join('')}</div><div class="t3">店は毎月、材料を使う。在庫があれば先に使い、なければその月の値段で買う。安いときに買っておけば値上がりしても困らない。小麦と薬草は傷むので抱えすぎ注意。保管料もかかる。</div>`;
   if (tab === 'proc') body = `<div class="box">${Object.keys(E.PROC).map(row).join('')}</div><div class="t3">加工品は工房で原料から作る(空き地の「+」→🏭工房)。原料より高く売れる。自分の店で使うと「自家製」になる。</div>`;
+  if (tab === 'rare') body = `<div class="box">${Object.keys(E.RARES).map(k => row(k) + `<div class="t3" style="margin:-4px 0 8px 34px">${E.RARES[k].where} · ${E.GOODS[E.RARES[k].use].icon}${E.GOODS[E.RARES[k].use].name}の目玉にできる</div>`).join('')}</div><div class="t3">レア素材は量が少なく、買うと一気に値上がりする。使い道は4つ: すぐ売る / 自分の店の目玉商品にする(客寄せ+特別売上) / 前金つきで欲しがるライバルに納める / 値上がりまで持っておく。ただし代わりの素材が入ると値崩れする。</div>`;
   if (tab === 'ledger') {
     const lg = (S.ledger || []).filter(f => f.pid !== ME);
     const lines = lg.map(f => { const pp = S.players[f.pid]; if (f.kind === 'buy') return `${pname(pp)} が ${E.ITEMS[f.res].icon}${E.ITEMS[f.res].name}を <b>${fmt(f.qty)}</b> 買った`; if (f.kind === 'sell') return `${pname(pp)} が ${E.ITEMS[f.res].icon}${E.ITEMS[f.res].name}を <b>${fmt(f.qty)}</b> 売った`; if (f.kind === 'deal') return `${pname(pp)} が商人と ${E.ITEMS[f.offer.item].name} の取引をした`; if (f.kind === 'card') return `${pname(pp)} が ${E.ITEMS[f.res].name}を市場に放出した`; if (f.kind === 'open') { const sh = S.shops.find(x => x.id === f.shop); return sh ? `${pname(pp)} が ${E.DISTRICTS[sh.d].short}に ${gd(sh).name} を開いた` : ''; } if (f.kind === 'close') return `${pname(pp)} が店をたたんだ`; return ''; }).filter(Boolean);
@@ -312,7 +322,7 @@ SHEETS.market = () => {
     body = `<div class="box"><div class="lbl">先月のライバルの売り買い</div>${lines.length ? lines.map(x => `<div class="news">${x}</div>`).join('') : '<div class="t3">目立った動きはない</div>'}</div><div class="box"><div class="lbl">ライバルの倉(うわさ)</div>${stock}</div><div class="t3">誰かが原料を買い込んでいたら、来月はその原料が値上がりしやすい。倉にたくさんある相手は、売りに出して値を崩すかも。</div>`;
   }
   if (tab === 'deal') body = offers.length ? `<div class="box">${offers.map(o => { const r = E.ITEMS[o.item], m = S.market[o.item].price, on = F.acts.some(a => a.type === 'deal' && a.id === o.id), k = o.price / m; const ok = o.kind === 'buy' ? p.inv[o.item] >= o.qty : freeCash() >= o.qty * o.price || on;
-      return `<div class="res"><span class="ri">${r.icon}</span><div class="grow"><div style="font-size:14px">${esc(o.who)}</div><div class="t2" style="margin:0">${o.kind === 'buy' ? `あなたの<b>${r.name}</b>を <b>${fmt(o.qty)}</b>個、1個 <b>${o.price.toFixed(2)}G</b> で買いたい` : `<b>${r.name}</b>を <b>${fmt(o.qty)}</b>個、1個 <b>${o.price.toFixed(2)}G</b> で売りたい`}</div><div class="t3">相場 ${m.toFixed(2)}G の <b class="${(o.kind === 'buy') === (k > 1) ? 'up' : 'down'}">${Math.round(k * 100)}%</b> · 合計 ${fmt(o.qty * o.price)}G${o.kind === 'buy' && !ok ? ` · <span class="down">在庫 ${fmt(p.inv[o.item])} では足りない</span>` : ''}</div></div>
+      return `<div class="res"><span class="ri">${r.icon}</span><div class="grow"><div style="font-size:14px">${esc(o.who)}${o.rival != null ? ' <span class="tagg r">前金つき</span>' : ''}${E.isRare(o.item) ? ' <span class="tagg y">レア</span>' : ''}</div>${o.rival != null ? `<div class="t3">納めると、${esc(S.players[o.rival].name)}の${E.GOODS[E.RARES[o.item].use].name}が目玉商品で強くなる</div>` : ''}<div class="t2" style="margin:0">${o.kind === 'buy' ? `あなたの<b>${r.name}</b>を <b>${fmt(o.qty)}</b>個、1個 <b>${o.price.toFixed(2)}G</b> で買いたい` : `<b>${r.name}</b>を <b>${fmt(o.qty)}</b>個、1個 <b>${o.price.toFixed(2)}G</b> で売りたい`}</div><div class="t3">相場 ${m.toFixed(2)}G の <b class="${(o.kind === 'buy') === (k > 1) ? 'up' : 'down'}">${Math.round(k * 100)}%</b> · 合計 ${fmt(o.qty * o.price)}G${o.kind === 'buy' && !ok ? ` · <span class="down">在庫 ${fmt(p.inv[o.item])} では足りない</span>` : ''}</div></div>
         <button class="btn sm ${on ? 'warm' : 'pri'}" data-a="deal" data-v="${o.id}" ${ok || on ? '' : 'disabled'}>${on ? '受ける ✓' : '受ける'}</button></div>`; }).join('')}</div><div class="t3">申し出は今月だけ。「次の月へ」で決まる。相場より高く買ってくれる相手には売り、安く売ってくれる相手からは買うのが基本。でも相場が動く前に…?</div>` : '<div class="box t2">今月は申し出がない。</div>';
   return head('🛒', '市場', 'みんなで同じ市場を使う。たくさん買うと値上がり、売ると値下がり') + tabs + body;
 };
@@ -429,6 +439,8 @@ const H = {
   pickgood: (d) => { F.args.g = d.v; sfx('tap'); renderSheet(); },
   pickres: (d) => { F.args.res = d.v; sfx('tap'); renderSheet(); },
   doopen: (d) => { const lot = +d.v; F.acts = F.acts.filter(a => !(a.type === 'open' && a.lot === lot)); F.acts.push({ type: 'open', lot, g: F.args.g, res: F.args.g === 'work' ? F.args.res : undefined, priceLv: 2, staff: 2 }); sfx('build'); save(); closeSheet(); render(); board.preview(lot, F.args.g, S.players[ME].color); toast('月末に建つ!'); },
+  setfeat: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, feat: d.v || null, featQty: d.v ? (s.featQty || 4) : 0 }); sfx('tap'); render(); },
+  setfeatq: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s), pd = pendSet(s.id); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, feat: pd && pd.feat !== undefined ? pd.feat : s.feat, featQty: +d.v }); sfx('tap'); render(); },
   setauto: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, autoSell: +d.v }); sfx('tap'); render(); },
   setproc: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, useProc: +d.v }); sfx('tap'); render(); },
   cancelopen: (d) => { const lot = +d.v; F.acts = F.acts.filter(a => !(a.type === 'open' && a.lot === lot)); board.preview(lot, null); save(); closeSheet(); render(); },
@@ -438,8 +450,8 @@ const H = {
   closeshop: (d) => { if (!confirm('この店をたたむ?(月末に売れる)')) return; F.acts = F.acts.filter(a => !(a.type === 'set' && a.shop === +d.id)); F.acts.push({ type: 'close', shop: +d.id }); save(); closeSheet(); render(); toast('月末に店をたたむ'); },
   mtab: (d) => { F.mtab = d.v; renderSheet(); },
   deal: (d) => { const id = +d.v; if (F.acts.some(a => a.type === 'deal' && a.id === id)) F.acts = F.acts.filter(a => !(a.type === 'deal' && a.id === id)); else F.acts.push({ type: 'deal', id }); sfx('coin'); save(); render(); },
-  buy: (d) => { const q = E.isProc(d.v) ? 20 : 50, c = E.quote(S, d.v, q); if (freeCash() < c) return toast('お金が足りない'); F.acts.push({ type: 'buy', res: d.v, qty: q }); sfx('coin'); save(); render(); },
-  sell: (d) => { const have = me().inv[d.v] - F.acts.filter(a => a.type === 'sell' && a.res === d.v).reduce((a, x) => a + x.qty, 0); const q = Math.min(E.isProc(d.v) ? 20 : 50, Math.floor(have)); if (q <= 0) return toast('在庫がない'); F.acts.push({ type: 'sell', res: d.v, qty: q }); sfx('coin'); save(); render(); },
+  buy: (d) => { const q = E.isRare(d.v) ? 2 : E.isProc(d.v) ? 20 : 50, c = E.quote(S, d.v, q); if (freeCash() < c) return toast('お金が足りない'); F.acts.push({ type: 'buy', res: d.v, qty: q }); sfx('coin'); save(); render(); },
+  sell: (d) => { const have = me().inv[d.v] - F.acts.filter(a => a.type === 'sell' && a.res === d.v).reduce((a, x) => a + x.qty, 0); const q = Math.min(E.isRare(d.v) ? 2 : E.isProc(d.v) ? 20 : 50, Math.floor(have)); if (q <= 0) return toast('在庫がない'); F.acts.push({ type: 'sell', res: d.v, qty: q }); sfx('coin'); save(); render(); },
   repay: () => { const amt = Math.min(me().debt, Math.floor(freeCash() / 100) * 100); if (amt <= 0) return; F.acts.push({ type: 'repay', amt }); save(); render(); toast(`月末に ${fmt(amt)}G 返す`); },
   next: () => nextMonth(),
   grand: () => openSheet('grand'),
