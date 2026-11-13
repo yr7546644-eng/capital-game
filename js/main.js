@@ -13,9 +13,12 @@ const ME = 0;
 
 let S = null, board = null;
 const F = { acts: [], sheet: null, args: null, busy: false, cardSel: null };
-const SAVE = 'capital-battle-v2';
+const SAVE = 'capital-battle-v3';
+const REC = 'capital-records';
+const records = () => { try { return JSON.parse(localStorage.getItem(REC) || '{}'); } catch (e) { return {}; } };
+const setRecord = (stage, pos, nw) => { try { const r = records(); const o = r[stage] || {}; const best = !o.pos || pos < o.pos || (pos === o.pos && nw > (o.nw || 0)); r[stage] = { pos: best ? pos : o.pos, nw: best ? nw : o.nw, plays: (o.plays || 0) + 1 }; localStorage.setItem(REC, JSON.stringify(r)); } catch (e) { } };
 const save = () => { try { localStorage.setItem(SAVE, JSON.stringify({ S, acts: F.acts })); } catch (e) { } };
-const loadSave = () => { try { const j = JSON.parse(localStorage.getItem(SAVE) || 'null'); return j && j.S && j.S.v === 2 ? j : null; } catch (e) { return null; } };
+const loadSave = () => { try { const j = JSON.parse(localStorage.getItem(SAVE) || 'null'); return j && j.S && j.S.v === 3 ? j : null; } catch (e) { return null; } };
 
 // ── 決断(月末にまとめて実行される)
 const me = () => S.players[ME];
@@ -49,7 +52,7 @@ function hud() {
   const prog = S.t / S.months, C = 2 * Math.PI * 12;
   const pc = pendCost();
   $('#hud').innerHTML = `
-    <button class="pill month" data-a="menu"><svg class="ring" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="#e3e8f5" stroke-width="4"/><circle cx="15" cy="15" r="12" fill="none" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round" stroke-dasharray="${C * prog} ${C}" transform="rotate(-90 15 15)"/></svg><span><div class="m1">${Math.floor(S.t / 12) + 1}年目 · のこり${S.months - S.t}か月</div><div class="m2">${S.t % 12 + 1}月</div></span></button>
+    <button class="pill month" data-a="menu"><svg class="ring" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="#e3e8f5" stroke-width="4"/><circle cx="15" cy="15" r="12" fill="none" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round" stroke-dasharray="${C * prog} ${C}" transform="rotate(-90 15 15)"/></svg><span><div class="m1">${E.STAGES[S.stage].icon} ${S.over ? '終わり' : `${Math.floor(S.t / 12) + 1}年目 · のこり${S.months - S.t}か月`}</div><div class="m2">${S.over ? '最終結果' : `${S.t % 12 + 1}月`}</div></span></button>
     <div class="pill cash"><span class="coin">G</span><span class="num" id="cashv">${fmt(p.cash)}</span>${pc ? `<span class="pend">(予定 −${fmt(pc)})</span>` : ''}</div>
     <button class="pill rank" data-a="ranking"><b class="num">${pos}</b>位</button>`;
 }
@@ -66,7 +69,7 @@ function dock() {
       <button class="abtn go" data-a="next">次の月へ${n ? `<small>決めたこと ${n}</small>` : ''}</button>
     </div>`;
 }
-function render() { hud(); dock(); if (F.sheet) renderSheet(); }
+function render() { hud(); dock(); updateLabels(); if (F.sheet) renderSheet(); }
 
 // ── シート
 const SHEETS = {};
@@ -221,14 +224,15 @@ SHEETS.result = ({ r }) => {
 };
 SHEETS.final = () => {
   const rk = E.ranking(S), pos = rk.findIndex(x => x.p.id === ME) + 1;
+  if (!S.recorded) { S.recorded = 1; setRecord(S.stage, pos, rk[pos - 1].nw); save(); }
   return `<div class="hero box"><div style="font-size:54px">${pos === 1 ? '👑' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : '🌱'}</div><div class="t3">${S.months / 12}年の商売が終わった</div><div class="big">${pos}位</div><div class="t2">${pos === 1 ? '町いちばんの商会になった!' : pos === 2 ? 'あと一歩!' : 'くやしい…次こそ'}</div></div>
     <div class="box">${rk.map((x, i) => `<div class="rk"><span class="pos" style="background:${E.COLOR_HEX[x.p.color]}">${i + 1}</span><div class="nm">${esc(x.p.name)}<small>店 ${E.shopsOf(S, x.p.id).length}</small></div><div class="num" style="font-size:17px">${fmt(x.nw)}G</div></div>`).join('')}</div>
     <div class="box"><div class="lbl">👑 地区の覇者</div>${Object.entries(E.DISTRICTS).map(([d, D]) => { const c = S.crowns && S.crowns[d]; return `<div class="kv"><span class="k">${D.name}</span><span>${c ? pname(S.players[c.pid]) + ` +${E.CROWN_BONUS}G` : '−'}</span></div>`; }).join('')}</div>
     <div class="box"><div class="lbl">🤫 秘密の目標(公開)</div>${S.players.map(p => `<div class="kv"><span class="k">${pname(p)}</span><span>${E.MISSIONS[p.mission].name} ${p.missionDone ? '<span class="up">✔ +' + E.MISSION_BONUS + 'G</span>' : '<span class="t3">✘</span>'}</span></div>`).join('')}</div>
-    <button class="btn warm wide" data-a="newgame">もう一度あそぶ</button>`;
+    <div class="row"><button class="btn wide" data-a="restart2">同じ町でもう一度</button><button class="btn warm wide" data-a="newgame">別の町へ</button></div>`;
 };
 SHEETS.grand = () => head('🏰', E.GRAND.name, E.finalYear(S) ? `のこり${S.months - S.t}か月` : `始まるまで あと${S.months - 12 - S.t}か月`) + `<div class="box"><div class="t2">${E.GRAND.text}</div></div>` + crownBox();
-SHEETS.menu = () => head('⚙️', 'メニュー', '') + `<div class="box"><button class="btn wide" data-a="howto" style="margin-bottom:8px">遊び方</button><button class="btn wide" data-a="credits" style="margin-bottom:8px">クレジット</button><button class="btn wide" data-a="restart">最初からやり直す</button></div>`;
+SHEETS.menu = () => head('⚙️', 'メニュー', `${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name}`) + `<div class="box"><button class="btn wide" data-a="howto" style="margin-bottom:8px">遊び方</button><button class="btn wide" data-a="stagesel" style="margin-bottom:8px">🗺️ 別の町(ステージ)で遊ぶ</button><button class="btn wide" data-a="credits" style="margin-bottom:8px">クレジット</button><button class="btn wide" data-a="restart">最初からやり直す</button></div>`;
 SHEETS.howto = () => head('📖', '遊び方', '5年で町いちばんの商会に') + `<div class="box t2">
   ① 町の<b>「+」</b>をタップして店を開く(4つまで)。同じ地区・同じ業種の店どうしでお客を取り合う。<br>
   ② 店をタップして<b>値段・店員・広告</b>を決める。🔮で来月の利益の見積もりが出る。<br>
@@ -271,8 +275,11 @@ const H = {
   grand: () => openSheet('grand'),
   route: (d) => { const s = S.shops.find(x => x.id === +d.id); F.acts = F.acts.filter(a => !(a.type === 'route' && a.shop === s.id)); const lv = s.route ? s.route.lv + 1 : 1; if (freeCash() < E.ROUTES[d.k].cost[lv - 1]) return toast('お金が足りない'); F.acts.push({ type: 'route', shop: s.id, k: d.k }); sfx('build'); save(); render(); toast(`${E.ROUTES[d.k].name}${lv === 2 ? ' Lv2' : ''}を月末に始める`); },
   routecancel: (d) => { F.acts = F.acts.filter(a => !(a.type === 'route' && a.shop === +d.id)); save(); render(); },
-  newgame: () => { closeSheet(); startNew(); },
-  restart: () => { if (confirm('最初からやり直す?')) { closeSheet(); startNew(); } },
+  newgame: () => { $('.title') && $('.title').remove(); unlockAudio(); openSheet('stages'); },
+  pickstage: (d) => { closeSheet(); startNew(d.v); },
+  restart2: () => { closeSheet(); startNew(S.stage); },
+  restart: () => { if (confirm('最初からやり直す?(同じ町)')) { closeSheet(); startNew(S.stage); } },
+  stagesel: () => { if (!S.t || S.over || confirm('今のゲームをやめて、別の町で始める?')) openSheet('stages'); },
   start: () => { $('.title') && $('.title').remove(); unlockAudio(); sfx('open'); if (!S.t && !F.acts.length) setTimeout(() => openSheet('howto'), 400); },
 };
 document.addEventListener('click', (e) => {
@@ -355,11 +362,20 @@ function confetti() { const c = ['#4f8cff', '#ff5d6c', '#ffc53d', '#3ccf8e', '#c
 let toastT = 0;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2200); }
 
+function updateLabels() {
+  for (const el of document.querySelectorAll('.dlabel')) {
+    const k = el.dataset.d, D = E.DISTRICTS[k]; if (!D) continue; const c = S.crowns && S.crowns[k];
+    const md = D.kind === 'plaza' && E.marketDay({ t: S.t }) ? ' 🛍️' : '';
+    el.innerHTML = `${D.name}${md}${E.finalYear(S) && c ? ` <span style="color:${E.COLOR_HEX[S.players[c.pid].color]}">👑</span>` : ''}<small>家賃${D.rent}</small>`;
+  }
+}
 // ── 地区の名前と自分の店の印(毎フレーム位置を合わせる)
 function labels() {
   const wrap = $('#labels');
-  const centers = { plaza: [0, 0], port: [3, -0.5], hill: [-3, 1] };
-  wrap.innerHTML = Object.entries(centers).map(([k]) => `<div class="dlabel" data-d="${k}">${E.DISTRICTS[k].name}<small>家賃${E.DISTRICTS[k].rent}</small></div>`).join('');
+  const centers = {};
+  for (const d in E.DISTRICTS) { const ls = E.LOTS.filter(l => l.d === d); centers[d] = [ls.reduce((a, l) => a + l.q, 0) / ls.length, ls.reduce((a, l) => a + l.r, 0) / ls.length]; }
+  wrap.innerHTML = Object.keys(centers).map((k) => `<div class="dlabel" data-d="${k}"></div>`).join('');
+  updateLabels();
   board.onFrame = () => {
     for (const el of wrap.children) {
       const [q, r] = centers[el.dataset.d]; const v = hexPos(q, r); v.y = 0.1;
@@ -370,13 +386,20 @@ function labels() {
 }
 
 // ── 始める
-async function startNew() {
+async function startNew(stage) {
+  stage = stage || (S && S.stage) || 'rose';
   const seed = Math.floor(Math.random() * 1e9);
-  S = E.newGame({ seed }); F.acts = []; save();
-  if (board) { await board.reset(); await board.sync(S, ME); }
-  render();
-  setTimeout(() => openSheet('howto'), 300);
+  S = E.newGame({ seed, stage }); F.acts = []; save();
+  $('#loading').classList.remove('off');
+  await board.build(stage); await board.sync(S, ME);
+  labels(); render(); board.home();
+  setTimeout(() => $('#loading').classList.add('off'), 200);
+  setTimeout(() => openSheet('howto'), 500);
 }
+SHEETS.stages = () => {
+  const rec = records();
+  return head('🗺️', 'ステージを選ぶ', '町ごとに地区・客・事件がちがう') + Object.entries(E.STAGES).map(([k, st]) => { const r = rec[k]; return `<button class="good" style="width:100%;margin-bottom:10px;display:flex;gap:12px;align-items:center" data-a="pickstage" data-v="${k}"><div class="gi" style="font-size:38px">${st.icon}</div><div class="grow"><div class="gn">${st.name} <span class="stars">${'★'.repeat(st.diff)}<span style="opacity:.25">${'★'.repeat(3 - st.diff)}</span></span></div><div class="gs">${st.sub} · ${st.desc}</div><div class="gs">${Object.values(st.districts).map(d => d.name).join('・')}${st.maxShops ? ` · 店は${st.maxShops}つまで` : ''}</div>${r && r.pos ? `<div class="gs" style="color:var(--pri)">🏆 最高 ${r.pos}位(${fmt(r.nw)}G)</div>` : ''}</div></button>`; }).join('');
+};
 async function boot() {
   const bar = $('.ld-bar i');
   bar.style.width = '20%';
@@ -386,15 +409,15 @@ async function boot() {
     if (shop != null) { const s = S.shops.find(x => x.id === shop); if (s) { board.focus(s.lot); openSheet('shop', { id: shop }); sfx('tap'); } return; }
     if (lot != null && !S.over) { board.highlightLot(lot); const p = pendOpen(lot); openSheet('lot', { lot, g: p ? p.g : null }); sfx('tap'); }
   };
-  await board.build(); bar.style.width = '80%';
   const sv = loadSave();
-  if (sv) { S = sv.S; F.acts = sv.acts || []; } else { S = E.newGame({ seed: Math.floor(Math.random() * 1e9) }); }
+  if (sv) { S = sv.S; F.acts = sv.acts || []; E.useStage(S.stage); } else { S = E.newGame({ seed: Math.floor(Math.random() * 1e9), stage: 'rose' }); }
+  await board.build(S.stage); bar.style.width = '80%';
   await board.sync(S, ME);
   for (const a of F.acts) if (a.type === 'open') board.preview(a.lot, a.g, me().color);
   labels(); render(); bar.style.width = '100%';
   setTimeout(() => { $('#loading').classList.add('off'); }, 250);
   const tl = document.createElement('div'); tl.className = 'title';
-  tl.innerHTML = `<div class="tl">CAPITAL</div><div class="ts">商会バトル</div><div class="tb"><button class="btn warm" data-a="start">${sv && S.t ? `つづきから(${ym(S.t)})` : 'はじめる'}</button>${sv && S.t ? '<button class="btn ghost" data-a="newgame">新しく始める</button>' : ''}</div>`;
+  tl.innerHTML = `<div class="tl">CAPITAL</div><div class="ts">商会バトル</div><div class="tb">${sv && S.t && !S.over ? `<button class="btn warm" data-a="start">つづきから<br><small>${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name} · ${ym(S.t)}</small></button><button class="btn ghost" data-a="newgame">🗺️ 新しく始める(町を選ぶ)</button>` : `<button class="btn warm" data-a="newgame">はじめる(町を選ぶ)</button>`}</div>`;
   document.body.appendChild(tl);
   if (S.over) setTimeout(() => openSheet('final'), 600);
   window.__game = { get S() { return S; }, F, E, board, H };

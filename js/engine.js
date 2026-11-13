@@ -17,10 +17,10 @@ export const RES = {
   wool: { name: '羊毛', icon: '🐑', base: 1.8, vol: 0.05, impact: 0.003 },
 };
 // 地区の性格: 港=季節で大きく波打つ / 広場=祭りと市の日に強い / 住宅街=安定・常連が大事
-export const DISTRICTS = {
-  plaza: { name: '中央広場', short: '広場', rent: 70, open: 520, demand: { bread: 200, potion: 70, tool: 40, cloth: 95 }, desc: '人通りが一番多い。家賃も高い', trait: '🎪 祭りと3か月ごとの「市の日」に客がどっと増える', color: '#ffb84d' },
-  port: { name: '港通り', short: '港', rent: 50, open: 380, demand: { bread: 135, potion: 95, tool: 64, cloth: 55 }, desc: '旅人と船乗りの町', trait: '🌊 夏は客が1.5倍、冬は半分近くまで減る。商船の月は大にぎわい', color: '#4fb6ff' },
-  hill: { name: '丘の住宅街', short: '住宅街', rent: 32, open: 280, demand: { bread: 225, potion: 52, tool: 34, cloth: 85 }, desc: '住民の毎日の買い物', trait: '🏡 季節や事件の影響が半分。評判の高い店に常連がつく', color: '#7fd67f' },
+const ROSE_D = {
+  plaza: { kind: 'plaza', name: '中央広場', short: '広場', rent: 70, open: 520, demand: { bread: 200, potion: 70, tool: 40, cloth: 95 }, desc: '人通りが一番多い。家賃も高い', trait: '🎪 祭りと3か月ごとの「市の日」に客がどっと増える', color: '#ffb84d' },
+  port: { kind: 'port', name: '港通り', short: '港', rent: 50, open: 380, demand: { bread: 135, potion: 95, tool: 64, cloth: 55 }, desc: '旅人と船乗りの町', trait: '🌊 夏は客が1.5倍、冬は半分近くまで減る。商船の月は大にぎわい', color: '#4fb6ff' },
+  hill: { kind: 'hill', name: '丘の住宅街', short: '住宅街', rent: 32, open: 280, demand: { bread: 225, potion: 52, tool: 34, cloth: 85 }, desc: '住民の毎日の買い物', trait: '🏡 季節や事件の影響が半分。評判の高い店に常連がつく', color: '#7fd67f' },
 };
 export const PRICE_LV = [0.8, 0.9, 1.0, 1.12, 1.25];
 export const PRICE_NAME = ['激安', '安め', 'ふつう', '高め', '高級'];
@@ -32,9 +32,10 @@ export const ROUTES = {
   mass: { name: '薄利多売', icon: '📦', cost: [140, 280], text: ['さばける数 ×1.3・材料費 −8%・安売りしても評判が落ちにくい', 'さばける数 ×1.55・材料費 −14%'], tip: '安くたくさん売る。人通りの多い地区向き' },
   local: { name: '地域密着', icon: '🤝', cost: [120, 240], text: ['評判が上がりやすい・常連がつく(ライバルに客を取られにくい)・家賃 −20%', '評判がさらに上がりやすい・常連が強い・家賃 −35%'], tip: '派手さはないが崩れにくい。住宅街と相性がいい' },
 };
+export const DISTRICTS = {};
 export const WAGE = 30;
 export const LOAN_RATE = 0.015;
-export const MAX_SHOPS = 4;
+export let MAX_SHOPS = 5;
 export const CROWN_BONUS = 400;
 export const MISSION_BONUS = 500;
 
@@ -56,6 +57,8 @@ export const EVENTS = [
   { id: 'cold', name: '寒波', icon: '❄️', text: '寒い冬が来る。服がよく売れそう', dem: { cloth: 1.6 }, len: 2 },
   { id: 'herb_bad', name: '薬草の不作', icon: '🥀', text: '森の薬草が枯れた。薬草が高くなりそう', res: { herb: 1.6 }, len: 2 },
   { id: 'tax', name: '臨時の税', icon: '📜', text: '領主が臨時の税をかける。現金を多く持つ人ほど払う', tax: 0.04, len: 1 },
+  { id: 'vein', name: '新しい鉱脈', icon: '💎', text: '鉱山で新しい鉱脈が見つかった。鉱夫が押し寄せ、鉱山口の客が1.7倍', dist: { mine: 1.7 }, res: { iron: 0.8 }, len: 3, only: 'snow' },
+  { id: 'cavein', name: '坑道の崩落', icon: '🪨', text: '坑道が崩れて鉱夫が減る。鉱山口の客が半分に', dist: { mine: 0.5 }, len: 2, only: 'snow' },
   { id: 'storm', name: '嵐の季節', icon: '⛈️', text: '海が荒れて船が来ない。港の客が減る', dist: { port: 0.6 }, len: 2 },
   { id: 'calm', name: '平和な月', icon: '☀️', text: '特に何もない、おだやかな月', len: 1 },
 ];
@@ -80,7 +83,7 @@ const CARD_POOL = ['shout', 'shout', 'sale', 'sale', 'craft', 'helper', 'remodel
 
 // ── 秘密の目標(最後に達成していたら +500G)
 export const MISSIONS = {
-  port2: { name: '港の顔', text: '最終月に港通りの店を2つ以上持つ' },
+  port2: { name: '旅人の顔', text: '最終月に🌊港・城門タイプの地区に店を2つ以上持つ' },
   allg: { name: 'なんでも屋', text: '最終月に4業種のうち3つ以上の店を持つ' },
   bigm: { name: '大当たり', text: '1つの店で月の利益 250G 以上を一度でも出す' },
   hoard: { name: '倉の主', text: '最終月に資源の在庫を合計 300 以上持つ' },
@@ -91,7 +94,7 @@ export const MISSIONS = {
 };
 
 // ── 盤面(六角マス)の空き地
-export const LOTS = [
+const ROSE_LOTS = [
   // 中央広場
   { id: 0, d: 'plaza', q: 0, r: -1 }, { id: 1, d: 'plaza', q: 1, r: -1 }, { id: 2, d: 'plaza', q: -1, r: 0 }, { id: 3, d: 'plaza', q: 1, r: 0 }, { id: 4, d: 'plaza', q: -1, r: 1 }, { id: 5, d: 'plaza', q: 0, r: 1 },
   // 港通り(東)
@@ -99,8 +102,65 @@ export const LOTS = [
   // 丘の住宅街(西)
   { id: 12, d: 'hill', q: -3, r: 1 }, { id: 13, d: 'hill', q: -3, r: 2 }, { id: 14, d: 'hill', q: -2, r: 2 }, { id: 15, d: 'hill', q: -3, r: 0 }, { id: 16, d: 'hill', q: -2, r: -1 }, { id: 17, d: 'hill', q: -4, r: 2 },
 ];
+export const LOTS = [];
 const hd = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
-export const NEIGHBORS = LOTS.map(a => LOTS.filter(b => b !== a && hd(a, b) === 1).map(b => b.id));
+export const NEIGHBORS = [];
+
+// ── ステージ(町)
+const NB6 = [[0, 0], [1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+let _lid = 0;
+const C = (d, cq, cr, extra = []) => [...NB6.map(([a, b]) => [cq + a, cr + b]), ...extra].map(([q, r]) => ({ id: _lid++, d, q, r }));
+const layout = (...groups) => { _lid = 0; const out = []; for (const g of groups) out.push(...g()); return out; };
+export const STAGES = {
+  rose: {
+    name: 'ローゼの町', sub: 'はじめての商い', diff: 1, icon: '🌷', desc: '広場・港・住宅街のバランスのいい町。まずはここで腕だめし',
+    districts: ROSE_D, lots: layout(() => C('plaza', 0, 0, [[2, -1], [-1, 2]]), () => C('port', 5, -3, [[6, -2], [4, -1]]), () => C('hill', -5, 3, [[-6, 2], [-4, 4]])), water: 'rose', theme: 'green',
+  },
+  marina: {
+    name: '港町マリーナ', sub: '海と嵐の町', diff: 2, icon: '⛵', desc: '店の半分が港。商船の月は大もうけ、嵐の月は閑古鳥。季節を読む町',
+    districts: {
+      harbor: { kind: 'port', name: '波止場', short: '波止場', rent: 55, open: 400, demand: { bread: 185, potion: 130, tool: 90, cloth: 75 }, desc: '船乗りと旅人でにぎわう', trait: '🌊 夏は客が1.5倍、冬は半分近く。商船の月は大にぎわい、嵐の月はがらがら', color: '#4fb6ff' },
+      market: { kind: 'plaza', name: '朝市通り', short: '朝市', rent: 65, open: 480, demand: { bread: 185, potion: 60, tool: 35, cloth: 115 }, desc: '町いちばんの市場', trait: '🎪 祭りと3か月ごとの「市の日」に客がどっと増える', color: '#ffb84d' },
+      cliff: { kind: 'hill', name: '崖の上の住宅地', short: '崖の上', rent: 28, open: 250, demand: { bread: 150, potion: 40, tool: 25, cloth: 70 }, desc: '静かな住宅地', trait: '🏡 季節や事件の影響が半分。評判の高い店に常連がつく', color: '#7fd67f' },
+    },
+    lots: layout(() => C('harbor', 2, 2, [[4, 1], [0, 4], [3, 3]]), () => C('market', -1, -3, [[1, -4]]), () => C('cliff', -6, 1, [[-7, 3]])),
+    water: 'marina', theme: 'green', res: { wool: 1.4, herb: 2.6 }, ev: { ship: 4, storm: 2.5, festival: 0.6 },
+  },
+  snow: {
+    name: '雪山の鉱山町ガルド', sub: '鉱脈と冬の町', diff: 2, icon: '⛏️', desc: '鉱脈が見つかれば鉱夫が押し寄せ、崩れれば消える。冬は服と薬が飛ぶように売れる',
+    districts: {
+      mine: { kind: 'mine', name: '鉱山口', short: '鉱山', rent: 40, open: 330, demand: { bread: 130, potion: 55, tool: 85, cloth: 35 }, desc: '鉱夫たちの町', trait: '⛏️ 鉱脈しだいで客が倍にも半分にもなる。道具がよく売れる', color: '#b08cff' },
+      inn: { kind: 'plaza', name: '宿場町', short: '宿場', rent: 60, open: 450, demand: { bread: 150, potion: 65, tool: 35, cloth: 70 }, desc: '旅人の泊まる宿場', trait: '🎪 祭りと3か月ごとの「市の日」に客がどっと増える', color: '#ffb84d' },
+      village: { kind: 'hill', name: '麓の村', short: '村', rent: 28, open: 260, demand: { bread: 175, potion: 40, tool: 25, cloth: 75 }, desc: '昔からの住民', trait: '🏡 季節や事件の影響が半分。評判の高い店に常連がつく', color: '#7fd67f' },
+    },
+    lots: layout(() => C('mine', 1, -6, [[3, -6]]), () => C('inn', 0, 0, [[2, -1], [-2, 1]]), () => C('village', -5, 4, [[-3, 5]])),
+    water: 'snow', theme: 'snow', winter: 1, res: { iron: 2.4, wheat: 1.0, wool: 2.0 }, ev: { vein: 3, cavein: 2, cold: 3, plague: 2, festival: 0.5, ship: 0, storm: 0 },
+  },
+  capital: {
+    name: '王都ルミナス', sub: '上級者の都', diff: 3, icon: '👑', desc: '地区が4つ、店は5つまで。家賃は高いが、貴族街では高級品が飛ぶように売れる。ライバルも手強い',
+    districts: {
+      noble: { kind: 'noble', name: '貴族街', short: '貴族街', rent: 110, open: 650, demand: { bread: 95, potion: 85, tool: 50, cloth: 145 }, desc: 'お金持ちの屋敷が並ぶ', trait: '💎 お客は値段をあまり気にしない。高級路線が大当たり', color: '#ff8fd0' },
+      plaza: { kind: 'plaza', name: '大広場', short: '大広場', rent: 85, open: 560, demand: { bread: 235, potion: 80, tool: 45, cloth: 110 }, desc: '王都の中心', trait: '🎪 祭りと3か月ごとの「市の日」に客がどっと増える', color: '#ffb84d' },
+      gate: { kind: 'port', name: '城門通り', short: '城門', rent: 55, open: 400, demand: { bread: 150, potion: 110, tool: 95, cloth: 50 }, desc: '旅人と兵士の通り', trait: '🌊 夏は客が1.5倍、冬は半分近く(旅の季節しだい)', color: '#4fb6ff' },
+      slum: { kind: 'hill', name: '下町', short: '下町', rent: 30, open: 260, demand: { bread: 240, potion: 55, tool: 30, cloth: 70 }, desc: '庶民の暮らす町', trait: '🏡 季節や事件の影響が半分。評判の高い店に常連がつく', color: '#7fd67f' },
+    },
+    lots: layout(() => C('noble', 0, -6, [[2, -7]]), () => C('plaza', 0, 0, [[2, -1]]), () => C('gate', 6, -2, [[7, -1]]), () => C('slum', -6, 3, [[-4, 4], [-7, 5]])),
+    water: 'capital', theme: 'green', maxShops: 6, cash: 1200, ev: { tax: 2 }, aiHard: 1,
+  },
+};
+const RES_BASE = Object.fromEntries(Object.entries(RES).map(([k, r]) => [k, r.base]));
+export let STAGE = 'rose';
+export function useStage(id) {
+  const st = STAGES[id] || STAGES.rose; STAGE = STAGES[id] ? id : 'rose';
+  for (const k of Object.keys(DISTRICTS)) delete DISTRICTS[k]; Object.assign(DISTRICTS, st.districts);
+  LOTS.length = 0; LOTS.push(...st.lots);
+  NEIGHBORS.length = 0; NEIGHBORS.push(...LOTS.map(a => LOTS.filter(b => b !== a && hd(a, b) === 1).map(b => b.id)));
+  for (const k in RES) RES[k].base = (st.res && st.res[k]) || RES_BASE[k];
+  MAX_SHOPS = st.maxShops || 5;
+  return st;
+}
+useStage('rose');
+export const kindOf = (d) => (DISTRICTS[d] ? DISTRICTS[d].kind : d);
 
 export const AI_KIND = {
   balanced: { name: 'しっかり者', price: 2, risk: 0.5, route: 'local' },
@@ -110,12 +170,13 @@ export const AI_KIND = {
 };
 const AI_NAMES = [['ベルナ', 'red', 'cheap'], ['グスタフ', 'yellow', 'luxury'], ['ミレイユ', 'green', 'hoarder']];
 
-export function newGame({ seed = 1, players = null, months = MONTHS } = {}) {
-  const S = { v: 2, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
+export function newGame({ seed = 1, players = null, months = MONTHS, stage = 'rose' } = {}) {
+  const st = useStage(stage);
+  const S = { v: 3, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
   const ps = players || [{ name: 'あなた', human: true }, ...AI_NAMES.map(([n, c, k]) => ({ name: n, ai: k }))];
   const mk = Object.keys(MISSIONS).sort(() => 0);
   const deck = mk.slice(); for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(rnd(S) * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
-  ps.forEach((p, i) => S.players.push({ id: i, name: p.name, color: p.color || COLORS[i], human: !!p.human, ai: p.human ? null : (p.ai || 'balanced'), cash: 1000, debt: 0, inv: { wheat: 0, herb: 0, iron: 0, wool: 0 }, invCost: { wheat: 0, herb: 0, iron: 0, wool: 0 }, contracts: [], hand: [], scout: -1, nw: [1000], rankHist: [], mission: deck[i % deck.length], flags: { bigm: 0, bailed: 0, route2: 0, crown: 0 } }));
+  ps.forEach((p, i) => S.players.push({ id: i, name: p.name, color: p.color || COLORS[i], human: !!p.human, ai: p.human ? null : (p.ai || 'balanced'), cash: st.cash || 1000, debt: 0, inv: { wheat: 0, herb: 0, iron: 0, wool: 0 }, invCost: { wheat: 0, herb: 0, iron: 0, wool: 0 }, contracts: [], hand: [], scout: -1, nw: [st.cash || 1000], rankHist: [], mission: deck[i % deck.length], flags: { bigm: 0, bailed: 0, route2: 0, crown: 0 } }));
   for (const k in RES) S.market[k] = { price: RES[k].base, hist: [RES[k].base], k: 1 };
   S.evNext = pickEvent(S);
   dealHands(S);
@@ -123,8 +184,10 @@ export function newGame({ seed = 1, players = null, months = MONTHS } = {}) {
 }
 function pickEvent(S) {
   if (rnd(S) < 0.3) return { id: 'calm' };
-  const pool = EVENTS.filter(e => e.id !== 'calm'), tot = pool.reduce((a, e) => a + (e.w || 1), 0);
-  let x = rnd(S) * tot; for (const e of pool) { x -= e.w || 1; if (x <= 0) return { id: e.id }; }
+  const sw = (STAGES[S.stage] || {}).ev || {};
+  const wOf = (e) => (sw[e.id] != null ? sw[e.id] : (e.w || 1));
+  const pool = EVENTS.filter(e => e.id !== 'calm' && (!e.only || e.only === S.stage) && wOf(e) > 0), tot = pool.reduce((a, e) => a + wOf(e), 0);
+  let x = rnd(S) * tot; for (const e of pool) { x -= wOf(e); if (x <= 0) return { id: e.id }; }
   return { id: pool[0].id };
 }
 export const evDef = (id) => EVENTS.find(e => e.id === id);
@@ -157,11 +220,11 @@ function streetBonus(S, s) { let n = 0; for (const l of NEIGHBORS[s.lot]) { cons
 function season(S, g, d) {
   const mo = S.t % 12;
   let k = 1;
-  const damp = d === 'hill' ? 0.5 : 1;
-  if (g === 'potion') k *= 1 + 0.25 * damp * Math.cos((mo - 0) / 12 * 2 * Math.PI);
-  if (g === 'cloth') k *= 1 + 0.22 * damp * Math.cos((mo - 0.5) / 12 * 2 * Math.PI);
-  if (d === 'port') k *= 1 + 0.42 * Math.cos((mo - 6.5) / 12 * 2 * Math.PI);
-  if (d === 'plaza' && mo % 3 === 2) k *= 1.3;   // 市の日
+  const kd = kindOf(d), damp = kd === 'hill' ? 0.5 : 1, w = (STAGES[S.stage] || {}).winter ? 1.6 : 1;
+  if (g === 'potion') k *= 1 + 0.25 * w * damp * Math.cos((mo - 0) / 12 * 2 * Math.PI);
+  if (g === 'cloth') k *= Math.max(0.3, 1 + 0.22 * w * damp * Math.cos((mo - 0.5) / 12 * 2 * Math.PI));
+  if (kd === 'port') k *= 1 + 0.42 * Math.cos((mo - 6.5) / 12 * 2 * Math.PI);
+  if (kd === 'plaza' && mo % 3 === 2) k *= 1.3;   // 市の日
   // 王都の大祭(最後の年)
   if (S.t >= S.months - 1) k *= 1.6; else if (S.t >= S.months - 3) k *= 1.3;
   return k;
@@ -169,8 +232,9 @@ function season(S, g, d) {
 export const marketDay = (S) => S.t % 12 % 3 === 2;
 function activeMult(S, kind, key, d) {
   let k = 1;
+  if (kind === 'dist') key = kindOf(key);
   for (const a of S.evActive) { const e = evDef(a.id); if (e && e[kind] && e[kind][key]) k *= e[kind][key]; }
-  if (d === 'hill' && kind === 'dem') k = 1 + (k - 1) * 0.5;
+  if (d && kindOf(d) === 'hill' && kind === 'dem') k = 1 + (k - 1) * 0.5;
   return k;
 }
 
@@ -265,11 +329,11 @@ function applyAction(S, pid, a, fx, late) {
 function monthlyUse(S, pid, res) { return shopsOf(S, pid).filter(s => GOODS[s.g].res === res).reduce((a, s) => a + (s.last ? s.last.units : s.staff * GOODS[s.g].capPer * 0.6), 0); }
 
 // お客の取り合い(1つの地区・1つの業種の中で)
-function demandOf(S, d, g, noise) { return DISTRICTS[d].demand[g] * season(S, g, d) * activeMult(S, 'dem', g, d) * activeMult(S, 'dist', d, d) * noise; }
+function demandOf(S, d, g, noise) { return DISTRICTS[d].demand[g] * 1.25 * season(S, g, d) * activeMult(S, 'dem', g, d) * activeMult(S, 'dist', d, d) * noise; }
 function attraction(S, s, pm) {
   const G = GOODS[s.g], R = routeFx(s);
-  const repExp = s.d === 'hill' ? 1.7 : 1.2;
-  return Math.pow(0.35 + s.rep, repExp) * QUALITY[s.qual].k * R.qual * Math.pow(1 / pm, G.elastic * 1.6 * R.elastic) * ADS[s.ads].k * s.boost * streetBonus(S, s);
+  const kd = kindOf(s.d), repExp = kd === 'hill' ? 1.7 : 1.2, nob = kd === 'noble' ? 0.55 : 1;
+  return Math.pow(0.35 + s.rep, repExp) * QUALITY[s.qual].k * R.qual * Math.pow(1 / pm, G.elastic * 1.6 * R.elastic * nob) * ADS[s.ads].k * s.boost * streetBonus(S, s);
 }
 const capOf = (s) => s.staff * GOODS[s.g].capPer * routeFx(s).cap * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1);
 
@@ -369,7 +433,7 @@ export function crownsOf(S) {
 export function missionDone(S, p) {
   const mine = shopsOf(S, p.id), inv = Object.values(p.inv).reduce((a, b) => a + b, 0);
   switch (p.mission) {
-    case 'port2': return mine.filter(s => s.d === 'port').length >= 2;
+    case 'port2': return mine.filter(s => kindOf(s.d) === 'port').length >= 2;
     case 'allg': return new Set(mine.map(s => s.g)).size >= 3;
     case 'bigm': return !!p.flags.bigm;
     case 'hoard': return inv >= 300;
@@ -383,7 +447,7 @@ export function missionDone(S, p) {
 export function missionProgress(S, p) {
   const mine = shopsOf(S, p.id), inv = Object.values(p.inv).reduce((a, b) => a + b, 0);
   switch (p.mission) {
-    case 'port2': return `いま ${mine.filter(s => s.d === 'port').length}/2 店`;
+    case 'port2': return `いま ${mine.filter(s => kindOf(s.d) === 'port').length}/2 店`;
     case 'allg': return `いま ${new Set(mine.map(s => s.g)).size}/3 業種`;
     case 'bigm': return p.flags.bigm ? '達成!' : `最高 ${Math.round(Math.max(0, ...mine.map(s => Math.max(0, ...s.hist))))}G`;
     case 'hoard': return `いま ${Math.round(inv)}/300`;
@@ -405,7 +469,7 @@ export function aiDecide(S, pid) {
     for (const lot of LOTS) {
       if (!lotFree(S, lot.id)) continue;
       for (const g in GOODS) {
-        const cost = openCost(lot.d, g); if (cash < cost + 250 + 300 * (1 - K.risk)) continue;
+        const cost = openCost(lot.d, g); if (cash < cost + ((STAGES[S.stage] || {}).aiHard ? 150 : 250) + 300 * (1 - K.risk)) continue;
         const comp = S.shops.filter(s => s.d === lot.d && s.g === g).length;
         const dem = DISTRICTS[lot.d].demand[g] * GOODS[g].ref * 0.45 / (1 + comp * 1.1);
         const fav = { cheap: 'bread', luxury: 'tool', hoarder: 'potion', balanced: 'cloth' }[p.ai] === g ? 0.08 : 0;
@@ -430,7 +494,7 @@ export function aiDecide(S, pid) {
     if (s.hist.length >= 4 && s.hist.slice(-4).every(x => x < -5)) acts.push({ type: 'close', shop: s.id });
     // 育て方: 黒字の店から
     if (s.months >= 3 && l.profit > 30) {
-      const k = s.route ? s.route.k : (s.d === 'hill' ? 'local' : K.route), lv = s.route ? s.route.lv + 1 : 1;
+      const k = s.route ? s.route.k : (kindOf(s.d) === 'hill' ? 'local' : kindOf(s.d) === 'noble' ? 'lux' : K.route), lv = s.route ? s.route.lv + 1 : 1;
       if (lv <= 2 && cash > ROUTES[k].cost[lv - 1] + 300 && (lv === 1 || s.months >= 12)) { acts.push({ type: 'route', shop: s.id, k }); cash -= ROUTES[k].cost[lv - 1]; }
     }
   }
@@ -469,7 +533,7 @@ export function estimateShop(S, s, patch = {}) {
   const G = GOODS[s.g], R = routeFx(s);
   const pm0 = PRICE_LV[s.priceLv], pm1 = PRICE_LV[patch.priceLv ?? s.priceLv];
   const st1 = patch.staff ?? s.staff, ad1 = patch.ads ?? s.ads;
-  const want = l.want * Math.pow(pm0 / pm1, G.elastic * 1.6 * R.elastic * 0.7) * ADS[ad1].k / ADS[s.ads].k;
+  const want = l.want * Math.pow(pm0 / pm1, G.elastic * 1.6 * R.elastic * 0.7 * (kindOf(s.d) === 'noble' ? 0.55 : 1)) * ADS[ad1].k / ADS[s.ads].k;
   const cap = st1 * G.capPer * R.cap * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1);
   const units = Math.min(want, cap);
   const unitCost = l.units > 0 ? l.cogs / l.units : RES[G.res].base;
