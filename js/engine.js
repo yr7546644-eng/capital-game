@@ -521,7 +521,8 @@ function attraction(S, s, pm) {
 // 目玉商品(レア素材)を並べた店は客寄せが上がる(1個 +8%、最大 +60%)
 function featUnits(S, s) { if (!s.feat || !s.featQty) return 0; const p = S.players[s.owner]; return Math.min(s.featQty, Math.floor(p.inv[s.feat] || 0)); }
 export function featK(S, s) { const u = featUnits(S, s); return u ? Math.min(1.6, 1 + 0.08 * u) : 1; }
-export const featPremium = (S, s, k) => S.market[k].price * (kindOf(s.d) === 'noble' && k === 'seapearl' ? 2.3 : 1.7);
+// 売値の基準は相場だが、ふだんの2倍までにする(自分で買い占めて相場をつり上げても売値は上がりすぎない)
+export const featPremium = (S, s, k) => Math.min(S.market[k].price, RARES[k].base * 2) * (kindOf(s.d) === 'noble' && k === 'seapearl' ? 2.3 : 1.7);
 const capOf = (s) => s.staff * GOODS[s.g].capPer * routeFx(s).cap * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1);
 
 // ── 1か月進める。decisions: {pid: [actions]}(人間とAIの決断)。順番は種で公平にまぜる
