@@ -718,3 +718,16 @@ body:has(.title) #ticker{opacity:0;pointer-events:none}
 .rmg{text-align:center;font-size:14px;font-weight:900;border-radius:999px;padding:4px 10px;margin-bottom:10px}.rmg.win{background:#dff6e8;color:#137a43}.rmg.lose{background:#ffe0e4;color:#c21d3b}.rmg.note{background:#eef1f8;color:#3a4560;font-size:12.5px;border-radius:12px}
 .bres2{display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow:auto;margin-bottom:6px}.rpick{text-align:left;padding:0}.rpick .recipe{margin-bottom:0}.rpick .rmg{margin:2px 0 4px}
 .bneed{display:flex;align-items:center;gap:2px;font-size:11px;font-weight:900;color:#8a5a00;background:#fff3d6;border-radius:999px;padding:1px 8px;margin-top:2px}.bneed img.em3{width:18px;height:18px}
+/* 左上: ターン(大きく目立つ) */
+.turnb{position:relative;display:flex;align-items:center;gap:6px;flex:0 0 auto;height:56px;padding:0 14px 0 6px;border-radius:999px;background:linear-gradient(180deg,#ffb84d,#ff7a3c);border:2px solid #ffd59a;border-bottom:4px solid #c8521f;box-shadow:inset 0 2px 0 rgba(255,255,255,.5),0 6px 16px rgba(255,122,60,.45);color:#fff;pointer-events:auto}
+.turnb .tring{width:44px;height:44px;flex:0 0 44px}
+.turnb .tnum{position:absolute;left:6px;top:50%;width:44px;margin-top:-14px;text-align:center;font-size:22px;font-weight:900;line-height:28px;text-shadow:0 2px 0 rgba(150,50,0,.4)}
+.turnb .ttx{display:flex;flex-direction:column;line-height:1.1;white-space:nowrap;text-align:left}
+.turnb .ttx small{font-size:11px;font-weight:900;opacity:.9}.turnb .ttx b{font-size:16px;font-weight:900;text-shadow:0 2px 0 rgba(150,50,0,.35)}
+#hud{gap:6px}#hud .pill.cash{flex:1 1 auto;min-width:0;justify-content:center}#hud .pill.rank{flex:0 0 auto}
+@media (max-width:390px){
+  .turnb{height:50px;padding:0 10px 0 4px;gap:4px}.turnb .tring{width:40px;height:40px;flex-basis:40px}.turnb .tnum{left:4px;width:40px;font-size:20px}.turnb .ttx b{font-size:14px}.turnb .ttx small{font-size:10px}
+  #hud .pill{padding:6px 10px}#hud .pill.cash .num{font-size:20px}.coin3{width:24px!important;height:24px!important;margin-right:4px}
+  #hud .pill.rank{padding:6px 8px}
+}
+@media (max-width:360px){ .turnb .ttx small{display:none} #hud .pill.rank .rt{display:none} }

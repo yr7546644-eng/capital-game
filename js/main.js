@@ -91,7 +91,7 @@ function hud() {
   const prog = S.t / S.months, C = 2 * Math.PI * 12;
   const pc = pendCost();
   $('#hud').innerHTML = `
-    <button class="pill month" data-a="menu"><svg class="ring" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="#e3e8f5" stroke-width="4"/><circle cx="15" cy="15" r="12" fill="none" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round" stroke-dasharray="${C * prog} ${C}" transform="rotate(-90 15 15)"/></svg><span><div class="m1">${S.over ? '終わり' : `${Math.floor(S.t / 12) + 1}年目 ${S.t % 12 + 1}月`}</div><div class="m2">${S.over ? '最終結果' : `ターン <b>${S.t + 1}</b><small>/${S.months}</small>`}</div></span></button>
+    <button class="turnb" data-a="menu"><svg class="tring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="5"/><circle cx="22" cy="22" r="19" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-dasharray="${2 * Math.PI * 19 * prog} ${2 * Math.PI * 19}" transform="rotate(-90 22 22)"/></svg><span class="tnum">${S.over ? '終' : S.t + 1}</span><span class="ttx"><small>${S.over ? '最終結果' : `ターン /${S.months}`}</small><b>${S.over ? 'おわり' : `${Math.floor(S.t / 12) + 1}年目 ${S.t % 12 + 1}月`}</b></span></button>
     <div class="pill cash">${ico('coin', 'coin3')}<span class="num" id="cashv">${fmt(freeCash())}</span></div>
     <button class="pill rank" data-a="ranking"><b class="num">${pos}</b>位 <span class="rt">${E.RANKS[E.rankOf(E.netWorth(S, p))][2]}</span></button>`;
 }
@@ -1768,7 +1768,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114035155';
+const BUILD = '20261114035829';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
