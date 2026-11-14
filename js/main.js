@@ -333,18 +333,45 @@ SHEETS.market = () => {
   const offers = p.offers || [];
   const tabs = `<div class="seg tabs6" style="margin-bottom:10px">${[['raw', '🌾 原料'], ['proc', '🏭 加工'], ['rare', '💎 レア'], ['ledger', '📜 帳'], ['pact', `📝 契約${(S.pacts || []).some(c => c.left > 0 && (c.seller === ME || c.buyer === ME)) ? ' <span class="badge g">●</span>' : ''}`], ['deal', `🤝 申し出${offers.length ? ` <span class="badge">${offers.length}</span>` : ''}`]].map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" data-a="mtab" data-v="${k}">${n}</button>`).join('')}</div>`;
   const pendQ = (k) => F.acts.filter(a => (a.type === 'buy' || a.type === 'sell') && a.res === k).reduce((a, x) => a + (x.type === 'buy' ? x.qty : -x.qty), 0);
+  // 1品ずつのカード。タップで開いて、数を決めて売り買いする
   const row = (k) => {
-    const r = E.ITEMS[k], m = S.market[k], h = m.hist.slice(-12), mn = Math.min(...h), mx = Math.max(...h);
-    const pts = h.map((v, i) => `${(i / Math.max(1, h.length - 1) * 70).toFixed(1)},${(26 - (v - mn) / Math.max(0.001, mx - mn) * 22).toFixed(1)}`).join(' ');
-    const ch = h.length > 1 ? m.price / h[h.length - 2] - 1 : 0, vsb = m.price / r.base - 1;
-    const have = p.inv[k], avg = have > 0 ? p.invCost[k] / have : 0, pq = pendQ(k);
-    const gain = have > 0 ? have * m.price * (1 - E.SPREAD) - p.invCost[k] : 0;
-    return `<div class="res"><span class="ri">${r.icon}</span><div class="grow"><div>${r.name} <span class="num">${m.price.toFixed(2)}G</span> <small class="${ch >= 0 ? 'down' : 'up'}">${ch >= 0 ? '▲' : '▼'}${Math.abs(ch * 100).toFixed(0)}%</small></div>
-      <div class="t3">買 ${(m.price * (1 + E.SPREAD)).toFixed(2)} / 売 ${(m.price * (1 - E.SPREAD)).toFixed(2)} · ふだん ${r.base.toFixed(2)} · ${vsb > 0.12 ? '<span class="down">高い</span>' : vsb < -0.12 ? '<span class="up">安い</span>' : 'ふつう'}${r.decay ? ` · 毎月${Math.round(r.decay * 100)}%傷む` : ' · 傷まない'}</div>
-      <div class="t3">あなたの在庫 <b>${fmt(have)}</b>${pq ? ` <b>(${pq > 0 ? '+' : ''}${pq})</b>` : ''}${have > 0 ? ` · 平均 ${avg.toFixed(2)}G · 含み<span class="${cls(gain)}">${sign(gain)}G</span>` : ''}</div>
-      ${S.mk && S.mk[k] ? (() => { const mk = S.mk[k], N = E.normalStock(k), lv = mk.stock / N; return `<div class="stockbar"><i style="width:${Math.min(100, lv / 2 * 100)}%;background:${lv < 0.7 ? '#ff7a8a' : lv > 1.3 ? '#34d399' : '#7fc8ff'}"></i><b style="left:50%"></b></div><div class="t3">町の倉 ${fmt(mk.stock)}(ふだん ${fmt(N)}) · 先月 生産 ${fmt(mk.prod)} / 消費 ${fmt(mk.need + (mk.shop || 0))}${mk.shop >= 1 ? `(うち店 ${fmt(mk.shop)})` : ''}</div>`; })() : ''}</div>
-      <svg width="72" height="28"><polyline points="${pts}" fill="none" stroke="${vsb > 0 ? '#ff4f64' : '#20b26b'}" stroke-width="2"/></svg>
-      <div style="display:flex;flex-direction:column;gap:4px"><button class="btn sm pri" data-a="buy" data-v="${k}">買う ${E.isRare(k) ? 2 : E.isProc(k) ? 20 : 50}</button><button class="btn sm" data-a="sell" data-v="${k}" ${have + Math.min(0, pq) > 0 ? '' : 'disabled'}>売る</button></div></div>`;
+    const r = E.ITEMS[k], m = S.market[k], h = m.hist.slice(-12), mn = Math.min(...h), mx = Math.max(...h), open = F.mSel === k;
+    const pts = h.map((v, i) => `${(i / Math.max(1, h.length - 1) * 64).toFixed(1)},${(24 - (v - mn) / Math.max(0.001, mx - mn) * 20).toFixed(1)}`).join(' ');
+    const vsb = m.price / r.base - 1, tag = vsb > 0.12 ? ['高い', 'hi'] : vsb < -0.12 ? ['安い', 'lo'] : ['ふつう', 'mid'];
+    const have = p.inv[k] || 0, pq = pendQ(k);
+    let h0 = `<button class="mrow ${open ? 'open' : ''}" data-a="msel" data-v="${k}"><span class="mri">${r.icon}</span><span class="mrn"><b>${r.name}</b><small>在庫 ${fmt(have)}${pq ? ` <em class="${pq > 0 ? 'up' : 'down'}">${pq > 0 ? '+' : ''}${fmt(pq)}予定</em>` : ''}</small></span>
+      <svg width="66" height="26"><polyline points="${pts}" fill="none" stroke="${vsb > 0 ? '#ff4f64' : '#20b26b'}" stroke-width="2.2" stroke-linecap="round"/></svg>
+      <span class="mrp"><b>${m.price.toFixed(2)}G</b><i class="mtag ${tag[1]}">${tag[0]}</i></span><span class="mchev">${open ? '▲' : '▼'}</span></button>`;
+    if (!open) return h0;
+    // 開いたとき: 意味をことばで + 数を決める
+    const mk = S.mk && S.mk[k], N = E.normalStock(k), lv = mk ? mk.stock / N : 1;
+    const stockWord = lv < 0.7 ? ['少ない', '#e5484d'] : lv > 1.3 ? ['たっぷり', '#16a34a'] : ['ふつう', '#2f5fd0'];
+    const trend = mk ? (mk.prod - mk.need - (mk.shop || 0)) : 0, trendW = !mk ? '' : trend < -N * 0.03 ? '📈 使われる量が多い → <b>値上がりしそう</b>' : trend > N * 0.03 ? '📉 作られる量が多い → <b>値下がりしそう</b>' : '➡️ 作る量と使う量がつり合っている';
+    const use = Math.round(E.useOf ? E.useOf(S, ME, k) : 0), avg = have > 0 ? p.invCost[k] / have : 0, gain = have > 0 ? have * m.price * (1 - E.SPREAD) - p.invCost[k] : 0;
+    const T = F.mT = F.mT || { mode: 'buy', q: E.isRare(k) ? 2 : E.isProc(k) ? 20 : 50 };
+    const canSell = Math.max(0, Math.floor(have + Math.min(0, pq)));
+    if (T.mode === 'sell') T.q = Math.min(T.q, canSell);
+    const q = Math.max(0, T.q), cost = q ? (T.mode === 'buy' ? E.quote(S, k, q) : E.sellQuote(S, k, q)) : 0;
+    const stockAfter = mk ? mk.stock - pq - (T.mode === 'buy' ? q : -q) : N, after = E.priceAt(k, stockAfter), dp = after / m.price - 1;
+    const step = E.isRare(k) ? 1 : E.isProc(k) ? 5 : 10, presets = E.isRare(k) ? [1, 2, 5] : E.isProc(k) ? [10, 20, 50] : [10, 50, 100, 200];
+    const pend = F.acts.filter(a => (a.type === 'buy' || a.type === 'sell') && a.res === k);
+    h0 += `<div class="mpanel">
+      <div class="mfacts">
+        <div><span>💴 いまの相場</span><b>${m.price.toFixed(2)}G</b><small>ふだんは ${r.base.toFixed(2)}G → <i class="mtag ${tag[1]}">${tag[0]}</i></small></div>
+        <div><span>🛒 買うと 1個</span><b>${(m.price * (1 + E.SPREAD)).toFixed(2)}G</b><small>💰 売ると 1個 ${(m.price * (1 - E.SPREAD)).toFixed(2)}G(差は手数料${Math.round(E.SPREAD * 100)}%)</small></div>
+        <div><span>🏚️ 町の倉</span><b style="color:${stockWord[1]}">${stockWord[0]}</b><small><span class="stockbar"><i style="width:${Math.min(100, lv / 2 * 100)}%;background:${stockWord[1]}"></i><b style="left:50%"></b></span>倉が少ないほど値段が上がる</small></div>
+        ${mk ? `<div class="wide"><small>${trendW}(先月 作られた ${fmt(mk.prod)} / 使われた ${fmt(mk.need + (mk.shop || 0))})</small></div>` : ''}
+        <div><span>📦 あなたの在庫</span><b>${fmt(have)}個</b><small>${have > 0 ? `平均 ${avg.toFixed(2)}Gで仕入れ · いま売ると <span class="${cls(gain)}">${sign(gain)}G</span>` : 'なし'}</small></div>
+        <div><span>🏪 あなたの店が使う</span><b>${use ? `月 ${fmt(use)}個` : '—'}</b><small>${r.decay ? `🥀 毎月 ${Math.round(r.decay * 100)}% 傷んで減る` : '🧊 傷まない'} · 保管料あり</small></div>
+      </div>
+      <div class="seg mmode"><button class="${T.mode === 'buy' ? 'on' : ''}" data-a="mmode" data-v="buy">🛒 買う</button><button class="${T.mode === 'sell' ? 'on' : ''}" data-a="mmode" data-v="sell" ${canSell ? '' : 'disabled'}>💰 売る</button></div>
+      <div class="mqty"><button class="mqb" data-a="mq" data-v="${-step}">−</button><div class="mqv"><b>${fmt(q)}</b><small>個</small></div><button class="mqb" data-a="mq" data-v="${step}">+</button></div>
+      <div class="chips mpre">${presets.map(v => `<button class="chip ${q === v ? 'on' : ''}" data-a="mqset" data-v="${v}">${v}</button>`).join('')}${T.mode === 'buy' && use ? `<button class="chip" data-a="mqset" data-v="${Math.max(step, Math.ceil(use / step) * step)}">1か月分</button>` : ''}${T.mode === 'sell' && canSell ? `<button class="chip" data-a="mqset" data-v="${canSell}">ぜんぶ</button>` : ''}</div>
+      <div class="msum">${T.mode === 'buy' ? `合計 <b class="down">−${fmt(Math.round(cost))}G</b>` : `合計 <b class="up">+${fmt(Math.round(cost))}G</b>`}${q ? ` <small>(1個平均 ${(cost / q).toFixed(2)}G)</small>` : ''}<br><small>${T.mode === 'buy' ? '買うと倉が減って' : '売ると倉が増えて'} 相場 ${m.price.toFixed(2)} → <b class="${dp > 0 ? 'down' : 'up'}">${after.toFixed(2)}G</b>(${dp >= 0 ? '+' : ''}${Math.round(dp * 100)}%)</small></div>
+      <button class="btn wide ${T.mode === 'buy' ? 'pri' : 'warm'} mgo" data-a="mgo" data-v="${k}" ${q > 0 && (T.mode === 'sell' || freeCash() >= cost) ? '' : 'disabled'}>${q <= 0 ? '数を選んで' : T.mode === 'buy' ? (freeCash() >= cost ? `🛒 ${fmt(q)}個 買う` : 'お金が足りない') : `💰 ${fmt(q)}個 売る`}</button>
+      ${pend.length ? `<div class="mpend">${pend.map((a, i) => `<span>${a.type === 'buy' ? '🛒 買う' : '💰 売る'} ${fmt(a.qty)}個</span>`).join(' · ')} <small>(月末に実行)</small> <button class="btn sm" data-a="mcancel" data-v="${k}">取り消す</button></div>` : ''}
+    </div>`;
+    return h0;
   };
   let body = '';
   if (tab === 'raw') body = `<div class="box">${Object.keys(E.RES).map(row).join('')}</div><div class="t3">店は毎月、材料を使う。在庫があれば先に使い、なければその月の値段で買う。安いときに買っておけば値上がりしても困らない。小麦と薬草は傷むので抱えすぎ注意。保管料もかかる。</div>`;
@@ -648,6 +675,8 @@ function actionFx(a, d, r, before) {
     case 'route': if (added) { FX.stamp('育て方 決定!', '#7c4dff'); if (lot != null) board.pillar(lot, 0xc79bff); } break;
     case 'routecancel': case 'cancelopen': case 'unpropose': case 'cardcancel': FX.float(c.x, c.y - 10, '↩︎ 取り消し', '#6b7280'); FX.burst(c.x, c.y, ['#c9ced9', '#fff'], 8); break;
     case 'closeshop': FX.stamp('閉店…', '#6b7280'); if (lot != null) board.burst(lot, 0x9aa3b5, 16, 0.5); break;
+    case 'mgo': if (added) { const la = F.acts[F.acts.length - 1]; if (la.type === 'buy') { coinFly(cashPos(), c, 8); FX.float(c.x, c.y - 16, `📦 +${fmt(la.qty)}個`, '#2f5fd0'); FX.burst(c.x, c.y, ['#7cc7ff', '#fff'], 14); } else { coinFly(c, cashPos(), 8); FX.float(c.x, c.y - 16, `💰 ${fmt(la.qty)}個 売り!`, '#e07b1a'); FX.burst(c.x, c.y, ['#ffd36e', '#fff'], 14); } } break;
+    case 'mcancel': FX.float(c.x, c.y - 10, '↩︎ 取り消し', '#6b7280'); break;
     case 'buy': if (added) { coinFly(cashPos(), c, 6); FX.float(c.x, c.y - 14, `📦 +${fmt(F.acts[F.acts.length - 1].qty)}`, '#2f5fd0'); FX.burst(c.x, c.y, ['#7cc7ff', '#fff'], 10); } break;
     case 'sell': if (added) { coinFly(c, cashPos(), 6); FX.float(c.x, c.y - 14, `💰 売り!`, '#e07b1a'); FX.burst(c.x, c.y, ['#ffd36e', '#fff'], 10); } break;
     case 'deal': if (added) { FX.stamp('取引成立!', '#e07b1a'); coinFly(c, cashPos(), 6); } else FX.float(c.x, c.y - 10, '↩︎ やめた', '#6b7280'); break;
@@ -1032,6 +1061,15 @@ const H = {
   seta: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: +d.v }); sfx('tap'); render(); },
   closeshop: (d) => { if (!confirm('この店をたたむ?(月末に売れる)')) return; F.acts = F.acts.filter(a => !(a.type === 'set' && a.shop === +d.id)); F.acts.push({ type: 'close', shop: +d.id }); save(); closeSheet(); render(); toast('月末に店をたたむ'); },
   mtab: (d) => { F.mtab = d.v; renderSheet(); },
+  msel: (d) => { F.mSel = F.mSel === d.v ? null : d.v; F.mT = { mode: 'buy', q: E.isRare(d.v) ? 2 : E.isProc(d.v) ? 20 : 50 }; sfx('tap'); renderSheet(); },
+  mmode: (d) => { F.mT.mode = d.v; if (d.v === 'sell') { const k = F.mSel, have = me().inv[k] || 0; F.mT.q = Math.min(F.mT.q, Math.floor(have)); } sfx('toggle'); renderSheet(); },
+  mq: (d) => { F.mT.q = Math.max(0, Math.min(2000, F.mT.q + +d.v)); sfx('tap'); renderSheet(); },
+  mqset: (d) => { F.mT.q = +d.v; sfx('tap'); renderSheet(); },
+  mgo: (d) => { const k = d.v, T = F.mT, q = T.q; if (q <= 0) return;
+    if (T.mode === 'buy') { const c = E.quote(S, k, q); if (freeCash() < c) return toast('お金が足りない'); F.acts.push({ type: 'buy', res: k, qty: q }); }
+    else { const have = me().inv[k] - F.acts.filter(a => a.type === 'sell' && a.res === k).reduce((a, x) => a + x.qty, 0); const qq = Math.min(q, Math.floor(have)); if (qq <= 0) return toast('在庫がない'); F.acts.push({ type: 'sell', res: k, qty: qq }); }
+    sfx('coin'); save(); render(); },
+  mcancel: (d) => { F.acts = F.acts.filter(a => !((a.type === 'buy' || a.type === 'sell') && a.res === d.v)); sfx('close'); save(); render(); },
   showfinal: () => openSheet('final'),
   online: () => { $('.title') && $('.title').remove(); unlockAudio(); openSheet('online'); },
   mpcreate: () => mpConnect(newCode(), true),
@@ -1433,4 +1471,17 @@ async function boot() {
   const q = new URLSearchParams(location.search).get('room'); if (q) { F.joinCode = q.toUpperCase(); setTimeout(() => { $('.title') && $('.title').remove(); unlockAudio(); openSheet('online'); }, 700); }
 }
 boot();
+// 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
+const BUILD = '20261114015416';
+(async () => {
+  try {
+    const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
+    if (v && v !== BUILD && sessionStorage.getItem('capital-reloaded') !== v) {
+      sessionStorage.setItem('capital-reloaded', v);
+      if (navigator.serviceWorker) { const r = await navigator.serviceWorker.getRegistration(); if (r) await r.update(); }
+      if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
+      location.reload();
+    }
+  } catch (e) { }
+})();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
