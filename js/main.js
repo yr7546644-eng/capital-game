@@ -103,6 +103,7 @@ function dock() {
   $('#dock').innerHTML = `
     <div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="weather"><span class="ei">${wx(me().scout === S.t ? S.wNext : S.wFore).icon}</span><span><span class="et">天気予報${me().scout === S.t ? '(確実)' : ''}</span><br>${wx(me().scout === S.t ? S.wNext : S.wFore).name}</span></button>${ev ? `<button class="evchip" data-a="event"><span class="ei">${ev.icon}</span><span><span class="et">来月の予報${E.marketDay({ t: S.t }) ? ' · 🛍️市の日' : ''}</span><br>${esc(ev.name)}</span></button>` : ''}${S.t >= S.months - 18 ? `<button class="evchip grand" data-a="grand"><span class="ei">🏰</span><span><span class="et">${E.finalYear(S) ? '大祭の年' : '大祭まで'}</span><br>${E.finalYear(S) ? `のこり${S.months - S.t}か月` : `あと${S.months - 12 - S.t}か月`}</span></button>` : ''}</div>
     ${F.mp ? `<div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="stamps">💬 スタンプ</button><button class="evchip" data-a="online">🌐 ${humansOf().filter(x => x.cid === NET.cid || NET.online(x.cid)).length}/${humansOf().length}人</button></div>${F.stampOpen ? `<div class="stray">${STAMPS.map(x => `<button class="stb" data-a="stamp" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}` : ''}
+    ${(() => { const p = me(), its = Object.keys(E.ITEMS).filter(k => (p.inv[k] || 0) >= 1).sort((a, b) => p.inv[b] * S.market[b].price - p.inv[a] * S.market[a].price).slice(0, 4); return `<button class="bagbar" data-a="bag"><span class="bbl">持ち物</span>${its.length ? its.map(k => `<span class="bbi">${ico(k)}<b>${fmt(p.inv[k])}</b></span>`).join('') : '<span class="bbe">なし</span>'}<span class="bbs">${ico('b_bread')}<b>${E.shopsOf(S, ME).length}</b></span></button>`; })()}
     ${!S.over && freeCash() < nextFixed() ? `<button class="evchip cashwarn" data-a="books">⚠️ 来月の支払い 約${fmt(Math.round(nextFixed()))}G に現金が足りない</button>` : ''}
     ${F.alerts && F.alerts.length && !S.over ? `<button class="evchip alertchip" data-a="alerts">⚠️ 判断が必要 ${F.alerts.length}件</button>` : ''}
     <div class="hand">${p.hand.map((c, i) => { const cd = E.cardDef(c); const isUsed = used && used.card === c && used.idx === i; const ct = CARD_TYPE[cd.base] || ['shop', 'お店'];
@@ -174,7 +175,7 @@ SHEETS.lot = ({ lot }) => {
   }).join('') + `<button class="good ${sel === 'work' ? 'on' : ''}" data-a="pickgood" data-v="work"><div class="gi">🏭</div><div class="gn">工房</div><div class="gs">開業 ${fmt(E.openCost(L.d, 'work'))}G<br>原料を加工品にして売る</div></button>`;
   const mine = E.shopsOf(S, ME).length + F.acts.filter(a => a.type === 'open').length - (pend ? 1 : 0);
   let foot = '';
-  if (pend) foot = `<div class="t2" style="margin:8px 0">ここに<b>${E.GOODS[pend.g].name}</b>を開く予定。月末に建つ。</div><button class="btn wide" data-a="cancelopen" data-v="${lot}">開業の予定をやめる</button>`;
+  if (pend) foot = `<div class="t2" style="margin:8px 0">ここに<b>${pend.g === 'work' ? '工房' : E.GOODS[pend.g].name}</b>を建てる予定(月末に完成)</div><div class="row" style="gap:8px"><button class="btn pri" style="flex:1" data-a="moveopen" data-v="${lot}">📍 場所を変える</button><button class="btn" style="flex:1" data-a="cancelopen" data-v="${lot}">やめる</button></div>`;
   else if (mine >= E.MAX_SHOPS) foot = `<div class="t2">お店は${E.MAX_SHOPS}つまで。</div>`;
   else if (sel === 'work') {
     const c = E.openCost(L.d, 'work'), ok = freeCash() >= c, rs = F.args.res || null;
@@ -659,6 +660,15 @@ function pactTab() {
     ${pend.map(a => `<div class="t2" style="margin-top:6px">⏳ ${esc(S.players[a.to].name)}に ${E.ITEMS[a.item].name} ${fmt(a.qty)}個/月 を${a.role === 'sell' ? '売る' : '買う'}契約を申し込む予定 <button class="btn sm" data-a="unpropose" data-v="${a.to}:${a.item}">やめる</button></div>`).join('')}</div>`;
   return h;
 }
+// 持ち物: 持っている品物と、それで何ができるか
+SHEETS.bag = () => {
+  const p = me(), items = Object.keys(E.ITEMS).filter(k => (p.inv[k] || 0) >= 1).sort((a, b) => p.inv[b] * S.market[b].price - p.inv[a] * S.market[a].price);
+  const mine = E.shopsOf(S, ME);
+  let h = head('🎒', '持ち物', `現金 ${fmt(freeCash())}G · 店 ${mine.length}つ`);
+  h += `<div class="bagshops">${mine.length ? mine.map(s => `<button class="bagshop" data-a="shop" data-id="${s.id}">${ico(s.g === 'work' ? 'b_work' : 'b_' + s.g)}<b>${gd(s).name}</b><small>${E.DISTRICTS[s.d].short}</small><em class="${cls(s.last ? s.last.profit : 0)}">${s.last ? sign(Math.round(s.last.profit)) + 'G' : '新店'}</em></button>`).join('') : '<div class="t2">まだ店がない。🔨建てるから</div>'}</div>`;
+  h += `<div class="baggrid">${items.length ? items.map(k => { const r = E.ITEMS[k], v = Math.round(p.inv[k] * S.market[k].price), feat = E.isRare(k) && E.storesOf(S, ME).some(s => s.g === E.RARES[k].use); return `<div class="bagit">${ico(k)}<b>${r.name}</b><small>${fmt(p.inv[k])}個 · 約${fmt(v)}G</small><div class="row" style="gap:4px">${!E.isRare(k) || E.peddlerHas(S, k) ? `<button class="btn sm warm" data-a="bagsell" data-v="${k}">売る</button>` : ''}${feat ? `<button class="btn sm pri" data-a="bagfeat" data-v="${k}">目玉に</button>` : ''}</div></div>`; }).join('') : '<div class="t2" style="grid-column:1/-1">品物は持っていない。🛒市場で安いときに買える</div>'}</div>`;
+  return h;
+};
 // 帳簿(自分の店の一覧・借金)
 SHEETS.books = () => {
   const p = me(), mine = E.shopsOf(S, ME), sum = mine.reduce((a, s) => a + (s.last ? s.last.profit : 0), 0);
@@ -1193,6 +1203,10 @@ const H = {
     buildEnd(); board.preview(B.lot, B.g, me().color); setTimeout(() => board.dust(B.lot), 120);
     sfx('build'); haptic(30); save(); render(); toast('🔨 建設開始! 月末に完成する');
   },
+  moveopen: (d) => { const lot = +d.v, a = F.acts.find(x => x.type === 'open' && x.lot === lot); if (!a) return; F.acts = F.acts.filter(x => x !== a); board.preview(lot, null); save(); closeSheet(); F.build = { step: 'type', lot: null }; buildPick(a.g, a.res); toast('新しい場所をタップ'); },
+  bag: () => openSheet('bag'),
+  bagsell: (d) => { F.mtab = E.isRare(d.v) ? 'rare' : E.isProc(d.v) ? 'proc' : 'raw'; F.mSel = d.v; F.mT = { mode: 'sell', q: Math.floor(me().inv[d.v] || 0) }; openSheet('market'); },
+  bagfeat: (d) => { const s = E.storesOf(S, ME).find(x => x.g === E.RARES[d.v].use); if (!s) return toast('使える店がない'); setPending(s.id, { ...(pendSet(s.id) || {}), feat: d.v, featQty: Math.min(10, Math.floor(me().inv[d.v])) }); sfx('card'); toast(`${gd(s).name}の目玉商品にした`); render(); },
   cancelopen: (d) => { const lot = +d.v; F.acts = F.acts.filter(a => !(a.type === 'open' && a.lot === lot)); board.preview(lot, null); save(); closeSheet(); render(); },
   setp: (d) => { const s = S.shops.find(x => x.id === +d.id); setPending(s.id, { priceLv: +d.v, staff: shopView(s).staff, ads: shopView(s).ads }); sfx('tap'); render(); },
   sets: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: Math.max(1, Math.min(5, v.staff + +d.v)), ads: v.ads }); sfx('tap'); render(); },
@@ -1524,7 +1538,7 @@ function popAt(pos, v, color) { const d = document.createElement('div'); d.class
 function cashRoll() {
   const el = $('#cashv'); if (!el) return; const v = Math.round(freeCash()), old = F.cashShown;
   F.cashShown = v; if (old == null || old === v) return;
-  el.textContent = fmt(old); const pill = el.closest('.pill'); if (pill) { pill.classList.remove('bump', 'dip'); void pill.offsetWidth; pill.classList.add(v > old ? 'bump' : 'dip'); }
+  el.textContent = fmt(old); const pill = el.closest('.pill'); if (pill && Math.abs(v - old) >= 1) { const r = pill.getBoundingClientRect(); FX.float(r.left + r.width / 2, r.bottom + 16, `${v > old ? '+' : '−'}${fmt(Math.abs(v - old))}G`, v > old ? '#16a34a' : '#e5484d'); } if (pill) { pill.classList.remove('bump', 'dip'); void pill.offsetWidth; pill.classList.add(v > old ? 'bump' : 'dip'); }
   const t0 = performance.now(), tick = (t) => { const k = Math.min(1, (t - t0) / 700), e = 1 - Math.pow(1 - k, 3); if (!el.isConnected) return; el.textContent = fmt(Math.round(old + (v - old) * e)); if (k < 1) requestAnimationFrame(tick); }; requestAnimationFrame(tick);
 }
 function countUp(el, v) { if (!el) return; const t0 = performance.now(); const tick = (t) => { const k = Math.min(1, (t - t0) / 900); el.textContent = sign(v * (1 - Math.pow(1 - k, 3))) + 'G'; if (k < 1) requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
@@ -1614,7 +1628,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114024759';
+const BUILD = '20261114024847';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
