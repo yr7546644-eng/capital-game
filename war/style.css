@@ -157,3 +157,24 @@ body.live #chartbox{border-color:rgba(255,211,110,.5);box-shadow:0 0 0 1px rgba(
 .vrow{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.05);border-radius:10px;padding:4px 8px;border-left:4px solid var(--c)}.vrow img.ic{width:26px;height:26px}.vrow b{flex:1;font-size:13px}.vrow span{font-weight:900;font-size:13px}.vrow em{font-style:normal;font-weight:900;width:36px;text-align:right}
 .vbar{display:flex;height:12px;border-radius:9px;overflow:hidden;background:rgba(255,255,255,.08);margin-bottom:10px}.vbar i{display:block;height:100%;width:0;transition:width .8s cubic-bezier(.2,.9,.3,1)}.vbar .yes{background:var(--up)}.vbar .no{background:var(--dn)}
 .vbtns{display:flex;gap:8px}.vbtns .btn{flex:1}.btn.yes{background:linear-gradient(180deg,#5ee6a6,#1f9e66);border-bottom-color:#0d5c3a}.btn.no{background:linear-gradient(180deg,#ff8a95,#d63048);border-bottom-color:#7a1020}
+
+/* 一騎打ち・大相場・決算・連勝 */
+.duel{display:flex;gap:10px;align-items:flex-start;background:linear-gradient(135deg,color-mix(in srgb,var(--c) 30%,#1d1830),#1d1830);border:2px solid var(--c);border-radius:16px;padding:10px;margin-bottom:8px;animation:duelin .5s cubic-bezier(.2,1.3,.4,1)}
+@keyframes duelin{from{transform:translateX(-30px) rotate(-3deg);opacity:0}}
+.duel img.dface{width:52px;height:52px;flex:0 0 52px}
+.duel .dt{flex:1;display:flex;flex-direction:column;gap:3px}.duel .dt>small:first-child{font-size:11px;font-weight:900;letter-spacing:.2em;color:var(--c)}.duel .dt b{font-size:14px;line-height:1.4}.duel .dt>small{font-size:11px;color:#cfc8ea}
+.duel .dt small.on{color:var(--gold);font-weight:900}
+.duel.on{box-shadow:0 0 0 2px var(--gold),0 0 20px rgba(255,211,110,.35)}.duel.no{opacity:.5}
+.dbtns{display:flex;gap:6px}.dbtns .btn{margin-top:4px;padding:9px 6px;font-size:14px}
+.bigm{display:flex;gap:10px;align-items:center;background:linear-gradient(90deg,rgba(255,90,106,.3),rgba(255,211,110,.2));border:2px solid #ff8a5c;border-radius:14px;padding:8px 10px;margin-bottom:8px;animation:blink2 1s ease-in-out infinite}
+.bigm img.ic{width:38px;height:38px}.bigm b{font-size:16px;color:#ffd0a0}.bigm small{display:block;font-size:11px;color:#ffe6d0}
+@keyframes blink2{50%{box-shadow:0 0 18px rgba(255,138,92,.6)}}
+.earn{background:rgba(255,255,255,.05);border-radius:14px;padding:8px 10px;margin-bottom:8px}.earn .el{font-size:12px;font-weight:900;color:var(--gold);margin-bottom:4px}
+.er{display:flex;align-items:center;gap:6px;padding:2px 0}.er img.ic{width:24px;height:24px}.er b{flex:1;font-size:13px}.er span{font-weight:900;font-size:13px}
+.duelres{display:flex;align-items:center;gap:8px;justify-content:center;background:rgba(255,255,255,.06);border-radius:12px;padding:6px 10px;margin-bottom:6px}.duelres img.ic{width:30px;height:30px}.duelres span{font-size:13px;font-weight:800}.duelres b{font-size:20px;font-weight:900}
+.duelres.win{background:rgba(60,207,142,.18);border:1px solid var(--up)}.duelres.win b{color:var(--up)}.duelres.lose{background:rgba(255,90,106,.15);border:1px solid var(--dn)}.duelres.lose b{color:var(--dn)}
+.streak{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:4px}.streak img.ic{width:28px;height:28px;animation:fl 1s ease-in-out infinite}.streak b{font-size:16px;color:#ffb070}.streak span{font-size:12px;font-weight:900;color:var(--gold)}
+.banner small.flash{font-size:11px;font-weight:900;letter-spacing:.3em;color:#fff;background:#e5243b;padding:1px 10px;border-radius:999px;margin-bottom:2px}
+.count{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);font-size:110px;font-weight:900;color:#fff;text-shadow:0 0 30px rgba(255,211,110,.8),0 6px 0 rgba(0,0,0,.4);animation:cnt .8s ease-out forwards}
+@keyframes cnt{0%{transform:translate(-50%,-50%) scale(1.8);opacity:0}20%{transform:translate(-50%,-50%) scale(1);opacity:1}100%{transform:translate(-50%,-50%) scale(.8);opacity:0}}
+#plv.jump{animation:jmp .35s cubic-bezier(.2,1.6,.4,1)}@keyframes jmp{0%{transform:scale(1.35)}100%{transform:none}}
