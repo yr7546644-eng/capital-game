@@ -95,7 +95,7 @@ function pickBgm() {
 
 // ── シート
 const SHEETS = {};
-function openSheet(kind, args = {}) { F.sheet = kind; F.args = args; renderSheet(); $('#sheet').scrollTop = 0; $('#sheet').classList.toggle('half', kind === 'stages'); $('#sheetwrap').classList.add('on'); sfx('open'); }
+function openSheet(kind, args = {}) { const tu = document.getElementById('tut'); if (tu) tu.remove(); F.sheet = kind; F.args = args; renderSheet(); $('#sheet').scrollTop = 0; $('#sheet').classList.toggle('half', kind === 'stages'); $('#sheetwrap').classList.add('on'); sfx('open'); }
 function closeSheet() { F.sheet = null; $('#sheetwrap').classList.remove('on'); board && board.highlightLot(-1); }
 function renderSheet() { const f = SHEETS[F.sheet]; if (!f) return; $('#sheet').innerHTML = '<div class="grab"></div>' + f(F.args); }
 const head = (icon, title, sub) => `<div class="sh"><div class="si">${icon}</div><h3>${title}${sub ? `<small>${sub}</small>` : ''}</h3><button class="x" data-a="close">✕</button></div>`;
@@ -602,6 +602,67 @@ SHEETS.event = () => {
     <div class="t3">予報を見て、先に動いた人が勝つ。たとえば不作の前に材料を買っておく、祭りの前に店員を増やす。</div>`;
 };
 // 順位
+// ── チュートリアル(めくって読む、ゲーム風の遊び方)
+const TUT = [
+  { hero: '🏆', bg: ['#ffcf5c', '#ff8a5c'], tag: 'ゴール', title: '町いちばんの商会になれ!', body: '最後の月に<b>純資産</b>がいちばん多い人の勝ち。', vis: () => `<div class="tv-eq"><span>💰<small>現金</small></span><i>+</i><span>📦<small>在庫</small></span><i>+</i><span>🏠<small>店の価値</small></span><i>−</i><span>💸<small>借金</small></span></div><div class="tv-note">儲かり続けている店ほど、価値が高い</div>` },
+  { hero: '🏠', bg: ['#7cc7ff', '#4f7cff'], tag: 'STEP 1', title: '＋をタップして店を開く', body: '地図の白い<b>＋</b>が空き地。業種を選ぶと、月末に店が建つ。', vis: () => `<div class="tv-row">${['🥖', '🧪', '⚒️', '🧵'].map((x, i) => `<span class="tv-ic" style="animation-delay:${i * 0.12}s">${x}</span>`).join('')}</div><div class="tv-note">パン屋・薬屋・鍛冶屋・仕立て屋</div>` },
+  { hero: '🧑‍🍳', bg: ['#8be0b5', '#2fb77a'], tag: 'STEP 2', title: '値段・店員・広告を決める', body: '店をタップして調整。<b>🔮</b>で来月の利益が見積もれる。', vis: () => `<div class="tv-sl"><div><span>💴 値段</span><b style="--w:45%"></b></div><div><span>🧑 店員</span><b style="--w:65%"></b></div><div><span>📣 広告</span><b style="--w:30%"></b></div></div><div class="tv-note">安い → 客は増えるが、1個の儲けは減る</div>` },
+  { hero: '⚔️', bg: ['#ff9aa8', '#e8436a'], tag: 'バトル', title: 'ライバルとお客を奪い合う', body: '同じ地区・同じ業種の店どうしで取り合い。', vis: () => `<div class="tv-row"><span class="tv-pill r">真横に安い店 → 客を奪う</span><span class="tv-pill g">別業種を並べる → 商店街ボーナス</span></div>` },
+  { hero: '🃏', bg: ['#c9a2ff', '#7c4dff'], tag: 'カード', title: '毎月3枚、1枚だけ使える', body: '呼び込み・値引き・職人・攻撃…ここぞで使おう。', vis: () => `<div class="tv-cards">${[['📣', '呼び込み'], ['🥊', '客引き合戦'], ['🏦', '融資']].map(([i, n], k) => `<span style="--r:${(k - 1) * 9}deg">${i}<small>${n}</small></span>`).join('')}</div>` },
+  { hero: '🛒', bg: ['#ffd36e', '#f2a51a'], tag: '市場', title: '材料は安いときに買いだめ', body: '値段は町の倉の在庫で決まる。みんなが買うと値上がり。', vis: () => `<div class="tv-bars">${[60, 45, 35, 50, 72, 90].map((h, i) => `<b style="--h:${h}%;animation-delay:${i * 0.08}s"></b>`).join('')}</div><div class="tv-note">収穫の後は安い・不作の年は高い</div>` },
+  { hero: '🔮', bg: ['#7ad7e8', '#2a9bc4'], tag: '予報', title: '来月を読んで先回り', body: '天気と出来事の予報を見て、人手や仕入れを先に合わせる。', vis: () => `<div class="tv-row">${['☀️ 晴れ', '🌧️ 雨', '⛵ 商船', '🎪 祭り'].map(x => `<span class="tv-pill">${x}</span>`).join('')}</div>` },
+  { hero: '🤝', bg: ['#a5e37a', '#5aa82e'], tag: 'もっと稼ぐ', title: '契約・町の依頼・店の買い取り', body: 'ライバルと毎月の取引を結んだり、町の依頼を受けたり、店を買い取ったり。', vis: () => `<div class="tv-row"><span class="tv-pill">📝 契約</span><span class="tv-pill">🏛️ 依頼・投票</span><span class="tv-pill">🏪 買い取り</span></div>` },
+  { hero: '🏰', bg: ['#ffb3d9', '#e05aa8'], tag: '最後の年', title: '王都の大祭で一発逆転', body: '最後の月にボーナスが入る。', vis: () => `<div class="tv-bonus"><div>👑<b>地区の覇者</b><small>その地区で一番お客を集めた</small><em>+${E.CROWN_BONUS}G</em></div><div>🤫<b>秘密の目標</b><small>あなただけのお題を達成</small><em>+${E.MISSION_BONUS}G</em></div></div>` },
+  { hero: '⏭️', bg: ['#ffb84d', '#ff7a59'], tag: 'さあ!', title: '決めたら「次の月へ」', body: 'みんなの決断が<b>同時に</b>動く。結果を見て、次の作戦を立てよう!', vis: () => `<div class="tv-go">次の月へ</div>` },
+];
+function showTut(start = 0) {
+  closeSheet();
+  let el = $('#tut'); if (el) el.remove();
+  el = document.createElement('div'); el.id = 'tut'; document.body.appendChild(el);
+  F.tutI = start; renderTut(0);
+  // 左右スワイプでめくる
+  let x0 = null, y0 = 0;
+  el.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+  el.addEventListener('touchend', (e) => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null; if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) H.tutgo({ v: dx < 0 ? 1 : -1 }); });
+}
+function renderTut(dir) {
+  const el = $('#tut'); if (!el) return; const i = F.tutI, P = TUT[i], last = i === TUT.length - 1;
+  el.innerHTML = `<div class="tcard ${dir > 0 ? 'fromR' : dir < 0 ? 'fromL' : 'pop'}">
+    <div class="tprog">${TUT.map((_, k) => `<i class="${k < i ? 'done' : k === i ? 'on' : ''}"></i>`).join('')}</div>
+    <button class="tskip" data-a="tutclose">${last ? '' : 'スキップ'}</button>
+    <div class="thero" style="background:linear-gradient(140deg,${P.bg[0]},${P.bg[1]})"><span class="ttag">${P.tag}</span><span class="tem">${P.hero}</span><span class="tsp s1">✦</span><span class="tsp s2">✦</span><span class="tsp s3">•</span></div>
+    <div class="tbody"><h2>${P.title}</h2><p>${P.body}</p><div class="tvis">${P.vis()}</div></div>
+    <div class="tnav"><button class="btn tback" data-a="tutgo" data-v="-1" ${i ? '' : 'style="visibility:hidden"'}>◀</button><div class="tcount">${i + 1} / ${TUT.length}</div><button class="btn ${last ? 'warm' : 'pri'} tnext" data-a="${last ? 'tutclose' : 'tutgo'}" data-v="1">${last ? 'はじめる!' : 'つぎへ ▶'}</button></div>
+    ${last ? '<button class="tmore" data-a="rules">📜 ルールをくわしく読む</button>' : ''}
+  </div>`;
+}
+// はじめての人への道案内: 地図の＋を指さす → 「次の月へ」を指さす
+const COACH = 'capital-coach-done';
+function coachTick() {
+  let el = $('#coach');
+  const done = (() => { try { return localStorage.getItem(COACH) === '1'; } catch (e) { return true; } })();
+  let step = null;
+  if (!done && S && !S.over && !F.mp && !F.sheet && !$('#tut') && !$('.title') && !F.busy && S.t === 0) step = F.acts.some(a => a.type === 'open') ? 'next' : E.shopsOf(S, ME).length ? null : 'open';
+  if (!done && S && S.t >= 1) { try { localStorage.setItem(COACH, '1'); } catch (e) { } }
+  document.body.classList.toggle('coaching', step === 'open');
+  if (!step) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'coach'; document.body.appendChild(el); }
+  if (step === 'open') {
+    if (F.coachLot == null || !E.lotFree(S, F.coachLot)) {
+      // 家賃の安い地区の、地区名の札に重ならない(中心から少し離れた)空き地
+      const d = Object.keys(E.DISTRICTS).sort((a, b) => E.DISTRICTS[a].rent - E.DISTRICTS[b].rent)[0], ls = E.LOTS.filter(l => l.d === d), cq = ls.reduce((a, l) => a + l.q, 0) / ls.length, cr = ls.reduce((a, l) => a + l.r, 0) / ls.length;
+      const fr = ls.filter(l => E.lotFree(S, l.id)).map(l => ({ l, dc: Math.hypot(l.q - cq, l.r - cr), dm: Math.abs(l.q) + Math.abs(l.r) }));
+      fr.sort((a, b) => (b.dc >= 1.8) - (a.dc >= 1.8) || a.dm - b.dm); F.coachLot = fr[0] ? fr[0].l.id : (E.LOTS.find(l => E.lotFree(S, l.id)) || {}).id;
+    }
+    const p = F.coachLot != null && board.screenOfLot(F.coachLot); if (!p || !p.vis) { el.style.display = 'none'; return; }
+    el.style.display = ''; el.className = 'cmap'; el.style.left = p.x + 'px'; el.style.top = p.y + 'px'; el.style.bottom = ''; el.style.right = '';
+    if (el.dataset.s !== 'open') { el.dataset.s = 'open'; el.innerHTML = `<div class="cring"></div><div class="cfinger">👆</div><div class="cbub">ここをタップして<br><b>店を開こう!</b></div>`; }
+  } else {
+    const go = $('#dock .go'); if (!go) return; const r = go.getBoundingClientRect();
+    el.style.display = ''; el.className = 'cgo'; el.style.left = 'auto'; el.style.top = 'auto'; el.style.right = (innerWidth - r.right + 6) + 'px'; el.style.bottom = (innerHeight - r.top - 6) + 'px'; el.style.setProperty('--fx', (r.width / 2 - 28) + 'px');
+    if (el.dataset.s !== 'next') { el.dataset.s = 'next'; el.innerHTML = `<div class="cbub">準備OK!<br><b>「次の月へ」</b>で店が建つ</div><div class="cfinger down">👇</div>`; }
+  }
+}
 // 勝ち方(遊び方と順位の画面に出す)
 const winBox = () => `<div class="box winbox"><div class="t1">🏆 勝ち方</div><div class="t2" style="margin:4px 0 0">最後の月が終わったとき、<b>純資産</b>がいちばん多い商会が勝ち。<br><b>純資産</b> = 現金 + 在庫(いまの相場) + 店の価値 − 借金<br><span class="t3">店の価値 = 建てたお金の半分ほど + 育て方にかけたお金の半分 + <b>最近6か月の平均利益×6</b>。儲かっている店ほど高い。</span><br>最後に上乗せ: <b>👑 地区の覇者</b>(最終月に地区で一番お客を集めた) +${E.CROWN_BONUS}G ずつ · <b>🤫 秘密の目標</b>達成 +${E.MISSION_BONUS}G</div></div>`;
 SHEETS.ranking = () => {
@@ -653,8 +714,8 @@ SHEETS.weather = () => {
     <div class="box"><div class="lbl">天気のきまり</div>${Object.values(E.WEATHER).map(w => `<div class="news">${w.icon} <b>${w.name}</b> — ${w.text}</div>`).join('')}<div class="t3" style="margin-top:6px">住宅街(🏡)は天気の影響が半分。夏の猛暑が続くと小麦が値上がり、春の雨は豊作。季節で出やすい天気がちがう(冬は雪、6月は梅雨、秋は台風)。</div></div>`;
 };
 SHEETS.grand = () => head('🏰', E.GRAND.name, E.finalYear(S) ? `のこり${S.months - S.t}か月` : `始まるまで あと${S.months - 12 - S.t}か月`) + `<div class="box"><div class="t2">${E.GRAND.text}</div></div>` + crownBox();
-SHEETS.menu = () => head('⚙️', 'メニュー', `${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name}`) + (() => { const a = audioPref(), sw = (k, l) => `<button class="sw ${a[k] ? 'on' : ''}" data-a="aud" data-v="${k}"><span>${l}</span><i></i></button>`; return `<div class="box"><div class="t1" style="margin-bottom:6px">🎵 音と手ざわり</div>${sw('bgm', 'BGM')}${sw('sfx', '効果音')}${sw('haptic', 'タップで振動')}<div class="row" style="gap:8px;margin-top:8px;align-items:center"><div class="t2" style="flex:1">♪ ${esc(bgm.name || '—')}${F.bgmLock ? '' : '<small>(場面で自動)</small>'}</div><button class="btn sm" data-a="nexttrack">曲を変える</button>${F.bgmLock ? '<button class="btn sm" data-a="autobgm">自動に戻す</button>' : ''}</div></div>`; })() + `<div class="box">${F.mp ? `<div class="t2" style="margin-bottom:8px">🌐 オンライン対戦中 · 部屋 <b>${esc(NET.code || '')}</b>${NET.host ? '(ホスト)' : ''}</div><button class="btn wide" data-a="online" style="margin-bottom:8px">部屋のようす</button>` : `<button class="btn wide" data-a="online" style="margin-bottom:8px">🌐 友だちと対戦</button>`}<button class="btn wide" data-a="howto" style="margin-bottom:8px">遊び方</button><button class="btn wide" data-a="stagesel" style="margin-bottom:8px">🗺️ 別の町(ステージ)で遊ぶ</button><button class="btn wide" data-a="credits" style="margin-bottom:8px">クレジット</button><button class="btn wide" data-a="restart">最初からやり直す</button></div>`;
-SHEETS.howto = () => head('📖', '遊び方', '最後の月に、町いちばんの商会に') + winBox() + `<div class="box t2">
+SHEETS.menu = () => head('⚙️', 'メニュー', `${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name}`) + (() => { const a = audioPref(), sw = (k, l) => `<button class="sw ${a[k] ? 'on' : ''}" data-a="aud" data-v="${k}"><span>${l}</span><i></i></button>`; return `<div class="box"><div class="t1" style="margin-bottom:6px">🎵 音と手ざわり</div>${sw('bgm', 'BGM')}${sw('sfx', '効果音')}${sw('haptic', 'タップで振動')}<div class="row" style="gap:8px;margin-top:8px;align-items:center"><div class="t2" style="flex:1">♪ ${esc(bgm.name || '—')}${F.bgmLock ? '' : '<small>(場面で自動)</small>'}</div><button class="btn sm" data-a="nexttrack">曲を変える</button>${F.bgmLock ? '<button class="btn sm" data-a="autobgm">自動に戻す</button>' : ''}</div></div>`; })() + `<div class="box">${F.mp ? `<div class="t2" style="margin-bottom:8px">🌐 オンライン対戦中 · 部屋 <b>${esc(NET.code || '')}</b>${NET.host ? '(ホスト)' : ''}</div><button class="btn wide" data-a="online" style="margin-bottom:8px">部屋のようす</button>` : `<button class="btn wide" data-a="online" style="margin-bottom:8px">🌐 友だちと対戦</button>`}<button class="btn wide" data-a="howto" style="margin-bottom:8px">🎮 遊び方(チュートリアル)</button><button class="btn wide" data-a="rules" style="margin-bottom:8px">📜 ルールくわしく</button><button class="btn wide" data-a="stagesel" style="margin-bottom:8px">🗺️ 別の町(ステージ)で遊ぶ</button><button class="btn wide" data-a="credits" style="margin-bottom:8px">クレジット</button><button class="btn wide" data-a="restart">最初からやり直す</button></div>`;
+SHEETS.rules = () => head('📜', 'ルールくわしく', '最後の月に、町いちばんの商会に') + `<button class="btn wide pri" data-a="howto" style="margin-bottom:10px">🎮 チュートリアルをもう一度見る</button>` + winBox() + `<div class="box t2">
   ① 町の<b>「+」</b>をタップして店を開く(4つまで)。同じ地区・同じ業種の店どうしでお客を取り合う。<br>
   ② 店をタップして<b>値段・店員・広告</b>を決める。🔮で来月の利益の見積もりが出る。<br>
   ③ <b>カード</b>は毎月3枚配られ、1枚使える。<br>
@@ -677,7 +738,9 @@ const H = {
   menu: () => openSheet('menu'),
   aud: (d) => { const k = d.v, v = !audioPref()[k]; setAudioPref(k, v); if (k === 'haptic' && v) haptic(20); sfx('toggle'); renderSheet(); },
   nexttrack: () => { const ks = ['asa', 'kenso', 'minato', 'yuki', 'ame', 'ouji', 'matsuri'], i = ks.indexOf(bgm.want); F.bgmLock = 1; bgm.play(ks[(i + 1) % ks.length]); if (!audioPref().bgm) setAudioPref('bgm', true); sfx('toggle'); setTimeout(renderSheet, 2600); toast('曲を替える…'); },
-  autobgm: () => { F.bgmLock = 0; pickBgm(); sfx('toggle'); setTimeout(renderSheet, 2600); }, howto: () => openSheet('howto'), credits: () => openSheet('credits'),
+  autobgm: () => { F.bgmLock = 0; pickBgm(); sfx('toggle'); setTimeout(renderSheet, 2600); }, howto: () => showTut(0), rules: () => { $('#tut') && $('#tut').remove(); openSheet('rules'); },
+  tutgo: (d) => { const n = F.tutI + +d.v; if (n < 0 || n >= TUT.length) return; F.tutI = n; sfx('card'); haptic(8); renderTut(+d.v); },
+  tutclose: () => { const el = $('#tut'); if (el) { el.classList.add('out'); setTimeout(() => el.remove(), 260); } sfx('open'); }, credits: () => openSheet('credits'),
   ranking: () => openSheet('ranking'), market: () => openSheet('market'), books: () => openSheet('books'), event: () => openSheet('event'),
   card: (d) => openSheet('card', { i: +d.i }),
   cardgo: (d) => {
@@ -771,7 +834,7 @@ const H = {
   restart2: () => { closeSheet(); startNew(S.stage); },
   restart: () => { if (F.mp) return toast('オンライン対戦中は、部屋を出てから'); if (confirm('最初からやり直す?(同じ町)')) { closeSheet(); startNew(S.stage); } },
   stagesel: () => { if (F.mp) return toast('オンライン対戦中は、部屋を出てから'); if (!S.t || S.over || confirm('今のゲームをやめて、別の町で始める?')) openSheet('stages'); },
-  start: () => { $('.title') && $('.title').remove(); unlockAudio(); sfx('open'); if (!S.t && !F.acts.length) setTimeout(() => openSheet('howto'), 400); },
+  start: () => { $('.title') && $('.title').remove(); unlockAudio(); sfx('open'); if (!S.t && !F.acts.length) setTimeout(() => showTut(0), 400); },
 };
 // ── 手ざわり: 押した瞬間に沈む・波紋・小さな振動と音
 const PRESSABLE = 'button, [data-a]:not(#sheetbg), .card';
@@ -1034,6 +1097,7 @@ function labels() {
   wrap.innerHTML = Object.keys(centers).map((k) => `<button class="dlabel" data-a="district" data-d="${k}"></button>`).join('');
   updateLabels();
   board.onFrame = () => {
+    if ((F.coachF = (F.coachF || 0) + 1) % 3 === 0) coachTick();
     for (const el of wrap.children) {
       const [q, r] = centers[el.dataset.d]; const v = hexPos(q, r); v.y = 0.1;
       const p = v.project(board.cam); const rc = board.R.domElement.getBoundingClientRect();
@@ -1051,7 +1115,7 @@ async function startNew(stage) {
   await board.build(stage); await board.sync(S, ME);
   labels(); render(); board.home(); board.setWeather('sun');
   setTimeout(() => $('#loading').classList.add('off'), 200);
-  setTimeout(() => openSheet('howto'), 500);
+  setTimeout(() => showTut(0), 500);
 }
 SHEETS.stages = () => {
   const rec = records(), pv = F.pv || null;
