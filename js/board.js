@@ -326,7 +326,7 @@ export class Board {
     const base = mk ? hexPos(mk.at[0], mk.at[1]) : new THREE.Vector3(this.homeV.tx, 0, this.homeV.tz);
     const g = new THREE.Group(); g.position.copy(base).add(new THREE.Vector3(1.1, 0, 0.9)); g.userData.peddler = 1;
     const proto = this.charProto[4], o = SkeletonUtils.clone(proto.scene); o.scale.setScalar(0.26); o.rotation.y = -0.6; g.add(o);
-    const mx = new THREE.AnimationMixer(o), cl = proto.animations.find(c => c.name === 'Idle') || proto.animations[0]; if (cl) mx.clipAction(cl).play(); this.mixers.push(mx);
+    const mx = new THREE.AnimationMixer(o), cl = proto.animations.find(c => c.name === 'Idle') || proto.animations[0]; if (cl) mx.clipAction(cl).play(); let lt = null;
     model('tent').then(t => { if (!t) return; t.scale.setScalar(0.55); t.position.set(0.55, 0, -0.35); g.add(t); });
     model('wheelbarrow').then(t => { if (!t) return; t.scale.setScalar(0.7); t.position.set(-0.5, 0, 0.2); t.rotation.y = 0.8; g.add(t); });
     const c = document.createElement('canvas'); c.width = 256; c.height = 96; const x = c.getContext('2d'); x.fillStyle = '#7c4dff'; x.beginPath(); x.roundRect(6, 6, 244, 84, 40); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 46px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('行商人', 128, 50);
