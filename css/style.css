@@ -882,3 +882,20 @@ body.clean #viewbtn{background:linear-gradient(180deg,#3c74e6,#2350b0);color:#ff
 .debtx{margin-top:10px;background:#fff7e8;border:2px solid #ffd99a;border-radius:14px;padding:10px 12px;font-size:12.5px;line-height:1.55}
 .debtx b{color:#b45f06}.debtx ol{margin:6px 0 4px;padding-left:18px}.debtx small{color:#7a5a20;font-weight:700}
 .sc.scfold span{font-size:11px;font-weight:800;color:#33405f}
+/* スキル一覧 */
+.sklist{display:flex;flex-direction:column;gap:10px}
+.skc{display:flex;align-items:center;gap:10px;background:#fff;border-radius:16px;padding:10px;border:2px solid #e8edf7;border-left:6px solid var(--sc);box-shadow:0 4px 12px rgba(20,40,90,.08)}
+.skc .skic{width:52px;height:52px;flex:0 0 52px;border-radius:14px;display:grid;place-items:center;background:color-mix(in srgb,var(--sc) 16%,#fff)}
+.skc .skic img.em3{width:44px;height:44px}
+.skc .skb{flex:1;min-width:0}.skc .skb>b{display:block;font-size:15px;color:#1f2a44}.skc .skb>span{display:block;font-size:12px;color:#4a5578;line-height:1.4;margin-top:1px}
+.skneed{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px}
+.skneed i{font-style:normal;color:#7a8199;font-weight:700;flex:0 1 auto;min-width:0}.skneed em{font-style:normal;color:var(--sc);font-weight:900}
+.skbar{flex:1;min-width:30px;height:7px;border-radius:9px;background:#e8edf7;overflow:hidden}.skbar span{display:block;height:100%;background:var(--sc);border-radius:9px}
+.skneed small{font-weight:900;color:#33405f}
+.skc.lock{opacity:.78}.skc.lock .skic{filter:grayscale(.8)}
+.skc.rd{border-color:color-mix(in srgb,var(--sc) 45%,#fff);animation:skglow2 1.6s ease-in-out infinite}
+.skc.on{background:color-mix(in srgb,var(--sc) 10%,#fff);border-color:var(--sc)}
+@keyframes skglow2{50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--sc) 30%,transparent),0 4px 12px rgba(20,40,90,.08)}}
+.skc .btn{flex:0 0 auto;min-width:64px}
+#sheet.k-skills .sh{border-bottom-color:#f5a524}
+.abtn.skillb .badge{position:absolute;top:-6px;right:-4px}

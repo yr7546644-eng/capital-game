@@ -518,7 +518,7 @@ export function validate(S, pid, a) {
     if (p.cash < ROUTES[a.k].cost[lv - 1]) return 'お金が足りない';
     return null;
   }
-  if (a.type === 'skill') return skillReady(S, pid) ? null : `大宣伝は ${SKILL_DISTRICTS}つの地区に店があると使える(使ったあと${SKILL_CD}か月は休み)`;
+  if (a.type === 'skill') { const k = a.k || 'ad', K = SKILLS[k]; if (!K) return 'そのスキルはない'; if (p.skillOn === S.t) return 'スキルは月に1つだけ'; if (!skillUnlocked(S, pid, k)) return `${K.name}は「${K.need}」で使える`; if (skillWait(S, pid, k)) return `${K.name}はあと${skillWait(S, pid, k)}か月休み`; return null; }
   if (a.type === 'propose') {
     const to = S.players[a.to]; if (!to || a.to === pid) return '相手がちがう'; if (!ITEMS[a.item] || isRare(a.item)) return 'その品は契約できない';
     if (!(a.qty >= 5 && a.qty <= 400) || !(a.price > 0) || ![3, 6].includes(a.months) || ![0, 1].includes(a.pay) || !['sell', 'buy'].includes(a.role)) return '条件がちがう';
@@ -612,7 +612,7 @@ function applyAction(S, pid, a, fx, late) {
   if (a.type === 'vote') { S.vote.ballots[pid] = a.bill; }
   if (a.type === 'hire') { const sh = S.shops.find(x => x.id === a.shop), c = p.cands.find(x => x.id === a.cand); crewOf(S, sh).push({ ...c }); sh.staff = sh.crew.length; p.cands = p.cands.filter(x => x !== c); fx.push({ kind: 'hire', pid, shop: sh.id, who: c }); }
   if (a.type === 'fire') { const sh = S.shops.find(x => x.id === a.shop); sh.crew = sh.crew.filter(x => x.id !== a.staffId); sh.staff = sh.crew.length; }
-  if (a.type === 'skill') { p.skillOn = S.t; p.skillT = S.t; fx.push({ kind: 'skill', pid }); }
+  if (a.type === 'skill') { const k = a.k || 'ad'; p.skillOn = S.t; p.skillK = k; p.skCd = { ...(p.skCd || {}), [k]: S.t }; if (k === 'brand') p.brand = Math.min(0.3, (p.brand || 0) + 0.06); fx.push({ kind: 'skill', pid, k }); }
   if (a.type === 'propose') {
     const to = S.players[a.to], c = { seller: a.role === 'sell' ? pid : a.to, buyer: a.role === 'sell' ? a.to : pid, item: a.item, qty: Math.round(a.qty), price: Math.round(a.price * 100) / 100, months: a.months, pay: a.pay, from: pid };
     if (to.ai) { const ok = aiPactOk(S, a.to, c); if (ok) newPact(S, c); fx.push({ kind: ok ? 'pactYes' : 'pactNo', pid, to: a.to, pact: c }); }
@@ -720,8 +720,34 @@ export function controlOf(S, d) {
 }
 export const linksOf = (S, s) => (NEIGHBORS[s.lot] || []).filter(l => { const o = shopAt(S, l); return o && o.owner === s.owner && o.id !== s.id; }).length;
 export const districtsOf = (S, pid) => new Set(shopsOf(S, pid).map(s => s.d)).size;
-export const skillReady = (S, pid) => districtsOf(S, pid) >= SKILL_DISTRICTS && (S.players[pid].skillT == null || S.t - S.players[pid].skillT >= SKILL_CD);
-function territoryK(S, s) { let k = 1; if (S.control && S.control[s.d] === s.owner) k *= CONTROL_K; k *= 1 + LINK_K * Math.min(3, linksOf(S, s)); if (S.players[s.owner].skillOn === S.t) k *= SKILL_K; return k; }
+// ── スキル: 店の並べ方(組み合わせ)で解禁される。月に1つだけ使える。使ったスキルはしばらく休み
+const nbOwners = (S, s, pid) => (NEIGHBORS[s.lot] || []).filter(l => { const o = shopAt(S, l); return o && o.owner === pid; }).length;
+export const ctlCount = (S, pid) => Object.values(S.control || {}).filter(c => c === pid).length;
+export function maxChain(S, pid) { const mine = shopsOf(S, pid), seen = new Set(); let best = 0;
+  for (const s0 of mine) { if (seen.has(s0.id)) continue; let n = 0; const st = [s0]; seen.add(s0.id);
+    while (st.length) { const s = st.pop(); n++; for (const l of NEIGHBORS[s.lot] || []) { const o = shopAt(S, l); if (o && o.owner === pid && !seen.has(o.id)) { seen.add(o.id); st.push(o); } } }
+    best = Math.max(best, n); } return best; }
+export const maxSiege = (S, pid) => S.shops.reduce((m, s) => s.owner === pid ? m : Math.max(m, nbOwners(S, s, pid)), 0);
+export const goodsKinds = (S, pid) => new Set(shopsOf(S, pid).filter(s => s.g !== 'work').map(s => s.g)).size;
+export const SKILLS = {
+  ad: { name: '大宣伝', icon: '📣', cd: 4, need: '3つの地区に店を出す', text: '今月、店ぜんぶ お客+30%', prog: (S, pid) => [districtsOf(S, pid), SKILL_DISTRICTS] },
+  fest: { name: '縄張りまつり', icon: '🚩', cd: 3, need: '地区を1つ支配する', text: '縄張りの自分の店 お客+40%、そこのライバル店 お客−25%', prog: (S, pid) => [ctlCount(S, pid), 1] },
+  chain: { name: '商店街フェア', icon: '🏘️', cd: 3, need: '自分の店を3つつなげて並べる', text: 'となりに自分の店がある店 お客+40%', prog: (S, pid) => [maxChain(S, pid), 3] },
+  siege: { name: '包囲網', icon: '🎯', cd: 3, need: 'ライバルの店を自分の店2つで囲む', text: '囲んだライバル店 お客−30%、となりの自分の店 お客+15%', prog: (S, pid) => [maxSiege(S, pid), 2] },
+  brand: { name: 'ブランド強化', icon: '💎', cd: 5, need: '3つの業種の店をそろえる', text: 'これからずっと 店ぜんぶ お客+6%(最大+30%)', prog: (S, pid) => [goodsKinds(S, pid), 3] },
+  land: { name: '地主の特権', icon: '👑', cd: 4, need: '地区を2つ支配する', text: '今月、店ぜんぶの家賃ゼロ', prog: (S, pid) => [ctlCount(S, pid), 2] },
+};
+export const skillUnlocked = (S, pid, k) => { const [a, b] = SKILLS[k].prog(S, pid); return a >= b; };
+export const skillWait = (S, pid, k) => { const t = (S.players[pid].skCd || {})[k]; return t == null ? 0 : Math.max(0, SKILLS[k].cd - (S.t - t)); };
+export const skillReady = (S, pid, k) => k ? skillUnlocked(S, pid, k) && !skillWait(S, pid, k) : Object.keys(SKILLS).some(x => skillReady(S, pid, x));
+function territoryK(S, s) {
+  let k = 1; const o = S.players[s.owner], ctl = S.control ? S.control[s.d] : null, ln = linksOf(S, s);
+  if (ctl === s.owner) k *= CONTROL_K; k *= 1 + LINK_K * Math.min(3, ln); k *= 1 + (o.brand || 0);
+  if (o.skillOn === S.t) { const K = o.skillK || 'ad'; if (K === 'ad') k *= SKILL_K; else if (K === 'fest' && ctl === s.owner) k *= 1.4; else if (K === 'chain' && ln >= 1) k *= 1.4; else if (K === 'siege' && (NEIGHBORS[s.lot] || []).some(l => { const r = shopAt(S, l); return r && r.owner !== s.owner; })) k *= 1.15; }
+  if (ctl != null && ctl !== s.owner && S.players[ctl].skillOn === S.t && S.players[ctl].skillK === 'fest') k *= 0.75;
+  for (const q of S.players) if (q.id !== s.owner && q.skillOn === S.t && q.skillK === 'siege' && nbOwners(S, s, q.id) >= 2) k *= 0.7;
+  return k;
+}
 function updateControl(S, fx) { S.control = S.control || {}; for (const d in DISTRICTS) { const c = controlOf(S, d); if (c !== (S.control[d] ?? null)) { fx.push({ kind: 'control', d, pid: c, prev: S.control[d] ?? null }); } S.control[d] = c; } }
 function attraction(S, s, pm) {
   const G = GOODS[s.g], R = routeFx(s);
@@ -804,7 +830,7 @@ export function step(S, decisions = {}) {
     let featRev = 0, featUsed = 0;
     const fu = featUnits(S, s);
     if (fu > 0 && units > 0) { featUsed = fu; const k = s.feat, avg = p.invCost[k] / p.inv[k]; featRev = fu * featPremium(S, s, k); cogs += fu * avg; p.inv[k] -= fu; p.invCost[k] -= fu * avg; }
-    const labor = crewWage(s), rent = rentOf(S, s.d) * R.rent, ads = ADS[s.ads].cost;
+    const labor = crewWage(s), rent = rentOf(S, s.d) * R.rent * (p.skillOn === S.t && p.skillK === 'land' ? 0 : 1), ads = ADS[s.ads].cost;
     const profit = revenue + featRev - cogs - labor - rent - ads;
     p.cash += revenue + featRev - cashCogs - labor - rent - ads; p.yProfit = (p.yProfit || 0) + profit;
     flowAdd(p, '店の売上', revenue + featRev); flowAdd(p, '材料の仕入れ', -cashCogs); flowAdd(p, 'お給料', -labor); flowAdd(p, '家賃', -rent); flowAdd(p, '宣伝', -ads);
@@ -1484,8 +1510,21 @@ export function aiDecide(S, pid) {
     if (lot && !acts.some(a => a.type === 'open')) acts.push({ type: 'open', lot: lot.id, g: 'work', res: raw, staff: 2 });
   }
   if (p.debt > 0 && cash > 700) acts.push({ type: 'repay', amt: Math.min(p.debt, cash - 600) });
-  if (skillReady(S, pid) && mine.filter(s => s.g !== 'work').length >= 3) acts.push({ type: 'skill' });
+  { const k = aiSkill(S, pid); if (k) acts.push({ type: 'skill', k }); }
   return acts;
+}
+// AIのスキル選び: 今月いちばん効きそうなもの
+export function aiSkill(S, pid) {
+  const mine = shopsOf(S, pid), st = mine.filter(s => s.g !== 'work'), left = S.months - S.t; let best = null, bv = 0.5;
+  for (const k of Object.keys(SKILLS)) { if (!skillReady(S, pid, k)) continue; let v = 0;
+    if (k === 'ad') v = 0.3 * st.length;
+    if (k === 'fest') v = 0.4 * st.filter(s => S.control && S.control[s.d] === pid).length + 0.25 * S.shops.filter(s => s.owner !== pid && S.control && S.control[s.d] === pid).length;
+    if (k === 'chain') v = 0.4 * st.filter(s => linksOf(S, s) >= 1).length;
+    if (k === 'siege') v = 0.35 * S.shops.filter(s => s.owner !== pid && nbOwners(S, s, pid) >= 2).length + 0.08 * st.length;
+    if (k === 'brand') v = (S.players[pid].brand || 0) >= 0.3 ? 0 : 0.06 * st.length * Math.min(12, left) / 3;
+    if (k === 'land') v = mine.reduce((a, s) => a + rentOf(S, s.d), 0) / 90;
+    if (v > bv) { bv = v; best = k; } }
+  return best;
 }
 // 店の損益をざっくり見積もる(画面の「🔮」用)
 export function estimateShop(S, s, patch = {}) {

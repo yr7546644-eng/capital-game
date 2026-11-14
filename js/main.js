@@ -125,7 +125,7 @@ function dock() {
       <button class="abtn build" data-a="build"><span class="ai">🔨</span>建てる</button>
       <button class="abtn" data-a="market"><span class="ai">🛒</span>市場${(p.offers || []).length ? `<span class="badge">${p.offers.length}</span>` : ''}</button>
       <button class="abtn" data-a="books"><span class="ai">📒</span>帳簿</button>
-      <button class="abtn skillb ${E.skillReady(S, ME) ? 'ready' : ''} ${F.acts.some(a => a.type === 'skill') ? 'on' : ''}" data-a="skill"><span class="ai">📣</span>${F.acts.some(a => a.type === 'skill') ? '大宣伝 ✓' : '大宣伝'}<small>${F.acts.some(a => a.type === 'skill') ? '今月 客+30%' : E.skillReady(S, ME) ? '使える!' : E.districtsOf(S, ME) < E.SKILL_DISTRICTS ? `${E.districtsOf(S, ME)}/${E.SKILL_DISTRICTS}地区` : `あと${E.SKILL_CD - (S.t - me().skillT)}か月`}</small></button>
+      ${(() => { const pa = F.acts.find(a => a.type === 'skill'), nr = Object.keys(E.SKILLS).filter(k => E.skillReady(S, ME, k)).length, K = pa && E.SKILLS[pa.k || 'ad']; return `<button class="abtn skillb ${nr ? 'ready' : ''} ${pa ? 'on' : ''}" data-a="skills"><span class="ai">${K ? K.icon : '📣'}</span>${K ? K.name : 'スキル'}${nr && !pa ? `<span class="badge g">${nr}</span>` : ''}<small>${pa ? '今月つかう' : nr ? `${nr}つ使える!` : `${Object.keys(E.SKILLS).filter(k => E.skillUnlocked(S, ME, k)).length}/6 解禁`}</small></button>`; })()}
       <button class="abtn go" data-a="next">次の月へ${n ? `<small>決めたこと ${n}</small>` : ''}</button>
     </div>`;
 }
@@ -970,6 +970,7 @@ function actText(a) {
   const G = a.g === 'work' ? '工房' : a.g && E.GOODS[a.g] ? E.GOODS[a.g].name : '店', Dn = a.d && E.DISTRICTS[a.d] ? E.DISTRICTS[a.d].short : '';
   switch (a.k) {
     case 'open': return [a.g === 'work' ? 'b_work' : 'b_' + a.g, `${Dn}に<b>${G}</b>を建てた`];
+    case 'skill': { const K = E.SKILLS[a.route || 'ad']; return ['c_shout', `スキル<b>${K ? K.name : ''}</b>を使った`]; }
     case 'close': return ['ui_crate', `${Dn}の${G}を<b>たたんだ</b>`];
     case 'card': { const c = E.CARDS[a.card]; return [CARD_ICON[a.card] || 'ui_books', `カード「<b>${c ? c.name : a.card}</b>」${a.target === ME ? '<span class="down">をあなたの店に!</span>' : 'を使った'}`]; }
     case 'route': return ['b_' + (a.g || 'bread'), `${G}を<b>${E.ROUTES[a.route] ? E.ROUTES[a.route].name : ''}</b>で育てる`];
@@ -1005,11 +1006,11 @@ function advice() {
   if (S.peddler && S.peddler.left > 0) out.push({ pr: 6, ic: 'ui_crate', t: '行商人が来ている', why: `今月だけ ${S.peddler.items.map(k => E.ITEMS[k].name).join('・')} を売り買いできる`, a: 'peddler' });
   if (mine.length && mine.length + pendOpenN < E.MAX_SHOPS && freeCash() > 650 + fixed) out.push({ pr: 4, ic: 'ui_build', t: 'もう1店 建てられる', why: `現金に余裕がある(${fmt(freeCash())}G)。別の業種を並べると商店街ボーナス`, a: 'build' });
   if (!F.acts.some(a => a.type === 'card') && p.hand.length) { const i = p.hand.findIndex(c => (E.cardDef(c).cost || 0) <= Math.max(0, freeCash() - fixed)); if (i >= 0 && mine.length) out.push({ pr: 3, ic: CARD_ICON[E.cardDef(p.hand[i]).base] || 'ui_books', t: `カード「${E.cardDef(p.hand[i]).name}」を使える`, why: esc(E.cardDef(p.hand[i]).text), a: 'card', i }); }
-  if (E.skillReady(S, ME) && !F.acts.some(a => a.type === 'skill')) out.push({ pr: 7, ic: 'c_shout', t: '大宣伝が使える!', why: '今月だけ、あなたの店ぜんぶのお客が+30%。下の「大宣伝」を押そう', a: 'skill' });
+  if (!F.acts.some(a => a.type === 'skill')) { const rk = Object.keys(E.SKILLS).filter(k => E.skillReady(S, ME, k)); if (rk.length) out.push({ pr: 7, ic: 'c_shout', t: `スキル「${E.SKILLS[rk[0]].name}」${rk.length > 1 ? `ほか${rk.length - 1}つ` : ''}が使える!`, why: E.SKILLS[rk[0]].text, a: 'skills' }); }
+  { const near = Object.entries(E.SKILLS).map(([k, K]) => [k, K, K.prog(S, ME)]).filter(([, , [a, b]]) => a < b && b - a === 1)[0]; if (near && mine.length + pendOpenN < E.MAX_SHOPS) out.push({ pr: 3, ic: 'c_shout', t: `あと1つで「${near[1].name}」解禁`, why: `条件: ${near[1].need}。${near[1].text}`, a: 'build' }); }
   { const pend = F.acts.filter(a => a.type === 'open').map(a => E.LOTS.find(l => l.id === a.lot)).filter(Boolean);
     for (const k of Object.keys(E.DISTRICTS)) { if (S.control && S.control[k] === ME) continue; const cnt = {}; for (const s of S.shops) if (s.d === k) cnt[s.owner] = (cnt[s.owner] || 0) + 1; const my = (cnt[ME] || 0) + pend.filter(l => l.d === k).length, top = Math.max(0, ...Object.entries(cnt).filter(([o]) => +o !== ME).map(([, n]) => n));
       if (my >= 1 && my + 1 > top && mine.length + pendOpenN < E.MAX_SHOPS) { out.push({ pr: 6, ic: 'ui_build', t: `${E.DISTRICTS[k].short}をあと1店で支配できる`, why: '支配した地区はお客+15%。となり同士に建てるとさらに+5%ずつ', a: 'build' }); break; } } }
-  { const nd = E.districtsOf(S, ME); if (nd > 0 && nd < E.SKILL_DISTRICTS && mine.length + pendOpenN < E.MAX_SHOPS) out.push({ pr: 3, ic: 'c_shout', t: `あと${E.SKILL_DISTRICTS - nd}地区で大宣伝が解禁`, why: 'はなれた地区にも店を出すと、店ぜんぶのお客+30%の大宣伝が使える', a: 'build' }); }
   out.push({ pr: 0, ic: 'w_sun', t: '準備ができたら次の月へ', why: '決めたことは月末にいっせいに動く', a: 'next' });
   return out.sort((a, b) => b.pr - a.pr);
 }
@@ -1031,7 +1032,7 @@ function advDo(a) {
   if (a.a === 'peddler') { F.mtab = 'rare'; return openSheet('market'); }
   if (a.a === 'card') return H.card({ i: a.i });
   if (a.a === 'next') { closeSheet(); return H.next(); }
-  if (a.a === 'skill') { closeSheet(); return H.skill(); }
+  if (a.a === 'skill' || a.a === 'skills') return openSheet('skills');
 }
 // ── 借金の注意: 使ったあと来月の支払いが足りなくなりそうなら、確認画面を出す
 function debtRisk(cost, extra = 0) { const left = freeCash() - cost, need = nextFixed() + extra; return left < need ? { left, need, short: Math.round(need - left) } : null; }
@@ -1060,7 +1061,11 @@ function terrFacts(lot) {
   else if (my >= 2 && my > top) h += '<div class="up tf">🚩 この地区を<b>支配</b>できる! 客+15%</div>';
   else h += `<div>🚩 支配まで あと<b>${Math.max(2, top + 1) - my + 1}店</b></div>`;
   if (links) h += `<div class="up">🔗 自分の店ととなり ${links}つ 客+${Math.min(3, links) * 5}%</div>`;
-  if (newD) h += `<div class="${nd >= E.SKILL_DISTRICTS ? 'up tf' : ''}">📣 新しい地区 ${Math.min(nd, E.SKILL_DISTRICTS)}/${E.SKILL_DISTRICTS}${nd >= E.SKILL_DISTRICTS ? ' 大宣伝が解禁!' : ''}</div>`;
+  { const fake = { id: -1, owner: ME, lot, d: L.d, g: F.build ? F.build.g : 'bread', staff: 0 };
+    const pf = pend.map((l, i) => ({ id: -2 - i, owner: ME, lot: l.id, d: l.d, g: (F.acts.filter(a => a.type === 'open')[i] || {}).g || 'bread', staff: 0 }));
+    S.shops.push(...pf); const b0 = Object.fromEntries(Object.entries(E.SKILLS).map(([k, K]) => [k, K.prog(S, ME)])); S.shops.push(fake); const c0 = S.control; S.control = { ...(c0 || {}), [L.d]: my >= 2 && my > top ? ME : (c0 || {})[L.d] };
+    const af = Object.fromEntries(Object.entries(E.SKILLS).map(([k, K]) => [k, K.prog(S, ME)])); S.control = c0; S.shops.splice(S.shops.length - pf.length - 1, pf.length + 1);
+    for (const [k, K] of Object.entries(E.SKILLS)) { const [a0, b] = b0[k], [a1] = af[k]; if (a1 > a0 && a0 < b) h += `<div class="${a1 >= b ? 'up tf' : ''}">${K.icon} ${K.name} ${Math.min(a1, b)}/${b}${a1 >= b ? ' 解禁!' : ''}</div>`; } }
   return h;
 }
 function buildTray() {
@@ -1188,11 +1193,12 @@ async function rivalTour(fx) {
 const colN = (pid) => Number('0x' + E.COLOR_HEX[S.players[pid].color].slice(1));
 async function skillTour(fx) {
   for (const f of fx.filter(f => f.kind === 'skill')) {
-    const shops = E.shopsOf(S, f.pid); if (!shops.length) continue;
-    board.home(); await wait(250);
-    FX.flash(f.pid === ME ? 'rgba(255,200,60,.35)' : 'rgba(255,255,255,.22)'); sfx('horn'); haptic(30);
-    shops.forEach((s, i) => setTimeout(() => { board.pillar(s.lot, colN(f.pid)); board.burst(s.lot, 0xffd36e, 22); }, i * 140));
-    await cutIn(f.pid, f.pid === ME ? '大宣伝だ! 町じゅうに名を広めろ!' : '大宣伝の始まりだよ!', `今月は${f.pid === ME ? 'あなた' : esc(S.players[f.pid].name)}の店ぜんぶで お客 <b>+30%</b>`, { ms: 1700 });
+    const k = f.k || 'ad', K = E.SKILLS[k], T = skillTargets(f.pid, k), hitMe = T.down.some(s => s.owner === ME);
+    if (!E.shopsOf(S, f.pid).length) continue;
+    const foc = (T.down.find(s => s.owner === ME) || T.down[0] || T.up[0]); if (foc && k !== 'ad' && k !== 'brand' && k !== 'land') board.focus(foc.lot); else board.home(); await wait(300);
+    FX.flash(hitMe ? 'rgba(255,77,94,.3)' : f.pid === ME ? 'rgba(255,200,60,.35)' : 'rgba(255,255,255,.22)'); sfx('horn'); haptic(30); skillFxOn(f.pid, k);
+    const LINE = { ad: '町じゅうに名を広めろ!', fest: 'ここは わたしの縄張り、まつりだ!', chain: '商店街まるごと 大売り出し!', siege: '囲んだぞ、お客はいただく!', brand: 'うちの名前を 町の看板に!', land: '地主の特権、家賃はなしだ!' };
+    await cutIn(f.pid, `${K.icon}${K.name}! ${LINE[k]}`, `${K.text}${hitMe ? ' — <b>あなたの店が狙われた</b>' : ''}`, { ms: 1800, bad: hitMe });
   }
 }
 async function territoryTour(fx) {
@@ -1208,11 +1214,34 @@ async function territoryTour(fx) {
   }
   board.home(); await wait(300);
 }
-function skillShow() {
-  const shops = E.shopsOf(S, ME); FX.stamp('大宣伝!', '#f5a524'); sfx('horn'); haptic(25); confetti();
-  shops.forEach((s, i) => setTimeout(() => { board.burst(s.lot, 0xffd36e, 18); board.bounceLot(s.lot); }, i * 120));
-  toast('📣 大宣伝を予約した: 今月、あなたの店ぜんぶのお客が+30%');
+// スキルが効く店(自分のと、相手の)
+function skillTargets(pid, k) {
+  const mine = E.shopsOf(S, pid), nbr = (s, o) => E.NEIGHBORS[s.lot].filter(l => { const x = E.shopAt(S, l); return x && x.owner === o; }).length;
+  if (k === 'fest') return { up: mine.filter(s => S.control && S.control[s.d] === pid), down: S.shops.filter(s => s.owner !== pid && S.control && S.control[s.d] === pid) };
+  if (k === 'chain') return { up: mine.filter(s => E.linksOf(S, s) >= 1), down: [] };
+  if (k === 'siege') { const down = S.shops.filter(s => s.owner !== pid && nbr(s, pid) >= 2); return { up: mine.filter(s => E.NEIGHBORS[s.lot].some(l => { const x = E.shopAt(S, l); return x && x.owner !== pid; })), down }; }
+  return { up: mine, down: [] };
 }
+const SKILL_COL = { ad: '#f5a524', fest: '#2fb77a', chain: '#3c74e6', siege: '#e5484d', brand: '#7c4dff', land: '#c9921a' };
+function skillFxOn(pid, k) {
+  const T = skillTargets(pid, k), c = Number('0x' + SKILL_COL[k].slice(1));
+  T.up.forEach((s, i) => setTimeout(() => { board.pillar(s.lot, k === 'ad' || k === 'brand' ? colN(pid) : c); board.burst(s.lot, 0xffd36e, 18); board.bounceLot(s.lot); }, i * 130));
+  T.down.forEach((s, i) => setTimeout(() => { board.shock(s.lot); board.burst(s.lot, 0xff4d5e, 14, 0.5); }, 300 + i * 160));
+  if (T.down.length) setTimeout(() => FX.shake(), 350);
+}
+function skillShow(k) {
+  const K = E.SKILLS[k]; FX.stamp(K.name + '!', SKILL_COL[k]); sfx('horn'); haptic(25); confetti();
+  skillFxOn(ME, k); toast(`${K.icon} ${K.name}を予約: ${K.text}`);
+}
+SHEETS.skills = () => {
+  const pa = F.acts.find(a => a.type === 'skill'), cur = pa && (pa.k || 'ad');
+  return head('📣', 'スキル', '店の並べ方で解禁。月に1つだけ使える') + `<div class="sklist">${Object.entries(E.SKILLS).map(([k, K]) => {
+    const [a, b] = K.prog(S, ME), un = a >= b, w = E.skillWait(S, ME, k), rd = un && !w, on = cur === k;
+    return `<div class="skc ${rd ? 'rd' : ''} ${on ? 'on' : ''} ${un ? '' : 'lock'}" style="--sc:${SKILL_COL[k]}"><div class="skic">${K.icon}</div><div class="skb"><b>${K.name}</b><span>${K.text}</span>
+      <div class="skneed">${un ? '<em>解禁ずみ</em>' : `<i>${K.need}</i>`}<span class="skbar"><span style="width:${Math.min(100, a / b * 100)}%"></span></span><small>${Math.min(a, b)}/${b}</small></div></div>
+      <button class="btn sm ${on ? 'warm' : rd ? 'pri' : ''}" data-a="skilluse" data-v="${k}" ${rd || on ? '' : 'disabled'}>${on ? 'やめる' : rd ? '使う' : w ? `あと${w}か月` : 'ロック'}</button></div>`; }).join('')}</div>
+    <div class="note">使ったスキルは、しばらく休み(か月数はスキルごと)。ライバルも同じスキルを使ってくる</div>`;
+};
 // ── 始まりの演出: 顔ぶれの紹介(VS) → GAME START!
 function showVS(onDone) {
   const st = E.STAGES[S.stage], L = E.AI_LEVEL[S.level] || {};
@@ -1274,7 +1303,7 @@ const TUT = [
   { hero: '⚔️', bg: ['#ff9aa8', '#e8436a'], tag: 'バトル', title: 'ライバルとお客を奪い合う', body: '同じ地区・同じ業種の店どうしで取り合い。', vis: () => `<div class="tv-row"><span class="tv-pill r">真横に安い店 → 客を奪う</span><span class="tv-pill g">別業種を並べる → 商店街ボーナス</span></div>` },
   { hero: '🃏', bg: ['#c9a2ff', '#7c4dff'], tag: 'カード', title: '毎月3枚、1枚だけ使える', body: '呼び込み・値引き・職人・攻撃…ここぞで使おう。', vis: () => `<div class="tv-cards">${[['📣', '呼び込み'], ['🥊', '客引き合戦'], ['🏦', '融資']].map(([i, n], k) => `<span style="--r:${(k - 1) * 9}deg">${i}<small>${n}</small></span>`).join('')}</div>` },
   { hero: '🛒', bg: ['#ffd36e', '#f2a51a'], tag: '市場', title: '材料は安いときに買いだめ', body: '値段は町の倉の在庫で決まる。みんなが買うと値上がり。', vis: () => `<div class="tv-bars">${[60, 45, 35, 50, 72, 90].map((h, i) => `<b style="--h:${h}%;animation-delay:${i * 0.08}s"></b>`).join('')}</div><div class="tv-note">収穫の後は安い・不作の年は高い</div>` },
-  { hero: '🚩', bg: ['#a5e37a', '#5aa82e'], tag: '陣取り', title: '地区を支配して縄張りに', body: 'ひとつの地区で<b>いちばん多く(2店以上)</b>店を持つと、その地区はあなたの縄張り。旗が立ち、お客が増える。', vis: () => `<div class="tv-row"><span class="tv-pill g">🚩 支配 客+15%</span><span class="tv-pill g">🔗 となり同士 客+5%ずつ</span><span class="tv-pill">📣 3地区に店 → 大宣伝 客+30%</span></div>` },
+  { hero: '🚩', bg: ['#a5e37a', '#5aa82e'], tag: '陣取り', title: '地区を支配して縄張りに', body: 'ひとつの地区で<b>いちばん多く(2店以上)</b>店を持つと、その地区はあなたの縄張り。旗が立ち、お客が増える。', vis: () => `<div class="tv-row"><span class="tv-pill g">🚩 支配 客+15%</span><span class="tv-pill g">🔗 となり同士 客+5%ずつ</span><span class="tv-pill">📣 並べ方でスキル6種 解禁</span></div>` },
   { hero: '🏰', bg: ['#ffb3d9', '#e05aa8'], tag: '最後の年', title: '王都の大祭で一発逆転', body: '最後の月にボーナスが入る。', vis: () => `<div class="tv-bonus"><div>👑<b>地区の覇者</b><small>その地区で一番お客を集めた</small><em>+${E.CROWN_BONUS}G</em></div><div>🤫<b>秘密の目標</b><small>あなただけのお題を達成</small><em>+${E.MISSION_BONUS}G</em></div></div>` },
   { hero: '⏭️', bg: ['#ffb84d', '#ff7a59'], tag: 'さあ!', title: '決めたら「次の月へ」', body: 'みんなの決断が<b>同時に</b>動く。結果を見て、次の作戦を立てよう!', vis: () => `<div class="tv-go">次の月へ</div>` },
 ];
@@ -1595,6 +1624,10 @@ const H = {
   striptog: () => { F.stripOpen = !F.stripOpen; sfx('toggle'); render(); },
   handtog: () => { F.handOpen = !F.handOpen; sfx('card'); handCol(); },
   viewtog: () => { document.body.classList.toggle('clean'); sfx('toggle'); viewBtn(); if (document.body.classList.contains('clean')) board.home(); },
+  skills: () => openSheet('skills'),
+  skilluse: (d) => { const k = d.v, was = F.acts.find(a => a.type === 'skill');
+    F.acts = F.acts.filter(a => a.type !== 'skill'); if (was && (was.k || 'ad') === k) { sfx('close'); save(); render(); return; }
+    if (!E.skillReady(S, ME, k)) return; F.acts.push({ type: 'skill', k }); save(); closeSheet(); render(); skillShow(k); },
   skill: (d) => {
     if (F.acts.some(a => a.type === 'skill')) { F.acts = F.acts.filter(a => a.type !== 'skill'); sfx('close'); save(); render(); return; }
     if (!E.skillReady(S, ME)) { const n = E.districtsOf(S, ME); return toast(n < E.SKILL_DISTRICTS ? `大宣伝は ${E.SKILL_DISTRICTS}つの地区に店があると使える(いま${n}地区)` : `大宣伝はあと${E.SKILL_CD - (S.t - me().skillT)}か月休み`); }
@@ -1903,6 +1936,7 @@ function newsOf(fx, pre) {
     const p = S.players[f.pid]; if (f.pid === ME) continue;
     if (f.kind === 'open') { const s = S.shops.find(x => x.id === f.shop); if (s) out.push(`${pname(p)} が ${E.DISTRICTS[s.d].short}に<b>${gd(s).name}</b>を開いた`); }
     if (f.kind === 'close') out.push(`${pname(p)} が店をひとつたたんだ`);
+    if (f.kind === 'skill') { const K = E.SKILLS[f.k || 'ad']; out.push(`${pname(p)} がスキル「${K.name}」を使った(${K.text})`); }
     if (f.kind === 'buy' && f.qty >= 60) out.push(`${pname(p)} が<b>${E.ITEMS[f.res].name}</b>を ${f.qty} 買い込んだ(値上がりに注意)`);
     if (f.kind === 'card' && ['craft', 'remodel'].includes(f.card)) out.push(`${pname(p)} が「${E.CARDS[f.card].name}」を使った`);
     if (f.kind === 'bailout') out.push(`${pname(p)} はお金が尽きて銀行から借りた`);
@@ -2056,7 +2090,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114063830';
+const BUILD = '20261114070609';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
