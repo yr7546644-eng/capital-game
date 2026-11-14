@@ -79,6 +79,7 @@ function dock() {
   $('#dock').innerHTML = `
     <div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="weather"><span class="ei">${wx(me().scout === S.t ? S.wNext : S.wFore).icon}</span><span><span class="et">天気予報${me().scout === S.t ? '(確実)' : ''}</span><br>${wx(me().scout === S.t ? S.wNext : S.wFore).name}</span></button>${ev ? `<button class="evchip" data-a="event"><span class="ei">${ev.icon}</span><span><span class="et">来月の予報${E.marketDay({ t: S.t }) ? ' · 🛍️市の日' : ''}</span><br>${esc(ev.name)}</span></button>` : ''}${S.t >= S.months - 18 ? `<button class="evchip grand" data-a="grand"><span class="ei">🏰</span><span><span class="et">${E.finalYear(S) ? '大祭の年' : '大祭まで'}</span><br>${E.finalYear(S) ? `のこり${S.months - S.t}か月` : `あと${S.months - 12 - S.t}か月`}</span></button>` : ''}</div>
     ${F.mp ? `<div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="stamps">💬 スタンプ</button><button class="evchip" data-a="online">🌐 ${humansOf().filter(x => x.cid === NET.cid || NET.online(x.cid)).length}/${humansOf().length}人</button></div>${F.stampOpen ? `<div class="stray">${STAMPS.map(x => `<button class="stb" data-a="stamp" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}` : ''}
+    ${!S.over && freeCash() < nextFixed() ? `<button class="evchip cashwarn" data-a="books">⚠️ 来月の支払い 約${fmt(Math.round(nextFixed()))}G に現金が足りない</button>` : ''}
     ${F.alerts && F.alerts.length && !S.over ? `<button class="evchip alertchip" data-a="alerts">⚠️ 判断が必要 ${F.alerts.length}件</button>` : ''}
     <div class="hand">${p.hand.map((c, i) => { const cd = E.cardDef(c); const isUsed = used && used.card === c && used.idx === i; const ct = CARD_TYPE[cd.base] || ['shop', 'お店'];
       return `<button class="card ct-${ct[0]} ${F.handT !== S.t ? 'fresh' : ''} ${isUsed ? 'sel' : used ? 'used' : ''}" data-a="card" data-i="${i}"><span class="ctag">${ct[1]}</span>${isUsed ? '<span class="tag">使う</span>' : ''}<div class="ci">${cd.spec ? '🧑‍🍳' : cd.icon}${cd.spec ? `<span class="cspec">${cd.icon}</span>` : ''}</div><div class="cn">${cd.name}</div><div class="cc">${cd.cost ? fmt(cd.cost) + 'G' : '無料'}</div></button>`; }).join('')}</div>
@@ -774,6 +775,8 @@ function buildPick(g, res) {
   board.home(); render(); sfx('card');
 }
 function ratingOf(lot) { const e = lotEstimate(lot, F.build.g, F.build.res), R = rateOf(lot, e.profit); return { lot, color: R.c, text: `${R.m} ${e.profit >= 0 ? '+' : ''}${e.profit}G` }; }
+// 来月かかるお金(家賃・お給料・宣伝・借金の利息。予定の新しい店も含む)
+function nextFixed() { const base = E.fixedCosts(S, ME); const opens = F.acts.filter(a => a.type === 'open').reduce((a, x) => a + E.DISTRICTS[E.LOTS[x.lot].d].rent + E.WAGE * (x.staff || 2), 0); return base + opens; }
 function buildEnd() { document.body.classList.remove('placing'); F.build = null; board.clearRatings(); board.highlightLot(-1); render(); }
 function buildTray() {
   const B = F.build, step = B.step;
@@ -795,11 +798,13 @@ function buildTray() {
   if (step === 'confirm') {
     const L = E.LOTS[B.lot], D = E.DISTRICTS[L.d], e = lotEstimate(B.lot, B.g, B.res), R = rateOf(B.lot, e.profit), G = B.g === 'work' ? { icon: '🏭', name: '工房' } : E.GOODS[B.g];
     const comp = B.g === 'work' ? 0 : S.shops.filter(s => s.d === L.d && s.g === B.g).length, ok = freeCash() >= e.cost;
+    const left = freeCash() - e.cost, monthly = Math.round(nextFixed() + D.rent + E.WAGE * 2), risky = ok && left < monthly;
     const nb = E.NEIGHBORS[B.lot].map(l => E.shopAt(S, l)).filter(Boolean), street = nb.some(o => o.owner === ME && o.g !== B.g), steal = nb.some(o => o.owner !== ME && o.g === B.g);
     return `<div class="btray"><div class="bth"><b>${G.icon} ${G.name} @ ${D.name}</b><button class="bx" data-a="buildcancel">✕</button></div>
       <div class="bconf"><div class="bstat" style="--c:#${R.c.toString(16).padStart(6, '0')}"><span>${R.m}</span><b>${e.profit >= 0 ? '+' : ''}${fmt(e.profit)}G</b><small>月の利益の見込み</small></div>
       <div class="bfacts"><div>🏷️ 建てるお金 <b>${fmt(e.cost)}G</b></div><div>🏠 家賃 <b>${D.rent}G</b>/月</div>${B.g !== 'work' ? `<div>⚔️ 同じ業種のライバル <b>${comp}店</b></div>` : ''}${L.road ? '<div>🛣️ 大通り沿い 客+12%</div>' : ''}${street ? '<div class="up">🏘️ 商店街ボーナス</div>' : ''}${steal ? '<div class="up">🥊 隣のライバルから客を奪える(安くすれば)</div>' : ''}</div></div>
-      <button class="btn warm wide bgo" data-a="buildgo" ${ok ? '' : 'disabled'}>${ok ? `🔨 ここに建てる!  −${fmt(e.cost)}G` : 'お金が足りない'}</button>
+      <div class="bleft ${risky ? 'risk' : ''}"><span>建てたあとの現金</span><b>${fmt(left)}G</b><small>毎月の家賃とお給料(この店も入れて) 約 <b>${fmt(monthly)}G</b></small>${risky ? `<div>⚠️ 来月の支払いが足りず、<b>借金</b>になるかも(銀行が1割の手数料つきで貸す)</div>` : ''}</div>
+      <button class="btn ${risky ? 'danger' : 'warm'} wide bgo" data-a="buildgo" ${ok ? '' : 'disabled'}>${!ok ? 'お金が足りない' : risky ? `⚠️ それでも建てる  −${fmt(e.cost)}G` : `🔨 ここに建てる!  −${fmt(e.cost)}G`}</button>
       <div class="row" style="gap:8px;margin-top:6px"><button class="btn sm" style="flex:1" data-a="buildother">📍 別の場所</button><button class="btn sm" style="flex:1" data-a="builddetail">🔎 くわしく</button></div></div>`;
   }
   return '';
@@ -987,6 +992,27 @@ function missionBox() {
   return `<div class="box" style="background:linear-gradient(135deg,#f6f0ff,#fff)"><div class="lbl">🤫 あなたの秘密の目標(+${E.MISSION_BONUS}G)</div><div style="font-size:16px">${M.name} ${done ? '<span class="up">✔ 達成中</span>' : ''}</div><div class="t3">${M.text} · ${E.missionProgress(S, p)}</div><div class="t3" style="margin-top:4px">ライバルにもそれぞれ秘密の目標がある(最後に公開)。</div></div>`;
 }
 // 月の結果
+// ── 決算の演出: 今月のお金の出入りを、1行ずつ画面に出していく(タップで早送り)
+const FLOW_ORDER = ['建設', '育て方', 'カード', '市場で買った', '材料の仕入れ', '先物の約束(材料)', '店の売上', '加工品を売った', '市場で売った', '商人との取引', 'ライバルとの取引', '店を売った', '店の買い取り', '店をたたんだ(売った)', 'お給料', '家賃', '宣伝', '保管料', '借金の利息', '借金の返済', '契約・売掛金', 'つなぎ融資(借りた)', '売掛金を前倒し', '町の依頼', '臨時の税', '年末の税', '町の依頼など', '大祭のボーナス', '救済融資(借りた)'];
+async function monthReplay() {
+  const p = me(), fl = p.flow || {}, c0 = p.cash0 != null ? p.cash0 : p.cash;
+  const rows = Object.entries(fl).filter(([, v]) => Math.abs(v) >= 0.5).sort((a, b) => { const ia = FLOW_ORDER.indexOf(a[0]), ib = FLOW_ORDER.indexOf(b[0]); return (ia < 0 ? 50 : ia) - (ib < 0 ? 50 : ib); });
+  if (!rows.length) return;
+  const el = document.createElement('div'); el.id = 'ledger'; el.innerHTML = `<div class="lgin"><div class="lgh">📜 ${ym(S.t - 1)}の決算 <small>タップで早送り</small></div><div class="lgrows"></div><div class="lgcash"><span>現金</span><b>${fmt(c0)}G</b></div></div>`;
+  document.body.appendChild(el); sfx('whoosh');
+  let fast = false; el.addEventListener('click', () => { fast = true; });
+  const box = el.querySelector('.lgrows'), cashEl = el.querySelector('.lgcash b'); let cash = c0;
+  for (const [k, v] of rows) {
+    const d = document.createElement('div'); d.className = 'lgr ' + (v >= 0 ? 'in' : 'out') + (k === '救済融資(借りた)' ? ' sos' : '');
+    d.innerHTML = `<span>${pix(FLOW_ICON[k] || '•')} ${k}</span><b>${v >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(v)))}G</b>`; box.appendChild(d);
+    const from = cash; cash += v; const t0 = performance.now(), to = cash;
+    const roll = (t) => { const kk = Math.min(1, (t - t0) / 300); cashEl.textContent = fmt(Math.round(from + (to - from) * kk)) + 'G'; cashEl.classList.toggle('neg', from + (to - from) * kk < 0); if (kk < 1) requestAnimationFrame(roll); }; requestAnimationFrame(roll);
+    if (k === '救済融資(借りた)') { FX.flash('rgba(229,72,77,.3)'); FX.stamp('借金!', '#e5484d'); sfx('bad'); haptic(60); await wait(fast ? 200 : 1100); }
+    else { sfx(v >= 0 ? 'coin' : 'tap'); if (v < 0) haptic(6); await wait(fast ? 60 : 420); }
+  }
+  await wait(fast ? 150 : 900);
+  el.classList.add('out'); await wait(250); el.remove();
+}
 // お金の流れ: 先月の現金 → 項目ごとの出入り → 今の現金
 const FLOW_ICON = { '建設': '🏗️', '育て方': '🌱', '店の売上': '🏪', '加工品を売った': '🏭', '材料の仕入れ': '📦', 'お給料': '👷', '家賃': '🏠', '宣伝': '📣', '市場で買った': '🛒', '市場で売った': '💰', 'カード': '🃏', '商人との取引': '🤝', 'ライバルとの取引': '🤝', '借金の返済': '💸', '借金の利息': '💸', 'つなぎ融資(借りた)': '🏦', '救済融資(借りた)': '🆘', '売掛金を前倒し': '🧾', '契約・売掛金': '📝', '先物の約束(材料)': '📝', '店の買い取り': '🏪', '店を売った': '🏪', '店をたたんだ(売った)': '🏚️', '保管料': '🗄️', '臨時の税': '📜', '年末の税': '📜', '町の依頼': '📋', '町の依頼など': '📋', '大祭のボーナス': '👑', 'その他': '•' };
 function flowBox() {
@@ -1005,7 +1031,9 @@ SHEETS.result = ({ r }) => {
   const mine = r.mine, sum = mine.reduce((a, x) => a + x.profit, 0);
   const tierBox = r.tier1 !== r.tier0 ? `<div class="box tierbox ${r.tier1 > r.tier0 ? 'up' : 'down'}"><div style="font-size:34px">${E.RANKS[r.tier1][2]}</div><div><div class="lbl">${r.tier1 > r.tier0 ? '商会の格が上がった!' : '商会の格が下がった…'}</div><div style="font-size:18px">${E.RANKS[r.tier0][1]} → <b>${E.RANKS[r.tier1][1]}</b></div></div></div>` : '';
   const p = me(), nw = E.netWorth(S, p), nw0 = p.nw.length > 1 ? p.nw[p.nw.length - 2] : nw, c0 = p.cash0 != null ? p.cash0 : p.cash;
-  return tierBox + `<div class="mhead"><div class="mt">${ym(S.t - 1)}の結果 · ${wx(S.w).icon} ${wx(S.w).name}</div></div>
+  const sos = (p.flow || {})['救済融資(借りた)'];
+  const sosBox = sos ? `<div class="box sosbox"><div class="t1">🆘 お金が足りなくなって、借金をした</div><div class="t2" style="margin:4px 0">今月の支払い(建設・材料・お給料・家賃など)のあと、現金が <b class="down">${fmt(Math.round(p.cash - sos))}G</b> になった。だから銀行が <b>${fmt(sos)}G</b> を貸した(返すのは1割増しの <b>${fmt(Math.round(sos * 1.1))}G</b>、毎月 利息 ${Math.round(E.LOAN_RATE * 1000) / 10}%)。</div><div class="t3">下の「お金の流れ」で何に使ったか見られる。返すのは📒帳簿から。次からは、建てる前に「建てたあとの現金」を確認しよう</div></div>` : '';
+  return tierBox + sosBox + `<div class="mhead"><div class="mt">${ym(S.t - 1)}の結果 · ${wx(S.w).icon} ${wx(S.w).name}</div></div>
     <div class="stat3">
       <div class="st st-p"><span>店の利益</span><b class="${cls(sum)}" id="cntup">${sign(0)}G</b><small>売上−材料−給料−家賃−宣伝</small></div>
       <div class="st st-c">${ico('coin')}<span>現金</span><b>${fmt(p.cash)}G</b><small class="${cls(p.cash - c0)}">${sign(Math.round(p.cash - c0))}G</small></div>
@@ -1261,7 +1289,8 @@ async function nextMonth() {
   for (const f of sales) { const pos = board.screenOf(f.shop); if (pos) { popAt(pos, f.profit, S.players[f.pid].color); if (f.pid === ME && f.profit > 0) setTimeout(() => coinFly(pos, cashPos(), Math.min(8, 2 + Math.round(f.profit / 40))), 500); } }
   { const ls = rivalLines(fx); Object.entries(ls).forEach(([pid, v], k) => setTimeout(() => rivalSay(+pid, v.t), k * 450)); }
   const myUp = sales.filter(f => f.pid === ME && f.profit > 0).length; if (myUp) sfx('coins', Math.min(8, 2 + myUp * 2));
-  await wait(1300);
+  await wait(1100);
+  await monthReplay();
   // 結果
   const after = E.ranking(S);
   const r = {
@@ -1521,7 +1550,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114021133';
+const BUILD = '20261114021653';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
