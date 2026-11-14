@@ -769,3 +769,4 @@ body:has(.title) #ticker{opacity:0;pointer-events:none}
 #sheet.k-advice{--acc:#3c74e6;--acc2:#e6efff}#sheet.k-rivalp .sh{display:none}
 /* 選択肢の見込み */
 .optseg button{display:flex;flex-direction:column;align-items:center;line-height:1.2}.optseg button small{font-size:11px;font-weight:900}.optseg .oc{color:#4a5570;font-weight:700}
+.ostock{background:#eef4ff;border-radius:12px;padding:6px 10px;margin-bottom:8px;font-size:13.5px;font-weight:800;color:#2350b0}.ostock img.em3{width:24px;height:24px}.ostock.ng{background:#ffe9ec;color:#c21d3b}

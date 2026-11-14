@@ -72,6 +72,15 @@ function pendCost() {
   }
   return c;
 }
+function freeStock(k, exceptDeal) {
+  const p = me(); let n = p.inv[k] || 0;
+  for (const a of F.acts) {
+    if (a.type === 'buy' && a.res === k) n += a.qty;
+    if (a.type === 'sell' && a.res === k) n -= a.qty;
+    if (a.type === 'deal' && a.id !== exceptDeal) { const o = (p.offers || []).find(x => x.id === a.id); if (o && o.item === k) n += o.kind === 'sell' ? o.qty : o.kind === 'buy' ? -o.qty : 0; }
+  }
+  return Math.floor(n);
+}
 const freeCash = () => me().cash - pendCost();
 const pendOpen = (lot) => F.acts.find(a => a.type === 'open' && a.lot === lot);
 const pendSet = (id) => F.acts.find(a => a.type === 'set' && a.shop === id);
@@ -412,7 +421,7 @@ SHEETS.market = () => {
     const trend = mk ? (mk.prod - mk.need - (mk.shop || 0)) : 0, trendW = !mk ? '' : trend < -N * 0.03 ? '📈 使われる量が多い → <b>値上がりしそう</b>' : trend > N * 0.03 ? '📉 作られる量が多い → <b>値下がりしそう</b>' : '➡️ 作る量と使う量がつり合っている';
     const use = Math.round(E.useOf ? E.useOf(S, ME, k) : 0), avg = have > 0 ? p.invCost[k] / have : 0, gain = have > 0 ? have * m.price * (1 - E.SPREAD) - p.invCost[k] : 0;
     const T = F.mT = F.mT || { mode: 'buy', q: E.isRare(k) ? 2 : E.isProc(k) ? 20 : 50 };
-    const canSell = Math.max(0, Math.floor(have + Math.min(0, pq)));
+    const canSell = Math.max(0, Math.min(Math.floor(have + Math.min(0, pq)), freeStock(k)));
     if (T.mode === 'sell') T.q = Math.min(T.q, canSell);
     const q = Math.max(0, T.q), cost = q ? (T.mode === 'buy' ? E.quote(S, k, q) : E.sellQuote(S, k, q)) : 0;
     const stockAfter = mk ? mk.stock - pq - (T.mode === 'buy' ? q : -q) : N, after = E.priceAt(k, stockAfter), dp = after / m.price - 1;
@@ -455,7 +464,7 @@ SHEETS.market = () => {
   if (tab === 'deal') body = offers.length ? `<div class="offers">${offers.map(o => { if (o.kind === 'pact') return pactOfferRow(o); if (o.kind === 'shopbid') return shopBidRow(o);
       const r = E.ITEMS[o.item], m = S.market[o.item].price, on = F.acts.some(a => a.type === 'deal' && a.id === o.id), k = o.price / m, buyMe = o.kind === 'sell';   // 相手が売る = あなたが買う
       const total = Math.round(o.qty * o.price), good = buyMe ? k < 1 : k > 1, pct = Math.round(Math.abs(1 - k) * 100);
-      const ok = buyMe ? freeCash() >= total || on : (p.inv[o.item] || 0) >= o.qty;
+      const avail = freeStock(o.item, o.id), ok = buyMe ? freeCash() >= total || on : avail >= o.qty;
       return `<div class="offer ${buyMe ? 'ob' : 'os'} ${on ? 'on' : ''}">
         <div class="oh"><span class="okind">${buyMe ? 'あなたが買える' : 'あなたが売れる'}</span><span class="odeal ${good ? 'good' : 'bad'}">${good ? 'お得' : '損'} ${pct}%${buyMe ? (k < 1 ? '安い' : '高い') : (k > 1 ? '高く売れる' : '安い')}</span></div>
         <div class="oflow2">
@@ -464,7 +473,7 @@ SHEETS.market = () => {
         </div>
         <div class="oitem"><small>1個 ${o.price.toFixed(2)}G(いまの相場 ${m.toFixed(2)}G)</small></div>
         ${o.rival != null ? `<div class="t3">前金つき: 納めると${esc(S.players[o.rival].name)}の店が目玉商品で強くなる</div>` : ''}
-        ${!buyMe && !ok ? `<div class="down t2">在庫 ${fmt(p.inv[o.item] || 0)}個 では足りない</div>` : ''}
+        ${!buyMe ? `<div class="ostock ${ok || on ? '' : 'ng'}">${ico(o.item)} あなたの${r.name}: 持っている <b>${fmt(p.inv[o.item] || 0)}個</b> · 渡せる <b>${fmt(Math.max(0, avail))}個</b>${ok || on ? '' : `<br>あと <b>${fmt(o.qty - Math.max(0, avail))}個</b> 足りない(市場で買えば渡せる)`}</div>` : ''}
         <button class="btn wide ${on ? 'warm' : buyMe ? 'pri' : 'warm'}" data-a="deal" data-v="${o.id}" ${ok || on ? '' : 'disabled'}>${on ? '✓ 月末に取引する(もう一度押すとやめる)' : buyMe ? `買う  −${fmt(total)}G` : `売る  +${fmt(total)}G`}</button>
       </div>`; }).join('')}</div><div class="t3">申し出は今月だけ。取引は月末に行われる。</div>` : '<div class="box t2">今月は申し出がない。</div>';
   return head('🛒', '市場', '品物をタップして売り買い') + tabs + body + `<div class="t3" style="margin-top:8px">値段は町の倉の在庫で決まる。在庫が減ると値上がり、増えると値下がり。在庫は生産(季節・天気・出来事)で増え、町の人の消費とみんなの店の仕入れで減る。</div>`;
@@ -1455,7 +1464,7 @@ const H = {
   mgo: (d) => { const k = d.v, T = F.mT, q = T.q; if (q <= 0) return;
     if (T.mode === 'buy' && guarded(E.quote(S, k, q), `${E.ITEMS[k].name}を${fmt(q)}個買う`, d, H.mgo)) return;
     if (T.mode === 'buy') { const c = E.quote(S, k, q); if (freeCash() < c) return toast('お金が足りない'); F.acts.push({ type: 'buy', res: k, qty: q }); }
-    else { const have = me().inv[k] - F.acts.filter(a => a.type === 'sell' && a.res === k).reduce((a, x) => a + x.qty, 0); const qq = Math.min(q, Math.floor(have)); if (qq <= 0) return toast('在庫がない'); F.acts.push({ type: 'sell', res: k, qty: qq }); }
+    else { const qq = Math.min(q, freeStock(k)); if (qq <= 0) return toast('在庫がない'); F.acts.push({ type: 'sell', res: k, qty: qq }); }
     sfx('coin'); save(); render(); },
   mcancel: (d) => { F.acts = F.acts.filter(a => !((a.type === 'buy' || a.type === 'sell') && a.res === d.v)); sfx('close'); save(); render(); },
   showfinal: () => openSheet('final'),
@@ -1495,7 +1504,7 @@ const H = {
   unpropose: (d) => { const [to, item] = d.v.split(':'); F.acts = F.acts.filter(a => !(a.type === 'propose' && a.to === +to && a.item === item)); sfx('tap'); save(); render(); },
   factor: (d) => { const id = +d.v; if (F.acts.some(a => a.type === 'factor' && a.id === id)) F.acts = F.acts.filter(a => !(a.type === 'factor' && a.id === id)); else F.acts.push({ type: 'factor', id }); sfx('coin'); save(); render(); },
   bridge: (d) => { const v = +d.v, on = F.acts.find(a => a.type === 'bridge'); F.acts = F.acts.filter(a => a.type !== 'bridge'); if (!on || on.amt !== v) F.acts.push({ type: 'bridge', amt: v }); sfx('coin'); save(); render(); },
-  deal: (d) => { const id = +d.v; if (F.acts.some(a => a.type === 'deal' && a.id === id)) F.acts = F.acts.filter(a => !(a.type === 'deal' && a.id === id)); else F.acts.push({ type: 'deal', id }); sfx('coin'); save(); render(); },
+  deal: (d) => { const id = +d.v; if (F.acts.some(a => a.type === 'deal' && a.id === id)) F.acts = F.acts.filter(a => !(a.type === 'deal' && a.id === id)); else { const o = (me().offers || []).find(x => x.id === id); if (o && o.kind === 'buy' && freeStock(o.item, id) < o.qty) return toast(`${E.ITEMS[o.item].name}が足りない(渡せるのは ${fmt(Math.max(0, freeStock(o.item, id)))}個)`); F.acts.push({ type: 'deal', id }); } sfx('coin'); save(); render(); },
   buy: (d) => { const q = E.isRare(d.v) ? 2 : E.isProc(d.v) ? 20 : 50, c = E.quote(S, d.v, q); if (freeCash() < c) return toast('お金が足りない'); F.acts.push({ type: 'buy', res: d.v, qty: q }); sfx('coin'); save(); render(); },
   sell: (d) => { const have = me().inv[d.v] - F.acts.filter(a => a.type === 'sell' && a.res === d.v).reduce((a, x) => a + x.qty, 0); const q = Math.min(E.isRare(d.v) ? 2 : E.isProc(d.v) ? 20 : 50, Math.floor(have)); if (q <= 0) return toast('在庫がない'); F.acts.push({ type: 'sell', res: d.v, qty: q }); sfx('coin'); save(); render(); },
   repay: () => { const amt = Math.min(me().debt, Math.floor(freeCash() / 100) * 100); if (amt <= 0) return; F.acts.push({ type: 'repay', amt }); save(); render(); toast(`月末に ${fmt(amt)}G 返す`); },
@@ -1574,7 +1583,7 @@ async function nextMonth() {
   const tier0 = E.rankOf(E.netWorth(S, me()));
   const fc = { wFore: me().scout === S.t ? S.wNext : S.wFore, ev: S.evNext ? S.evNext.id : null, prices: Object.fromEntries(Object.keys(E.ITEMS).map(k => [k, S.market[k].price])) };
   const autoDone = autoManage();
-  const acts = F.acts.map(({ idx, ...a }) => a);
+  const ORD = { buy: 0, sell: 2, deal: 2 }; const acts = F.acts.map(({ idx, ...a }) => a).map((a, i) => [a, i]).sort((x, y) => ((ORD[x[0].type] ?? 1) - (ORD[y[0].type] ?? 1)) || x[1] - y[1]).map(x => x[0]);
   const pre = new Set(S.shops.map(s => s.id));
   const shopsBefore = S.shops.map(s => ({ id: s.id, d: s.d, g: s.g, owner: s.owner, lot: s.lot }));
   let fx, errors;
@@ -1869,7 +1878,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114044520';
+const BUILD = '20261114045447';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
