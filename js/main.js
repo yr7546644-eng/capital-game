@@ -892,6 +892,33 @@ function rivalLines(fx) {
   for (const p of S.players) if (p.ai && !out[p.id] && Math.random() < 0.5) put(p.id, 0, rk[0] === p.id ? 'ふふ、この調子でいくわ' : rk.indexOf(p.id) > rk.indexOf(ME) ? '次は抜かしてみせる…!' : 'まだまだ、これから');
   return out;
 }
+// ── ライバルの動きを地図で見せる: カメラがその場所へ飛び、建物の上で吹き出しを出す(タップで早送り)
+async function rivalTour(fx) {
+  const ev = [];
+  for (const f of fx) {
+    const pid = f.pid; if (pid == null || pid === ME || !S.players[pid] || S.players[pid].human && !F.mp) continue;
+    const sh = f.shop != null ? S.shops.find(x => x.id === f.shop) : null; if (!sh) continue;
+    if (f.kind === 'open') ev.push({ pid, lot: sh.lot, pr: 3, t: `${E.DISTRICTS[sh.d].short}に <b>${gd(sh).name}</b> を建てた!`, fx: 'pillar' });
+    if (f.kind === 'card' && f.target === ME && ATTACK.has(f.card)) ev.push({ pid, lot: sh.lot, pr: 6, t: `あなたの店に <b>${E.CARDS[f.card].name}</b>!`, fx: 'shock' });
+    if (f.kind === 'buyshop') ev.push({ pid, lot: sh.lot, pr: 5, t: `店を <b>${fmt(f.price)}G</b> で買い取った!`, fx: 'pillar' });
+    if (f.kind === 'route') ev.push({ pid, lot: sh.lot, pr: 2, t: `${gd(sh).name}を <b>${E.ROUTES[f.k].name}</b> で育てる`, fx: 'burst' });
+  }
+  if (!ev.length) return;
+  ev.sort((a, b) => b.pr - a.pr); const list = ev.slice(0, 4);
+  let skip = false; const sk = () => { skip = true; }; document.addEventListener('pointerdown', sk, { once: true });
+  for (const e of list) {
+    if (skip) break;
+    board.focus(e.lot); await wait(650);
+    const p = S.players[e.pid], col = E.COLOR_HEX[p.color];
+    if (e.fx === 'pillar') board.pillar(e.lot, Number('0x' + col.slice(1))); if (e.fx === 'shock') { board.shock(e.lot); FX.flash('rgba(255,77,94,.3)'); FX.shake(); sfx('bad'); } if (e.fx === 'burst') board.burst(e.lot, 0xc79bff, 16);
+    const pos = board.screenOfLot(e.lot), d = document.createElement('div'); d.className = 'mapsay'; d.style.setProperty('--c', col);
+    d.innerHTML = `<span class="msf">${avatar(p, 44)}</span><div><b>${esc(p.name)}</b><span>${e.t}</span></div>`; d.style.left = Math.max(150, Math.min(innerWidth - 150, pos.x)) + 'px'; d.style.top = Math.max(200, pos.y - 30) + 'px';
+    document.body.appendChild(d); sfx('pop'); haptic(10);
+    await wait(skip ? 300 : 1500); d.classList.add('out'); setTimeout(() => d.remove(), 300);
+  }
+  document.removeEventListener('pointerdown', sk);
+  board.home(); await wait(400);
+}
 // ── 始まりの演出: 顔ぶれの紹介(VS) → GAME START!
 function showVS(onDone) {
   const st = E.STAGES[S.stage], L = E.AI_LEVEL[S.level] || {};
@@ -1321,7 +1348,8 @@ async function nextMonth() {
   await wait(1500);
   salesFx(sales);
   for (const f of sales) { const pos = board.screenOf(f.shop); if (pos) { popAt(pos, f.profit, S.players[f.pid].color); if (f.pid === ME && f.profit > 0) setTimeout(() => coinFly(pos, cashPos(), Math.min(8, 2 + Math.round(f.profit / 40))), 500); } }
-  { const ls = rivalLines(fx); Object.entries(ls).forEach(([pid, v], k) => setTimeout(() => rivalSay(+pid, v.t), k * 450)); }
+  await wait(900);
+  await rivalTour(fx);
   const myUp = sales.filter(f => f.pid === ME && f.profit > 0).length; if (myUp) sfx('coins', Math.min(8, 2 + myUp * 2));
   await wait(1100);
   await monthReplay();
@@ -1558,6 +1586,7 @@ async function boot() {
   const bar = $('.ld-bar i');
   bar.style.width = '20%';
   board = new Board($('#stage'));
+  board.faceOf = (pid) => { const p = S.players[pid]; return { url: p ? board.portrait(playerLook(p)) : '', name: pid === ME ? 'あなた' : p ? p.name : '' }; };
   board.onTap = ({ shop, lot, peddler }) => {
     if (F.busy) return;
     if (peddler) { F.mtab = 'rare'; openSheet('market'); sfx('pop'); haptic(10); return; }
@@ -1585,7 +1614,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114023424';
+const BUILD = '20261114024759';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

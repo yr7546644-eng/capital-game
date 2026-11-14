@@ -9,7 +9,32 @@ const BUILDING = { bread: 'windmill', potion: 'church', tool: 'blacksmith', clot
 const WORKB = { wheat: 'watermill', wool: 'watermill', iron: 'lumbermill', herb: 'lumbermill' };
 // 看板(業種のアイコン + 持ち主の色)
 const signCache = new Map();
-function signTex(icon, color, isNew, mood = '') { const key = icon + color + isNew + mood; if (signCache.has(key)) return signCache.get(key); const c = document.createElement('canvas'); c.width = 128; c.height = isNew ? 168 : 128; const x = c.getContext('2d'); if (isNew) { x.fillStyle = '#ff3b5c'; x.beginPath(); x.roundRect(24, 0, 80, 34, 12); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 24px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('NEW', 64, 18); } const oy = isNew ? 40 : 0; x.fillStyle = '#fff'; x.beginPath(); x.arc(64, oy + 64, 54, 0, 7); x.fill(); x.lineWidth = 12; x.strokeStyle = color; x.stroke(); x.font = '62px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(icon, 64, oy + 68); if (mood) { x.fillStyle = mood === '🔥' ? '#ffedd5' : '#e5e7eb'; x.beginPath(); x.arc(104, oy + 22, 22, 0, 7); x.fill(); x.font = '30px sans-serif'; x.fillText(mood, 104, oy + 24); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; signCache.set(key, t); return t; }
+// 店の上の札: 持ち主の顔(色の輪)+ 名前のリボン + 業種の絵。絵文字は使わない
+const imgCache = new Map();
+function getImg(src, cb) { let e = imgCache.get(src); if (!e) { e = { img: new Image(), ok: false, cbs: [] }; e.img.onload = () => { e.ok = true; e.cbs.splice(0).forEach(f => f()); }; e.img.src = src; imgCache.set(src, e); } if (!e.ok && cb) e.cbs.push(cb); return e.ok ? e.img : null; }
+function signTex(o) {
+  const key = JSON.stringify(o); if (signCache.has(key)) return signCache.get(key);
+  const c = document.createElement('canvas'); c.width = 192; c.height = 232; const x = c.getContext('2d'); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const draw = () => {
+    x.clearRect(0, 0, 192, 232);
+    const cx = 96, cy = 96, R = 70;
+    if (o.me) { x.fillStyle = '#ffd36e'; x.beginPath(); x.arc(cx, cy, R + 14, 0, 7); x.fill(); }
+    x.fillStyle = o.color; x.beginPath(); x.arc(cx, cy, R + 6, 0, 7); x.fill();
+    x.fillStyle = '#fff'; x.beginPath(); x.arc(cx, cy, R - 4, 0, 7); x.fill();
+    const face = o.face && getImg(o.face, () => { draw(); t.needsUpdate = true; });
+    if (face) { x.save(); x.beginPath(); x.arc(cx, cy, R - 6, 0, 7); x.clip(); x.drawImage(face, cx - R - 6, cy - R + 2, (R + 6) * 2, (R + 6) * 2); x.restore(); if (o.dull) { x.fillStyle = 'rgba(80,90,110,.45)'; x.beginPath(); x.arc(cx, cy, R - 6, 0, 7); x.fill(); } }
+    const ic = o.icon && getImg(o.icon, () => { draw(); t.needsUpdate = true; });
+    if (ic) { x.fillStyle = '#fff'; x.beginPath(); x.arc(158, 40, 34, 0, 7); x.fill(); x.lineWidth = 5; x.strokeStyle = o.color; x.stroke(); x.drawImage(ic, 128, 10, 60, 60); }
+    // 名前のリボン
+    const w = Math.min(184, 40 + o.name.length * 30), y = 176;
+    x.fillStyle = o.me ? '#e09a00' : o.color; x.beginPath(); x.roundRect(cx - w / 2, y, w, 46, 18); x.fill();
+    x.fillStyle = '#fff'; x.font = 'bold 30px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(o.name, cx, y + 24);
+    if (o.isNew) { x.fillStyle = '#ff3b5c'; x.beginPath(); x.roundRect(4, 6, 76, 34, 12); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 24px sans-serif'; x.fillText('NEW', 42, 24); }
+    if (o.hot) { x.fillStyle = '#ff7a1a'; x.beginPath(); x.roundRect(6, 128, 64, 34, 14); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 22px sans-serif'; x.fillText('繁盛', 38, 146); }
+    if (o.dull) { x.fillStyle = '#6b7280'; x.beginPath(); x.roundRect(6, 128, 64, 34, 14); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 22px sans-serif'; x.fillText('赤字', 38, 146); }
+  };
+  draw(); signCache.set(key, t); return t;
+}
 const CHAR_OF = ['Knight', 'Mage', 'Barbarian', 'Rogue', 'Rogue_Hooded'];
 const loader = new GLTFLoader();
 const cache = new Map();
@@ -25,6 +50,17 @@ async function model(name) {
 }
 async function charModel(name) { const g = await load(CH + name + '.glb'); if (!g) return null; const o = SkeletonUtils.clone(g.scene); o.traverse(m => { if (m.isMesh) { m.castShadow = true; } }); return { o, clips: g.animations }; }
 
+// 町の飾りの建物(プレイヤーの店と見分けやすいよう、少し小さく落ち着いた色にする)
+const TOWN = {
+  hill: [['building_home_A_yellow', 0.72], ['building_home_B_yellow', 0.72], ['building_home_B_red', 0.7], ['building_home_B_green', 0.7], ['building_home_B_blue', 0.7], ['building_home_A_yellow', 0.72], ['tree_single_A', 0.9]],
+  plaza: [['tent', 0.9], ['building_stage_A', 0.75], ['building_well_yellow', 0.75], ['tent', 0.9], ['crate_open', 0.9], ['building_stage_B', 0.7], ['barrel', 1]],
+  port: [['crate_long_A', 0.9], ['crate_long_B', 0.9], ['pallet', 0.9], ['barrel', 1], ['crate_A_big', 1], ['tent', 0.85], ['building_home_A_yellow', 0.68]],
+  noble: [['building_tower_A_yellow', 0.62], ['building_home_B_blue', 0.72], ['building_tavern_yellow', 0.66], ['tree_single_B', 0.9], ['building_home_B_red', 0.72]],
+  mine: [['resource_stone', 1], ['resource_lumber', 1], ['wheelbarrow', 1], ['building_mine_yellow', 0.66], ['sack', 1], ['ladder', 0.9]],
+};
+const townPiece = (kind, h) => { const L = TOWN[kind] || TOWN.hill; return L[h % L.length]; };
+const muted = new Map();
+function mute(o) { o.traverse(m => { if (!m.isMesh) return; const k = m.material.uuid; if (!muted.has(k)) { const c = m.material.clone(); c.color.lerp(new THREE.Color(0xe9dfcc), 0.38); muted.set(k, c); } m.material = muted.get(k); }); }
 export const hexPos = (q, r) => new THREE.Vector3(Math.sqrt(3) * (q + r / 2), 0, 1.5 * r);
 const hdist = (q, r) => (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2;
 
@@ -52,7 +88,7 @@ export class Board {
   fit() { const w = this.el.clientWidth, h = this.el.clientHeight; this.R.setSize(w, h); this.cam.aspect = w / h; this.cam.fov = w / h < 0.7 ? 46 : 36; this.cam.updateProjectionMatrix(); }
   async build(stageId = 'rose') {
     this.peddlerObj = null;
-    this.signs = new Map(); this.bunting = null; this.trafficPer = 2;
+    this.signs = new Map(); this.bunting = null; this.trafficPer = 2; this.folkN = 0; this.folk = []; this.traffic = [];
     const st = STAGES[stageId] || STAGES.rose;
     THEME.snow = st.theme === 'snow';
     if (this.world) this.scene.remove(this.world);
@@ -73,6 +109,10 @@ export class Board {
     const roadSet = new Set(ROAD_CELLS.map(c => c.join(',')));
     const centers = Object.keys(DISTRICTS).map(d => { const ls = LOTS.filter(l => l.d === d); return { d, q: ls.reduce((a, l) => a + l.q, 0) / ls.length, r: ls.reduce((a, l) => a + l.r, 0) / ls.length }; });
     const h0 = (q, r) => (((q * 73856093) ^ (r * 19349663)) >>> 0) % 1000 / 1000;
+    this.distHex = {};
+    const nearLot2 = (q, r) => LOTS.some(l => hdist(l.q - q, l.r - r) <= 2);
+    const districtAt = (q, r) => { let best = null; for (const c of centers) { const dd = hdist(q - c.q, r - c.r); if (dd <= 2.9 && (!best || dd < best.dd)) best = { dd, d: c.d }; } return best ? best.d : null; };
+    const nearestD = (q, r) => { let best = null; for (const l of LOTS) { const dd = hdist(l.q - q, l.r - r); if (!best || dd < best.dd) best = { dd, d: l.d }; } return best.d; };
     const groundColor = (q, r) => {
       if (roadSet.has(q + ',' + r)) return THEME.snow ? 0xb9b1a6 : 0xd6bf8e;
       let best = null; for (const c of centers) { const dd = hdist(q - c.q, r - c.r); if (dd <= 2.2 && (!best || dd < best.dd)) best = { dd, d: c.d }; }
@@ -91,7 +131,13 @@ export class Board {
       // 町の中心近くはあけて、外側に木や丘を置く
       const h = (q * 73856093 ^ r * 19349663) >>> 0;
       if (roadSet.has(q + ',' + r) || MARKS.some(m => m.at[0] === q && m.at[1] === r)) continue;
-      if (nearLot(q, r)) { if (h % 11 === 0) jobs.push(model(['barrel', 'crate_A_big', 'sack'][h % 3]).then(o => { o.position.copy(p).add(new THREE.Vector3(0.4, 0, 0.3)); o.rotation.y = h % 5; W.add(o); })); continue; }
+      // 地区の中は、地区らしい建物で埋める(住宅街=家、広場=屋台・舞台・井戸、港=荷物、鉱山=石と荷車)
+      const dd = districtAt(q, r);
+      if (dd || nearLot2(q, r)) {
+        const d0 = dd || nearestD(q, r); (this.distHex[d0] = this.distHex[d0] || []).push(p.clone());
+        if (h % 10 < 9) { const [name, sc0] = townPiece(DISTRICTS[d0].kind, h), sc = sc0 * 1.18; jobs.push(model(name).then(o => { mute(o); o.scale.setScalar(sc); o.position.copy(p).add(new THREE.Vector3(((h >> 3) % 5 - 2) * 0.06, 0, ((h >> 5) % 5 - 2) * 0.06)); o.rotation.y = (h % 6) * Math.PI / 3; W.add(o); })); }
+        continue;
+      }
       const mtn = THEME.snow && (r <= -8 || d >= 8);
       const edge = d >= R - 2;
       if (h % 7 < 3 || edge || mtn) {
@@ -201,10 +247,28 @@ export class Board {
       g.position.copy(hexPos(q, r)); W.add(g);
     }
   }
+  // 地区の中を歩きまわる町の人(景気がいいほど多い)
+  spawnFolk(per = 3) {
+    if (this.folk) for (const w of this.folk) this.world.remove(w.o);
+    this.folk = [];
+    if (!this.charProto || !this.distHex) return;
+    let i = 0;
+    for (const [d, hs] of Object.entries(this.distHex)) {
+      if (hs.length < 3) continue;
+      for (let n = 0; n < per + (DISTRICTS[d] && DISTRICTS[d].kind === 'plaza' ? 2 : 0); n++, i++) {
+        const proto = this.charProto[i % 4]; if (!proto) continue;
+        const pts = []; for (let k = 0; k < 4; k++) pts.push(hs[(i * 7 + k * 13) % hs.length].clone().add(new THREE.Vector3(((i + k) % 3 - 1) * 0.3, 0, ((i * k) % 3 - 1) * 0.3)));
+        const o = SkeletonUtils.clone(proto.scene); o.scale.setScalar(0.17); this.world.add(o);
+        const mx = new THREE.AnimationMixer(o); const cl = proto.animations.find(c => c.name === 'Walking_A'); if (cl) mx.clipAction(cl).play();
+        this.folk.push({ o, mx, pts, u: (i % 4) * 0.7, dir: 1, off: 0 });
+      }
+    }
+    this.traffic = (this.traffic || []).filter(w => !w.folk).concat(this.folk.map(w => Object.assign(w, { folk: 1 })));
+  }
   // 道を行き来する人(商人や冒険者)
   spawnTraffic(per = 2) {
-    if (this.traffic) for (const w of this.traffic) this.world.remove(w.o);
-    this.traffic = [];
+    if (this.traffic) for (const w of this.traffic.filter(w => !w.folk)) this.world.remove(w.o);
+    this.traffic = (this.traffic || []).filter(w => w.folk);
     if (!this.charProto) return;
     for (const rd of ROADS) {
       const pts = rd.path.map(([q, r]) => hexPos(q, r)); if (pts.length < 2) continue;
@@ -241,13 +305,15 @@ export class Board {
     for (const [id, sp] of this.signs) if (!want.has(id)) { this.world.remove(sp); this.signs.delete(id); }
     for (const s of S.shops) {
       const isNew = s.owner !== myId && S.t - s.openedT <= 1;
-      const icon = s.g === 'work' ? PROC[RES[s.res].proc].icon : GOODS[s.g].icon, col = COLOR_HEX[S.players[s.owner].color];
+      const icon = 'assets/icons/' + (s.g === 'work' ? 'b_work' : 'b_' + s.g) + '.png', col = COLOR_HEX[S.players[s.owner].color];
+      const who = this.faceOf ? this.faceOf(s.owner) : { url: '', name: S.players[s.owner].name };
       let sp = this.signs.get(s.id);
       if (!sp) { sp = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true })); sp.renderOrder = 9; this.world.add(sp); this.signs.set(s.id, sp); const l = LOTS[s.lot]; sp.position.copy(hexPos(l.q, l.r)).add(new THREE.Vector3(0, 2.0, 0)); sp.userData.shop = s.id; sp.userData.lot = s.lot; }
       // 繁盛している店は🔥、赤字続きの店は💤
       const l = s.last, h = s.hist || [];
       const mood = s.g !== 'work' && l && l.profit > 70 && l.want >= l.cap * 0.85 ? '🔥' : h.length >= 2 && h.slice(-2).every(x => x < 0) ? '💤' : '';
-      if (sp.userData.key !== icon + col + isNew + mood) { sp.material.map = signTex(icon, col, isNew, mood); sp.material.needsUpdate = true; sp.userData.key = icon + col + isNew + mood; sp.scale.set(0.75, isNew ? 0.98 : 0.75, 1); sp.userData.isNew = isNew; }
+      const sk = [icon, col, isNew, mood, who.url ? who.url.length : 0, who.name].join('|');
+      if (sp.userData.key !== sk) { sp.material.map = signTex({ icon, color: col, isNew, hot: mood === '🔥', dull: mood === '💤', face: who.url, name: who.name, me: s.owner === myId }); sp.material.needsUpdate = true; sp.userData.key = sk; sp.scale.set(0.95, 1.15, 1); sp.userData.isNew = isNew; }
       // 建物のようす: 赤字続きはくすみ、繁盛は金貨が立ちのぼる
       const o = this.shopObjs.get(s.id);
       if (o && o.userData.mood !== mood) { o.userData.mood = mood; o.traverse(m => { if (m.isMesh) { if (!m.userData.mat0) m.userData.mat0 = m.material; if (mood === '💤') { const c = m.userData.mat0.clone(); c.color.multiplyScalar(0.62); m.material = c; } else m.material = m.userData.mat0; } }); }
@@ -390,6 +456,7 @@ export class Board {
   }
   // 町の景気: いいと人通りが増えて広場に旗飾り、悪いと人が減る
   setProsperity(k) {
+    const tf = k > 1.05 ? 4 : k > 0.98 ? 3 : 2; if (tf !== this.folkN) { this.folkN = tf; this.spawnFolk(tf); }
     const per = k > 1.06 ? 4 : k > 1.0 ? 3 : k > 0.95 ? 2 : 1;
     if (per !== this.trafficPer) { this.trafficPer = per; this.spawnTraffic(per); }
     const want = k > 1.05;
