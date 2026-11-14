@@ -41,6 +41,7 @@ function deEmoji(root) {
 new MutationObserver((ms) => { for (const m of ms) { if (m.type === 'characterData') { const p = m.target.parentElement; if (p) deEmoji(p); } else for (const n of m.addedNodes) { if (n.nodeType === 3) { if (n.parentElement) deEmoji(n.parentElement); } else deEmoji(n); } } }).observe(document.body, { childList: true, subtree: true, characterData: true });
 const pix = (html) => html;
 const itemIco = (k) => ico(k);
+const CARD_WHEN = { shout: '今月の売上に効く', sale: '今月の売上に効く', craft: 'ずっと効く', helper: '3か月効く', remodel: 'ずっと効く(評判)', scout: '使ったらすぐわかる', contract: '3か月分を予約', loan: '月末に500G入る', poach: '今月の相手に効く', headhunt: '2か月効く', dump: '月末に値下がり' };
 const CARD_TYPE = { poach: ['atk', '攻撃'], headhunt: ['atk', '攻撃'], dump: ['atk', '攻撃'], shout: ['shop', 'お店'], sale: ['shop', 'お店'], craft: ['shop', 'お店'], helper: ['shop', 'お店'], remodel: ['shop', 'お店'], scout: ['money', '情報'], contract: ['money', 'お金'], loan: ['money', 'お金'] };
 const gd = (s) => s.g === 'work' ? { icon: '🏭', name: `工房(${E.PROC[E.RES[s.res].proc].name})`, short: '工房' } : E.GOODS[s.g];
 const wx = (k) => E.WEATHER[k] || E.WEATHER.cloudy;
@@ -690,7 +691,8 @@ SHEETS.card = ({ i }) => {
   else if (cd.need === 'rival') { const rv = S.shops.filter(x => x.owner !== ME && x.g !== 'work'); pick = rv.length ? `<div class="lbl">どのライバルの店を狙う?</div>${rv.map(s => { const op = S.players[s.owner]; const same = E.shopsOf(S, ME).some(m => m.d === s.d && m.g === s.g); return `<button class="shoprow" style="width:100%;text-align:left" data-a="cardgo" data-i="${i}" data-shop="${s.id}"><span class="ic">${gd(s).icon}</span><div class="grow">${pname(op)} の${gd(s).name} <span class="t3">${E.DISTRICTS[s.d].short} · 先月 ${s.last ? fmt(s.last.units) + '人' : '−'}${same && c === 'poach' ? ' · <b class="up">あなたも同業</b>' : ''}</span></div><span class="btn sm warm">狙う</span></button>`; }).join('')}` : '<div class="t2">ライバルの店がまだない。</div>'; }
   else if (cd.need === 'res') pick = `<div class="lbl">どの資源を?</div>${Object.entries(E.RES).map(([k, r]) => `<button class="shoprow" style="width:100%;text-align:left" data-a="cardgo" data-i="${i}" data-res="${k}"><span class="ic">${r.icon}</span><div class="grow">${r.name} <span class="t3">今 ${S.market[k].price.toFixed(2)}G</span></div><span class="btn sm pri">予約</span></button>`).join('')}`;
   else pick = `<button class="btn pri wide" data-a="cardgo" data-i="${i}">使う</button>`;
-  return head(cd.icon, cd.name, cd.cost ? `${fmt(cd.cost)}G` : '無料') + `<div class="box"><div class="t2">${esc(cd.text)}</div></div>
+  const ct = CARD_TYPE[cd.base] || ['shop', 'お店'];
+  return `<div class="bigcard ct-${ct[0]}"><span class="bctag">${ct[1]}</span><div class="bcart">${cd.spec ? '🧑‍🍳' : cd.icon}</div><div class="bcname">${cd.name}</div><div class="bctext">${esc(cd.text)}</div><div class="bcfoot"><span class="bccost">${cd.cost ? `${fmt(cd.cost)}G` : '無料'}</span><span class="bcwhen">${CARD_WHEN[cd.base] || '月末に発動'}</span></div><button class="x bcx" data-a="close">✕</button></div>
     ${used ? `<div class="box"><div class="t2">今月は「${E.cardDef(used.card).name}」を使う予定。カードは月に1枚まで。</div><button class="btn wide" data-a="cardcancel">予定を取り消す</button></div>` : `<div class="box">${pick}</div>`}
     <div class="t3">カードは毎月3枚配られ、1枚だけ使える。使わなかったカードは翌月入れかわる。</div>`;
 };
@@ -762,12 +764,17 @@ function actionFx(a, d, r, before) {
     case 'next': FX.ring(c.x, c.y, '#ff7a59'); FX.burst(c.x, c.y, ['#ffb84d', '#ff7a59', '#fff'], 18); break;
     case 'card': FX.ring(c.x, c.y, '#7c4dff'); break;
     case 'cardgo': { const ca = F.acts.find(x => x.type === 'card'); if (!ca) break; const cd = E.cardDef(ca.card), hand = document.querySelectorAll('#dock .card')[ca.idx];
-      const from = hand ? center(hand.getBoundingClientRect()) : c, tgt = ca.shop != null ? shopScreen(ca.shop) : null, to = tgt || { x: innerWidth / 2, y: innerHeight * 0.4 };
+      const tsh = ca.shop != null ? S.shops.find(x => x.id === ca.shop) : null, tlabel = tsh ? `${tsh.owner === ME ? 'あなた' : S.players[tsh.owner].name}の${gd(tsh).name}(${E.DISTRICTS[tsh.d].short})` : ca.res ? E.ITEMS[ca.res].name : '';
+      castCard(cd, tlabel).then(() => {
+      if (tsh) board.focus(tsh.lot);
+      setTimeout(() => {
+      const from = { x: innerWidth / 2, y: innerHeight * 0.42 }, tgt = ca.shop != null ? shopScreen(ca.shop) : null, to = tgt || { x: innerWidth / 2, y: innerHeight * 0.3 };
       FX.fly(from, to, `<span class="fxcard">${cd.spec ? '🧑‍🍳' : cd.icon}<small>${cd.name}</small></span>`).then(() => {
         const atk = ATTACK.has(cd.base) && ca.shop != null && S.shops.find(x => x.id === ca.shop && x.owner !== ME);
         if (atk) { FX.flash('rgba(255,77,94,.25)'); FX.shake(); board.shock(S.shops.find(x => x.id === ca.shop).lot); sfx('bad'); } else { FX.burst(to.x, to.y, ['#c79bff', '#ffd36e', '#fff'], 18); if (ca.shop != null) board.burst(S.shops.find(x => x.id === ca.shop).lot, 0xc79bff, 16); }
-        FX.float(to.x, to.y - 20, `🃏 ${cd.name}${atk ? ' 予約!' : ''}`, atk ? '#e5484d' : '#7c4dff');
-      }); break; }
+        FX.float(to.x, to.y - 20, `${cd.name} ${cd.base === 'scout' ? '' : '月末に発動!'}`, atk ? '#e5484d' : '#7c4dff');
+        if (cd.base === 'scout') setTimeout(() => openSheet('scout'), 500);
+      }); }, tsh ? 650 : 0); }); break; }
     default: break;
   }
 }
@@ -1063,6 +1070,30 @@ function missionBox() {
   return `<div class="box" style="background:linear-gradient(135deg,#f6f0ff,#fff)"><div class="lbl">🤫 あなたの秘密の目標(+${E.MISSION_BONUS}G)</div><div style="font-size:16px">${M.name} ${done ? '<span class="up">✔ 達成中</span>' : ''}</div><div class="t3">${M.text} · ${E.missionProgress(S, p)}</div><div class="t3" style="margin-top:4px">ライバルにもそれぞれ秘密の目標がある(最後に公開)。</div></div>`;
 }
 // 月の結果
+// カードを使ったとき: 大きなカードが画面の真ん中でひるがえる
+function castCard(cd, target) {
+  return new Promise((res) => {
+    const ct = CARD_TYPE[cd.base] || ['shop', 'お店'], el = document.createElement('div'); el.className = 'cast';
+    el.innerHTML = `<div class="castrays ct-${ct[0]}"></div><div class="bigcard castcard ct-${ct[0]}"><span class="bctag">${ct[1]}</span><div class="bcart">${cd.spec ? '🧑‍🍳' : cd.icon}</div><div class="bcname">${cd.name}</div>${target ? `<div class="bctarget">→ ${esc(target)}</div>` : ''}<div class="bcwhen2">${CARD_WHEN[cd.base] || '月末に発動'}</div></div><div class="castlbl">カード発動!</div>`;
+    document.body.appendChild(el); sfx('card'); setTimeout(() => sfx('rankup'), 250); haptic(30);
+    let done = false; const fin = () => { if (done) return; done = true; el.classList.add('out'); setTimeout(() => { el.remove(); res(); }, 280); };
+    el.addEventListener('click', fin); setTimeout(fin, 1500);
+  });
+}
+// 情報屋のレポート(使ったらすぐ見られる)
+SHEETS.scout = () => {
+  const nw = wx(S.wNext), ev = S.evNext && E.evDef(S.evNext.id);
+  let h = head('🕵️', '情報屋のレポート', 'ライバルのいまを、こっそり調べた');
+  h += `<div class="box"><div class="lbl">来月の天気(確実)</div><div class="t1">${nw.icon} ${nw.name}</div>${ev ? `<div class="t2" style="margin-top:4px">${ev.icon} 来月の出来事: <b>${esc(ev.name)}</b></div>` : ''}</div>`;
+  for (const p of S.players.filter(x => x.id !== ME)) {
+    const shops = E.shopsOf(S, p.id), big = Object.entries(p.inv).filter(([, v]) => v >= 10).sort((a, b) => b[1] * S.market[b[0]].price - a[1] * S.market[a[0]].price).slice(0, 3);
+    h += `<div class="box scoutbox" style="--c:${E.COLOR_HEX[p.color]}"><div class="row" style="gap:10px;align-items:center"><span class="scf">${avatar(p, 48)}</span><div class="grow"><div class="t1">${esc(p.name)}</div><div class="t3">現金 <b>${fmt(p.cash)}G</b> · 純資産 <b>${fmt(E.netWorth(S, p))}G</b>${p.debt > 0 ? ` · 借金 ${fmt(p.debt)}G` : ''}</div></div></div>
+      ${shops.length ? shops.map(s => `<div class="kv"><span class="k">${gd(s).icon} ${gd(s).name}(${E.DISTRICTS[s.d].short})</span><span>店員${s.staff}人 · <b class="${cls(s.last ? s.last.profit : 0)}">${s.last ? sign(Math.round(s.last.profit)) + 'G' : '新店'}</b></span></div>`).join('') : '<div class="t3">店はまだない</div>'}
+      ${big.length ? `<div class="t2" style="margin-top:4px">倉: ${big.map(([k, v]) => `${E.ITEMS[k].icon}${E.ITEMS[k].name} ${fmt(v)}`).join(' · ')}</div>` : ''}
+      <div class="t2" style="margin-top:4px">🤫 秘密の目標: <b>${E.MISSIONS[p.mission].name}</b></div></div>`;
+  }
+  return h;
+};
 // ── 決算の演出: 今月のお金の出入りを、1行ずつ画面に出していく(タップで早送り)
 const FLOW_ORDER = ['建設', '育て方', 'カード', '市場で買った', '材料の仕入れ', '先物の約束(材料)', '店の売上', '加工品を売った', '市場で売った', '商人との取引', 'ライバルとの取引', '店を売った', '店の買い取り', '店をたたんだ(売った)', 'お給料', '家賃', '宣伝', '保管料', '借金の利息', '借金の返済', '契約・売掛金', 'つなぎ融資(借りた)', '売掛金を前倒し', '町の依頼', '臨時の税', '年末の税', '町の依頼など', '大祭のボーナス', '救済融資(借りた)'];
 async function monthReplay() {
@@ -1173,7 +1204,7 @@ const H = {
     if (freeCash() < cd.cost) return toast('お金が足りない');
     F.acts = F.acts.filter(a => a.type !== 'card');
     F.acts.push({ type: 'card', card: c, idx: i, shop: d.shop ? +d.shop : undefined, res: d.res || undefined });
-    sfx('card'); closeSheet(); toast(`「${cd.name}」を月末に使う`); save(); render();
+    sfx('card'); closeSheet(); toast(cd.base === 'scout' ? '情報屋が調べてきた!' : `「${cd.name}」は月末に発動`); save(); render();
   },
   cardcancel: () => { F.acts = F.acts.filter(a => a.type !== 'card'); save(); render(); closeSheet(); },
   shop: (d) => { const s = S.shops.find(x => x.id === +d.id); if (s) { board.focus(s.lot); openSheet('shop', { id: s.id }); } },
@@ -1628,7 +1659,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114025803';
+const BUILD = '20261114030325';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
