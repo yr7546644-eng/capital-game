@@ -135,3 +135,25 @@ body.live #chartbox{border-color:rgba(255,211,110,.5);box-shadow:0 0 0 1px rgba(
 @keyframes cf{to{transform:translateY(105vh) rotate(var(--rot));opacity:.8}}
 .toast{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);background:rgba(20,12,40,.92);border:1px solid rgba(255,211,110,.5);border-radius:999px;padding:8px 16px;font-size:13px;font-weight:800;white-space:nowrap;animation:fdin .25s}
 .say{position:absolute;display:flex;align-items:center;gap:6px;max-width:230px;background:#fff;color:#2a1a10;border-radius:14px;padding:6px 10px;font-size:12px;font-weight:800;border-left:5px solid var(--c);box-shadow:0 6px 16px rgba(0,0,0,.4);animation:pop .3s cubic-bezier(.2,1.3,.4,1)}.say img.ic{width:28px;height:28px}
+
+/* 資源 / 株のタブ */
+#tabs{display:flex;gap:6px}
+#tabs button{flex:1;display:flex;align-items:center;justify-content:center;gap:4px;padding:5px 0;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-weight:900;font-size:13px;color:#cfc8ea}
+#tabs button.on{background:linear-gradient(180deg,#3d2f6a,#2a2050);border-color:rgba(255,211,110,.6);color:#fff}
+#tabs img.ic{width:20px;height:20px}
+.chip .own{font-size:10px;font-weight:900;color:var(--gold);min-height:12px;line-height:12px}
+.chip .crown{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--c);display:grid;place-items:center;box-shadow:0 0 8px var(--c)}
+.chip .crown img.ic{width:16px;height:16px}
+.pl.co small:last-child{color:var(--gold)}
+/* 株主総会 */
+.meet{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(8,5,16,.75);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.mcard{width:100%;max-width:370px;background:linear-gradient(180deg,#2e2052,#1b1430);border:2px solid rgba(255,211,110,.6);border-radius:22px;padding:16px;animation:pop .35s cubic-bezier(.2,1.3,.4,1)}
+.mh{display:flex;align-items:center;gap:10px;margin-bottom:8px}.mh img.ic{width:52px;height:52px}.mh small{display:block;font-size:11px;font-weight:900;color:var(--gold);letter-spacing:.2em}.mh b{font-size:21px;font-weight:900}
+.mt{font-size:13px;color:#e6dcff;margin-bottom:10px;line-height:1.5}.mt b{display:block;font-size:19px;color:#fff}.mt small{display:block;color:#cfc8ea}
+.props{display:flex;flex-direction:column;gap:6px}
+.prop{text-align:left;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.07);border:1px solid var(--line);border-left:5px solid var(--gold)}.prop b{display:block;font-size:15px}.prop small{font-size:11px;color:#cfc8ea}
+.prop:active{transform:translateY(2px)}
+.votes{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.vrow{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.05);border-radius:10px;padding:4px 8px;border-left:4px solid var(--c)}.vrow img.ic{width:26px;height:26px}.vrow b{flex:1;font-size:13px}.vrow span{font-weight:900;font-size:13px}.vrow em{font-style:normal;font-weight:900;width:36px;text-align:right}
+.vbar{display:flex;height:12px;border-radius:9px;overflow:hidden;background:rgba(255,255,255,.08);margin-bottom:10px}.vbar i{display:block;height:100%;width:0;transition:width .8s cubic-bezier(.2,.9,.3,1)}.vbar .yes{background:var(--up)}.vbar .no{background:var(--dn)}
+.vbtns{display:flex;gap:8px}.vbtns .btn{flex:1}.btn.yes{background:linear-gradient(180deg,#5ee6a6,#1f9e66);border-bottom-color:#0d5c3a}.btn.no{background:linear-gradient(180deg,#ff8a95,#d63048);border-bottom-color:#7a1020}
