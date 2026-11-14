@@ -411,7 +411,7 @@ export function newGame({ seed = 1, players = null, months = MONTHS, stage = 'ro
   for (const p of S.players) if (p.ai) { p.fav = gs[Math.floor(rnd(S) * gs.length)]; p.favD = ds[Math.floor(rnd(S) * ds.length)]; p.boldness = 0.6 + rnd(S) * 0.8; }
   S.evNext = pickEvent(S);
   dealHands(S);
-  S.nextOffer = 1; makeOffers(S);
+  S.nextOffer = 1; S.peddler = { left: 0, items: [], next: 3 + Math.floor(rnd(S) * 3) }; makeOffers(S);
   S.w = 'sun'; S.wHist = []; forecastWeather(S);
   return S;
 }
@@ -489,6 +489,16 @@ function activeMult(S, kind, key, d) {
 }
 
 // ── 決断の検証
+// 行商人: ときどき町に来て、その月だけレア素材を売り買いできる
+export const peddlerHas = (S, k) => !!(S.peddler && S.peddler.left > 0 && S.peddler.items.includes(k));
+function peddlerMonth(S, fx) {
+  const P = S.peddler = S.peddler || { left: 0, items: [], next: S.t + 3 };
+  if (P.left > 0) P.left--;
+  if (P.left <= 0 && S.t + 1 >= P.next && S.t + 1 < S.months) {
+    const ks = Object.keys(RARES).sort(() => rnd(S) - 0.5); P.items = ks.slice(0, 2 + (rnd(S) < 0.4 ? 1 : 0)); P.left = 1; P.next = S.t + 1 + 4 + Math.floor(rnd(S) * 4);
+    fx.push({ kind: 'peddler', items: P.items });
+  }
+}
 export function validate(S, pid, a) {
   const p = S.players[pid];
   const own = (id) => S.shops.find(x => x.id === id && x.owner === pid);
@@ -517,6 +527,7 @@ export function validate(S, pid, a) {
   if (a.type === 'factor') { const r = (S.recv || []).find(x => x.id === a.id && x.to === pid); return r ? null : 'その売掛金はもうない'; }
   if (a.type === 'bridge') { if (!(a.amt >= 100 && a.amt <= BRIDGE_MAX)) return '金額がちがう'; if ((S.recv || []).some(x => x.from === pid && x.bridge)) return 'つなぎ融資は返してから'; return null; }
   if (a.type === 'deal') { const o = p.offers.find(x => x.id === a.id); if (!o) return 'その取引はもう終わった'; if (o.kind === 'pact') return null; if (o.kind === 'shopbid') { const t = S.shops.find(x => x.id === o.shop && x.owner === pid), rv = S.players[o.rival]; if (!t) return 'その店はもうない'; if (rv.cash < o.price || shopsOf(S, rv.id).length >= MAX_SHOPS) return '相手の都合で取引が流れた'; return null; } if (o.kind === 'buy' && (p.inv[o.item] || 0) < o.qty) return `${ITEMS[o.item].name}が足りない`; if (o.kind === 'sell' && p.cash < o.qty * o.price) return 'お金が足りない'; return null; }
+  if ((a.type === 'buy' || a.type === 'sell') && RARES[a.res] && !peddlerHas(S, a.res)) return 'レア素材は行商人が来ているときだけ売り買いできる';
   if (a.type === 'buy') { if (!ITEMS[a.res] || !(a.qty > 0)) return '数がちがう'; if (p.cash < quote(S, a.res, a.qty)) return 'お金が足りない'; return null; }
   if (a.type === 'sell') { if (!(a.qty > 0) || (p.inv[a.res] || 0) < a.qty) return '在庫が足りない'; return null; }
   if (a.type === 'card') {
@@ -914,6 +925,7 @@ export function step(S, decisions = {}) {
   }
   S.rumors = S.rumors.sort((a, b) => b.w - a.w + (rnd(S) - 0.5)).slice(0, 4);
   S.players.forEach((p, i) => { const tax = (fx.find(f => f.kind === 'yearTax' && f.pid === p.id) || {}).tax || 0; if (tax) flowAdd(p, '年末の税', -tax); flowAdd(p, '町の依頼など', p.cash - bTail[i] + tax); });
+  peddlerMonth(S, fx);
   S.t++;
   if (S.t >= S.months) {
     // 大祭の褒美と秘密の目標

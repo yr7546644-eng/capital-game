@@ -51,6 +51,7 @@ export class Board {
   }
   fit() { const w = this.el.clientWidth, h = this.el.clientHeight; this.R.setSize(w, h); this.cam.aspect = w / h; this.cam.fov = w / h < 0.7 ? 46 : 36; this.cam.updateProjectionMatrix(); }
   async build(stageId = 'rose') {
+    this.peddlerObj = null;
     this.signs = new Map(); this.bunting = null; this.trafficPer = 2;
     const st = STAGES[stageId] || STAGES.rose;
     THEME.snow = st.theme === 'snow';
@@ -317,6 +318,22 @@ export class Board {
       if (u.ring) { o.scale.setScalar(1 + k * 3); o.material.opacity = 0.9 * (1 - k); }
       if (k >= 1) { this.world.remove(o); o.material.dispose(); return false; } return true; });
   }
+  // 行商人(来ている月だけ、町の真ん中に屋台を出す)
+  setPeddler(on) {
+    if (!on) { if (this.peddlerObj) { this.world.remove(this.peddlerObj); this.peddlerObj = null; } return; }
+    if (this.peddlerObj || !this.charProto || !this.charProto[4]) return;
+    const mk = MARKS.find(m => m.k === 'fountain') || MARKS.find(m => m.k === 'well') || MARKS[0];
+    const base = mk ? hexPos(mk.at[0], mk.at[1]) : new THREE.Vector3(this.homeV.tx, 0, this.homeV.tz);
+    const g = new THREE.Group(); g.position.copy(base).add(new THREE.Vector3(1.1, 0, 0.9)); g.userData.peddler = 1;
+    const proto = this.charProto[4], o = SkeletonUtils.clone(proto.scene); o.scale.setScalar(0.26); o.rotation.y = -0.6; g.add(o);
+    const mx = new THREE.AnimationMixer(o), cl = proto.animations.find(c => c.name === 'Idle') || proto.animations[0]; if (cl) mx.clipAction(cl).play(); this.mixers.push(mx);
+    model('tent').then(t => { if (!t) return; t.scale.setScalar(0.55); t.position.set(0.55, 0, -0.35); g.add(t); });
+    model('wheelbarrow').then(t => { if (!t) return; t.scale.setScalar(0.7); t.position.set(-0.5, 0, 0.2); t.rotation.y = 0.8; g.add(t); });
+    const c = document.createElement('canvas'); c.width = 256; c.height = 96; const x = c.getContext('2d'); x.fillStyle = '#7c4dff'; x.beginPath(); x.roundRect(6, 6, 244, 84, 40); x.fill(); x.fillStyle = '#fff'; x.font = 'bold 46px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('行商人', 128, 50);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true })); sp.scale.set(1.3, 0.5, 1); sp.position.y = 1.35; sp.renderOrder = 13; g.add(sp);
+    g.traverse(m => { m.userData.peddler = 1; });
+    this.world.add(g); this.peddlerObj = g; this.anim.push((t) => { if (this.peddlerObj !== g) return; sp.position.y = 1.35 + Math.sin(t * 3) * 0.08; if (lt != null) mx.update(Math.min(0.05, t - lt)); lt = t; });
+  }
   clearPreview() { if (!this.previews) return; for (const [, o] of this.previews) this.world.remove(o); this.previews.clear(); }
   async reset() { this.clearPreview(); for (const [, o] of this.shopObjs) if (o) this.world.remove(o); this.shopObjs.clear(); }
   // 天気の見た目(雨・雪の粒、空の色、光)
@@ -454,10 +471,11 @@ export class Board {
     const r = this.R.domElement.getBoundingClientRect();
     const m = new THREE.Vector2((x - r.left) / r.width * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
     const ray = new THREE.Raycaster(); ray.setFromCamera(m, this.cam);
-    const objs = [...(this.ratings ? this.ratings.values() : [])].concat([...this.shopObjs.values()].filter(Boolean)).concat([...(this.signs || new Map()).values()]).concat([...(this.previews || new Map()).values()]).concat([...this.lotObjs.values()]).concat([...this.plus.values()].filter(s => s.visible));
+    const objs = [...(this.peddlerObj ? [this.peddlerObj] : []), ...(this.ratings ? this.ratings.values() : [])].concat([...this.shopObjs.values()].filter(Boolean)).concat([...(this.signs || new Map()).values()]).concat([...(this.previews || new Map()).values()]).concat([...this.lotObjs.values()]).concat([...this.plus.values()].filter(s => s.visible));
     const hit = ray.intersectObjects(objs, true)[0];
     if (!hit) return;
-    let o = hit.object; while (o && o.userData.shop == null && o.userData.lot == null) o = o.parent;
+    let o = hit.object; while (o && o.userData.shop == null && o.userData.lot == null && !o.userData.peddler) o = o.parent;
+    if (o && o.userData.peddler) { if (this.onTap) this.onTap({ peddler: true }); return; }
     if (!o) return;
     const so = o.userData.shop != null && this.shopObjs.get(o.userData.shop); if (so) so.userData.bounce = 0.0001;
     this.ripple(o.userData.lot);

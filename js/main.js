@@ -3,6 +3,7 @@ import * as E from './engine.js';
 import { Board, hexPos } from './board.js';
 import { sfx, unlockAudio, bgm, haptic, audioPref, setAudioPref } from './sfx.js';
 import { NET, joinRoom, leaveRoom, send as netSend, newCode } from './net.js';
+import { ICON3D, ICONGI, GI_COL } from './icons.js';
 
 const $ = (s) => document.querySelector(s);
 const fmt = (n) => Math.round(n).toLocaleString('ja-JP');
@@ -12,10 +13,33 @@ const ym = (t) => `${Math.floor(t / 12) + 1}年目 ${t % 12 + 1}月`;
 const cls = (n) => (n >= 0 ? 'up' : 'down');
 let ME = 0;
 // 絵文字の代わりに、ゲームの3Dモデルから作った絵を使う
-const EMOJI_IMG = { '🥖': 'b_bread', '🧪': 'b_potion', '⚒️': 'b_tool', '🧵': 'b_cloth', '🏭': 'b_work', '🌾': 'wheat', '🌿': 'herb', '⛓️': 'iron', '🐑': 'wool', '🥣': 'flour', '⚗️': 'tincture', '🔩': 'steel', '🧶': 'fabric', '🐉': 'dragonscale', '🦪': 'seapearl', '🔨': 'ui_build', '🛒': 'ui_market', '📒': 'ui_books', '🏛️': 'ui_town', '💰': 'coin' };
-const EMOJI_RE = new RegExp(Object.keys(EMOJI_IMG).map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
+// ── 絵文字は使わない: 画面に出る文字の中の絵文字を、3Dの絵かアイコンのバッジに置きかえる(知らない絵文字は消す)
+const norm = (e) => e.replace(/️/g, '');
+const IMAP = {}; for (const [e, k] of Object.entries(ICON3D)) IMAP[norm(e)] = { k3: k }; for (const [e, [n, c]] of Object.entries(ICONGI)) if (!IMAP[norm(e)]) IMAP[norm(e)] = { gi: n, c };
+const EMO_RE = /\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}️?|[\u{1F3FB}-\u{1F3FF}])*/gu;
+const EMO_T = /\p{Extended_Pictographic}/u;
+const KEEP = new Set(['✔', '↩', '↗', '↘', '™', '©', '®']);
+const hasRealEmoji = (t) => { EMO_RE.lastIndex = 0; let m; while ((m = EMO_RE.exec(t))) if (!KEEP.has(norm(m[0]))) { EMO_RE.lastIndex = 0; return true; } EMO_RE.lastIndex = 0; return false; };
 const ico = (k, cls = '') => `<img class="em3 ${cls}" src="assets/icons/${k}.png" alt="" draggable="false">`;
-const pix = (html) => html.replace(EMOJI_RE, (m) => ico(EMOJI_IMG[m]));
+function iconEl(e) {
+  const m = IMAP[norm(e)];
+  if (!m) return null;
+  if (m.k3) { const i = document.createElement('img'); i.className = 'em3'; i.src = `assets/icons/${m.k3}.png`; i.alt = ''; i.draggable = false; return i; }
+  const b = document.createElement('span'), c = GI_COL[m.c] || GI_COL.blue; b.className = 'gib'; b.style.setProperty('--g1', c[0]); b.style.setProperty('--g2', c[1]);
+  const i = document.createElement('img'); i.src = `assets/gi/${m.gi}.svg`; i.alt = ''; i.draggable = false; b.appendChild(i); return b;
+}
+function deEmoji(root) {
+  if (!root || root.nodeType !== 1) return;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: (n) => n.nodeValue && EMO_T.test(n.nodeValue) && hasRealEmoji(n.nodeValue) && !(n.parentElement && n.parentElement.closest('.stb,.stamp,.keepemo,script,style,textarea,input')) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
+  for (const n of nodes) {
+    const t = n.nodeValue, f = document.createDocumentFragment(); let last = 0; EMO_RE.lastIndex = 0; let m;
+    while ((m = EMO_RE.exec(t))) { if (KEEP.has(norm(m[0]))) continue; f.appendChild(document.createTextNode(t.slice(last, m.index))); const el = iconEl(m[0]); if (el) f.appendChild(el); last = m.index + m[0].length; }
+    f.appendChild(document.createTextNode(t.slice(last))); n.parentNode.replaceChild(f, n);
+  }
+}
+new MutationObserver((ms) => { for (const m of ms) { if (m.type === 'characterData') { const p = m.target.parentElement; if (p) deEmoji(p); } else for (const n of m.addedNodes) { if (n.nodeType === 3) { if (n.parentElement) deEmoji(n.parentElement); } else deEmoji(n); } } }).observe(document.body, { childList: true, subtree: true, characterData: true });
+const pix = (html) => html;
 const itemIco = (k) => ico(k);
 const CARD_TYPE = { poach: ['atk', '攻撃'], headhunt: ['atk', '攻撃'], dump: ['atk', '攻撃'], shout: ['shop', 'お店'], sale: ['shop', 'お店'], craft: ['shop', 'お店'], helper: ['shop', 'お店'], remodel: ['shop', 'お店'], scout: ['money', '情報'], contract: ['money', 'お金'], loan: ['money', 'お金'] };
 const gd = (s) => s.g === 'work' ? { icon: '🏭', name: `工房(${E.PROC[E.RES[s.res].proc].name})`, short: '工房' } : E.GOODS[s.g];
@@ -66,7 +90,7 @@ function hud() {
   const prog = S.t / S.months, C = 2 * Math.PI * 12;
   const pc = pendCost();
   $('#hud').innerHTML = `
-    <button class="pill month" data-a="menu"><svg class="ring" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="#e3e8f5" stroke-width="4"/><circle cx="15" cy="15" r="12" fill="none" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round" stroke-dasharray="${C * prog} ${C}" transform="rotate(-90 15 15)"/></svg><span><div class="m1">${E.STAGES[S.stage].icon} ${S.over ? '終わり' : `${Math.floor(S.t / 12) + 1}年目 · のこり${S.months - S.t}か月`}</div><div class="m2">${S.over ? '最終結果' : `${S.t % 12 + 1}月 ${S.t ? wx(S.w).icon : ''}`}</div></span></button>
+    <button class="pill month" data-a="menu"><svg class="ring" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="#e3e8f5" stroke-width="4"/><circle cx="15" cy="15" r="12" fill="none" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round" stroke-dasharray="${C * prog} ${C}" transform="rotate(-90 15 15)"/></svg><span><div class="m1">${S.over ? '終わり' : `${Math.floor(S.t / 12) + 1}年目 ${S.t % 12 + 1}月`}</div><div class="m2">${S.over ? '最終結果' : `ターン <b>${S.t + 1}</b><small>/${S.months}</small>`}</div></span></button>
     <div class="pill cash">${ico('coin', 'coin3')}<span class="num" id="cashv">${fmt(freeCash())}</span>${pc ? `<span class="pend">${pc > 0 ? '使う予定' : '入る予定'} ${fmt(Math.abs(pc))}</span>` : ''}</div>
     <button class="pill rank" data-a="ranking"><b class="num">${pos}</b>位 <span class="rt">${E.RANKS[E.rankOf(E.netWorth(S, p))][2]}</span></button>`;
 }
@@ -107,7 +131,7 @@ function applyHint() {
   const el = h === 'build' ? $('#dock [data-a=build]') : h === 'next' ? $('#dock [data-a=next]') : h === 'market' ? $('#dock [data-a=market]') : h === 'card' ? $('#dock .hand') : h === 'alerts' ? $('#dock [data-a=alerts]') : h === 'rivals' ? $('#rivals') : null;
   if (el) el.classList.add('hint');
 }
-function render() { hud(); $('#hud').innerHTML = pix($('#hud').innerHTML); cashRoll(); dock(); $('#dock').innerHTML = pix($('#dock').innerHTML); rivalsBar(); applyHint(); if (F.mp) netBadge(); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
+function render() { hud(); $('#hud').innerHTML = pix($('#hud').innerHTML); cashRoll(); dock(); $('#dock').innerHTML = pix($('#dock').innerHTML); rivalsBar(); applyHint(); if (F.mp) netBadge(); board.setPeddler(!!(S.peddler && S.peddler.left > 0)); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
 // 場面に合わせて曲を選ぶ: 大祭の年・雨・町ごとの曲を数か月ごとに入れ替え
 const STAGE_BGM = { rose: ['asa', 'kenso'], marina: ['minato', 'asa'], snow: ['yuki', 'kenso'], capital: ['kenso', 'asa'] };
 function pickBgm() {
@@ -124,7 +148,16 @@ function pickBgm() {
 const SHEETS = {};
 function openSheet(kind, args = {}) { const tu = document.getElementById('tut'); if (tu) tu.remove(); F.sheet = kind; F.args = args; renderSheet(); $('#sheet').scrollTop = 0; $('#sheet').classList.toggle('half', kind === 'stages'); $('#sheet').className = $('#sheet').className.replace(/\b(k-\S+|anim)\b/g, '').trim() + ' anim k-' + kind; clearTimeout(F.animT); F.animT = setTimeout(() => $('#sheet').classList.remove('anim'), 1000); $('#sheetwrap').classList.add('on'); sfx('open'); }
 function closeSheet() { F.sheet = null; $('#sheetwrap').classList.remove('on'); board && board.highlightLot(-1); }
-function renderSheet() { const f = SHEETS[F.sheet]; if (!f) return; $('#sheet').innerHTML = '<div class="grab"></div>' + pix(f(F.args)); }
+function renderSheet() { const f = SHEETS[F.sheet]; if (!f) return; $('#sheet').innerHTML = '<div class="grab"></div>' + pix(f(F.args)); foldTips($('#sheet')); }
+// 長い説明は「？ くわしく」にたたむ(画面は大事なことだけ)
+function foldTips(root) {
+  for (const el of root.querySelectorAll('.t3, .tip-long')) {
+    if (el.closest('details, .keep, .mfacts, .bfacts, .nwp, button')) continue;
+    if ((el.textContent || '').trim().length < 48) continue;
+    const d = document.createElement('details'); d.className = 'tipd'; const sm = document.createElement('summary'); sm.textContent = '？ くわしく'; d.appendChild(sm);
+    el.parentNode.insertBefore(d, el); d.appendChild(el);
+  }
+}
 const head = (icon, title, sub) => `<div class="sh"><div class="si">${icon}</div><h3>${title}${sub ? `<small>${sub}</small>` : ''}</h3><button class="x" data-a="close">✕</button></div>`;
 const stars = (rep) => { const n = Math.round(rep * 5); return '<span class="stars">' + '★'.repeat(n) + '<span style="opacity:.25">' + '★'.repeat(5 - n) + '</span></span>'; };
 const pname = (p) => `<span class="dot" style="background:${E.COLOR_HEX[p.color]}"></span>${esc(p.name)}`;
@@ -396,7 +429,7 @@ SHEETS.market = () => {
       <div class="mqty"><button class="mqb" data-a="mq" data-v="${-step}">−</button><div class="mqv"><b>${fmt(q)}</b><small>個</small></div><button class="mqb" data-a="mq" data-v="${step}">+</button></div>
       <div class="chips mpre">${presets.map(v => `<button class="chip ${q === v ? 'on' : ''}" data-a="mqset" data-v="${v}">${v}</button>`).join('')}${T.mode === 'buy' && use ? `<button class="chip" data-a="mqset" data-v="${Math.max(step, Math.ceil(use / step) * step)}">1か月分</button>` : ''}${T.mode === 'sell' && canSell ? `<button class="chip" data-a="mqset" data-v="${canSell}">ぜんぶ</button>` : ''}</div>
       <div class="msum">${T.mode === 'buy' ? `合計 <b class="down">−${fmt(Math.round(cost))}G</b>` : `合計 <b class="up">+${fmt(Math.round(cost))}G</b>`}${q ? ` <small>(1個平均 ${(cost / q).toFixed(2)}G)</small>` : ''}<br><small>${T.mode === 'buy' ? '買うと倉が減って' : '売ると倉が増えて'} 相場 ${m.price.toFixed(2)} → <b class="${dp > 0 ? 'down' : 'up'}">${after.toFixed(2)}G</b>(${dp >= 0 ? '+' : ''}${Math.round(dp * 100)}%)</small></div>
-      <button class="btn wide ${T.mode === 'buy' ? 'pri' : 'warm'} mgo" data-a="mgo" data-v="${k}" ${q > 0 && (T.mode === 'sell' || freeCash() >= cost) ? '' : 'disabled'}>${q <= 0 ? '数を選んで' : T.mode === 'buy' ? (freeCash() >= cost ? `🛒 ${fmt(q)}個 買う` : 'お金が足りない') : `💰 ${fmt(q)}個 売る`}</button>
+      <button class="btn wide ${T.mode === 'buy' ? 'pri' : 'warm'} mgo" data-a="mgo" data-v="${k}" ${q > 0 && (T.mode === 'sell' || freeCash() >= cost) && (!E.isRare(k) || E.peddlerHas(S, k)) ? '' : 'disabled'}>${E.isRare(k) && !E.peddlerHas(S, k) ? '行商人が来たときだけ' : q <= 0 ? '数を選んで' : T.mode === 'buy' ? (freeCash() >= cost ? `🛒 ${fmt(q)}個 買う` : 'お金が足りない') : `💰 ${fmt(q)}個 売る`}</button>
       ${pend.length ? `<div class="mpend">${pend.map((a, i) => `<span>${a.type === 'buy' ? '🛒 買う' : '💰 売る'} ${fmt(a.qty)}個</span>`).join(' · ')} <small>(月末に実行)</small> <button class="btn sm" data-a="mcancel" data-v="${k}">取り消す</button></div>` : ''}
     </div>`;
     return h0;
@@ -404,7 +437,7 @@ SHEETS.market = () => {
   let body = '';
   if (tab === 'raw') body = `<div class="box">${Object.keys(E.RES).map(row).join('')}</div><div class="t3">店は毎月、材料を使う。在庫があれば先に使い、なければその月の値段で買う。安いときに買っておけば値上がりしても困らない。小麦と薬草は傷むので抱えすぎ注意。保管料もかかる。</div>`;
   if (tab === 'proc') body = `<div class="box">${Object.keys(E.PROC).map(row).join('')}</div><div class="t3">加工品は工房で原料から作る(空き地の「+」→🏭工房)。原料より高く売れる。自分の店で使うと「自家製」になる。</div>`;
-  if (tab === 'rare') body = `<div class="box">${Object.keys(E.RARES).map(k => row(k) + `<div class="t3" style="margin:-4px 0 8px 34px">${E.RARES[k].where} · ${E.GOODS[E.RARES[k].use].icon}${E.GOODS[E.RARES[k].use].name}の目玉にできる</div>`).join('')}</div><div class="t3">レア素材は量が少なく、買うと一気に値上がりする。使い道は4つ: すぐ売る / 自分の店の目玉商品にする(客寄せ+特別売上) / 前金つきで欲しがるライバルに納める / 値上がりまで持っておく。ただし代わりの素材が入ると値崩れする。</div>`;
+  if (tab === 'rare') body = (() => { const P = S.peddler || {}; const here = P.left > 0; return `<div class="peddler ${here ? 'on' : ''}"><img src="assets/icons/ui_crate.png" alt=""><div><b>${here ? '行商人が来ている!' : '行商人はいない'}</b><small>${here ? `今月だけ ${P.items.map(k => E.ITEMS[k].name).join('・')} を売り買いできる` : `次に来るのは ${P.next != null ? ym(P.next) : '—'} ごろ`}</small></div></div>`; })() + `<div class="box">${Object.keys(E.RARES).map(k => row(k) + `<div class="t3" style="margin:-4px 0 8px 34px">${E.RARES[k].where} · ${E.GOODS[E.RARES[k].use].icon}${E.GOODS[E.RARES[k].use].name}の目玉にできる</div>`).join('')}</div><div class="t3">レア素材は量が少なく、買うと一気に値上がりする。使い道は4つ: すぐ売る / 自分の店の目玉商品にする(客寄せ+特別売上) / 前金つきで欲しがるライバルに納める / 値上がりまで持っておく。ただし代わりの素材が入ると値崩れする。</div>`;
   if (tab === 'ledger') {
     const lg = (S.ledger || []).filter(f => f.pid !== ME);
     const lines = lg.map(f => { const pp = S.players[f.pid]; if (f.kind === 'buy') return `${pname(pp)} が ${E.ITEMS[f.res].icon}${E.ITEMS[f.res].name}を <b>${fmt(f.qty)}</b> 買った`; if (f.kind === 'sell') return `${pname(pp)} が ${E.ITEMS[f.res].icon}${E.ITEMS[f.res].name}を <b>${fmt(f.qty)}</b> 売った`; if (f.kind === 'deal') return `${pname(pp)} が商人と ${E.ITEMS[f.offer.item].name} の取引をした`; if (f.kind === 'card') return `${pname(pp)} が ${E.ITEMS[f.res].name}を市場に放出した`; if (f.kind === 'open') { const sh = S.shops.find(x => x.id === f.shop); return sh ? `${pname(pp)} が ${E.DISTRICTS[sh.d].short}に ${gd(sh).name} を開いた` : ''; } if (f.kind === 'close') return `${pname(pp)} が店をたたんだ`; return ''; }).filter(Boolean);
@@ -739,6 +772,7 @@ function monthFx(fx) {
     if (f.kind === 'route' && sh) later(() => board.pillar(sh.lot, 0xc79bff));
     if (f.kind === 'buyshop' && sh) later(() => { board.pillar(sh.lot, 0xffd36e); if (f.pid === ME || f.from === ME) FX.stamp(f.pid === ME ? '買い取り成功!' : '店を買われた!', f.pid === ME ? '#16a34a' : '#e5484d'); });
     if (f.kind === 'hire' && f.pid === ME && sh) later(() => board.pillar(sh.lot, 0x9be7c4));
+    if (f.kind === 'peddler') later(() => { board.setPeddler(true); if (board.peddlerObj) { const p = board.peddlerObj.position; board.view.tx = p.x * 0.5 + board.view.tx * 0.5; } FX.stamp('行商人が来た!', '#7c4dff'); sfx('notify'); });
   }
 }
 function salesFx(sales) {
@@ -882,7 +916,7 @@ function gameStart() {
 function monthBanner() {
   const b = document.createElement('div'); b.className = 'mbanner';
   const mo = S.t % 12, se = mo < 2 || mo === 11 ? '❄️ 冬' : mo < 5 ? '🌸 春' : mo < 8 ? '☀️ 夏' : '🍂 秋';
-  b.innerHTML = `<small>${Math.floor(S.t / 12) + 1}年目 · ${se}</small><div>${mo + 1}月</div><em>作戦タイム</em>`;
+  b.innerHTML = `<small>${Math.floor(S.t / 12) + 1}年目 ${mo + 1}月 · ${se}</small><div>TURN ${S.t + 1}<i>/${S.months}</i></div><em>${S.months - S.t <= 3 ? `のこり ${S.months - S.t} ターン!` : '作戦タイム'}</em>`; sfx('whoosh');
   document.body.appendChild(b); setTimeout(() => b.remove(), 1700);
 }
 // ── やること(はじめの目標)。1つずつ出して、できたら「クリア!」
@@ -1083,7 +1117,7 @@ SHEETS.rules = () => head('📜', 'ルールくわしく', '最後の月に、�
   ⑪ <b>🏛️町</b>: 依頼・ギルドの投票・年末の税。ライバルの店を<b>買い取る</b>こともできる。<br>
   ⑫ <b>🌐友だちと対戦</b>: メニュー→部屋を作って番号を送るだけ。空いた席にはAIが入る。<br>
   ⑬「次の月へ」で、決めたことが全部いっしょに実行される。最後の月の純資産で勝負! 地図は2本指で回転・拡大、シートは下にスワイプで閉じる。</div>`;
-SHEETS.credits = () => head('🎨', 'クレジット', '') + `<div class="box t2">3D モデル: KayKit — Kay Lousberg(CC0)<br>Quaternius(CC0)<br>3D 表示: three.js(MIT)<br>フォント: M PLUS Rounded 1c(SIL OFL)<br>音楽・効果音: ゲーム内でその場で合成(オリジナル)<br>オンライン対戦: Supabase Realtime</div>`;
+SHEETS.credits = () => head('🎨', 'クレジット', '') + `<div class="box t2">3D モデル: KayKit — Kay Lousberg(CC0)<br>Quaternius(CC0)<br>3D 表示: three.js(MIT)<br>フォント: M PLUS Rounded 1c(SIL OFL)<br>アイコン: game-icons.net — Lorc, Delapouite ほか(CC BY 3.0)<br>音楽・効果音: ゲーム内でその場で合成(オリジナル)<br>オンライン対戦: Supabase Realtime</div>`;
 
 // ── 操作
 const H = {
@@ -1524,8 +1558,9 @@ async function boot() {
   const bar = $('.ld-bar i');
   bar.style.width = '20%';
   board = new Board($('#stage'));
-  board.onTap = ({ shop, lot }) => {
+  board.onTap = ({ shop, lot, peddler }) => {
     if (F.busy) return;
+    if (peddler) { F.mtab = 'rare'; openSheet('market'); sfx('pop'); haptic(10); return; }
     if (shop != null) { const s = S.shops.find(x => x.id === shop); if (s) { board.focus(s.lot); openSheet('shop', { id: shop }); sfx('pop'); haptic(10); } return; }
     if (lot != null && !S.over) {
       const p = pendOpen(lot);
@@ -1550,7 +1585,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114021653';
+const BUILD = '20261114023026';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

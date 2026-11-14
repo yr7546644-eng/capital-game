@@ -15,12 +15,25 @@ export function unlockAudio() {
       bgmBus = ctx.createGain(); bgmBus.gain.value = 0.0001; bgmBus.connect(master);
       verb = ctx.createConvolver(); verb.buffer = impulse(); const vg = ctx.createGain(); vg.gain.value = 0.3; verb.connect(vg).connect(master);
     }
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state !== 'running') ctx.resume();
+    iosPlayback();
     if (audioPref().bgm && !bgm.on) bgm.start();
+    if (bgm.on && !bgm.timer) { bgm.next = now() + 0.1; bgm.timer = setInterval(() => bgm.tick(), 50); }
   } catch (e) { }
 }
+// iPhoneのマナーモードでも鳴るように: 無音の<audio>を流して「再生」扱いにする
+let silentEl = null;
+function iosPlayback() {
+  try { if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch (e) { }
+  if (silentEl) { if (silentEl.paused) silentEl.play().catch(() => { }); return; }
+  const sr = 8000, n = sr / 2, buf = new ArrayBuffer(44 + n), v = new DataView(buf); const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true); for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+  silentEl = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }))); silentEl.loop = true; silentEl.setAttribute('playsinline', ''); silentEl.volume = 0.01; silentEl.play().catch(() => { });
+}
+// どこをタッチしても、止まった音を戻す(電話や通知・スリープのあと)
+if (typeof document !== 'undefined') ['touchend', 'pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { if (ctx && (ctx.state !== 'running' || (audioPref().bgm && !bgm.on))) unlockAudio(); }, { capture: true, passive: true }));
 // 画面が裏に回ったら止める(電池と迷惑の対策)
-if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else ctx.resume(); });
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else { ctx.resume(); if (silentEl && silentEl.paused) silentEl.play().catch(() => { }); } });
 export function haptic(ms = 8) { try { if (audioPref().haptic && navigator.vibrate) navigator.vibrate(ms); } catch (e) { } }
 
 // ── 音の部品
@@ -153,6 +166,10 @@ export const bgm = {
   get name() { return this.track ? TRACKS[this.track].name : ''; },
   tick() {
     if (!ctx || !this.on) return;
+    if (ctx.state !== 'running') return;
+    try { this._tick(); } catch (e) { console.warn('bgm', e); this.next = now() + 0.2; }
+  },
+  _tick() {
     if (this.next < now() - 1) this.next = now() + 0.05;   // 裏から戻ったとき追いつこうとしない
     while (this.next < now() + 0.3) {
       const P = parse(this.track), T = P.T, spb = 60 / T.bpm / 2;
