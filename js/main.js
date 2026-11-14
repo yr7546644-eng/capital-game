@@ -60,12 +60,13 @@ function hud() {
   const pc = pendCost();
   $('#hud').innerHTML = `
     <button class="pill month" data-a="menu"><svg class="ring" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="#e3e8f5" stroke-width="4"/><circle cx="15" cy="15" r="12" fill="none" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round" stroke-dasharray="${C * prog} ${C}" transform="rotate(-90 15 15)"/></svg><span><div class="m1">${E.STAGES[S.stage].icon} ${S.over ? '終わり' : `${Math.floor(S.t / 12) + 1}年目 · のこり${S.months - S.t}か月`}</div><div class="m2">${S.over ? '最終結果' : `${S.t % 12 + 1}月 ${S.t ? wx(S.w).icon : ''}`}</div></span></button>
-    <div class="pill cash"><span class="coin">G</span><span class="num" id="cashv">${fmt(p.cash)}</span>${pc ? `<span class="pend">(予定 ${pc > 0 ? '−' : '+'}${fmt(Math.abs(pc))})</span>` : ''}</div>
+    <div class="pill cash"><span class="coin">G</span><span class="num" id="cashv">${fmt(freeCash())}</span>${pc ? `<span class="pend">${pc > 0 ? '使う予定' : '入る予定'} ${fmt(Math.abs(pc))}</span>` : ''}</div>
     <button class="pill rank" data-a="ranking"><b class="num">${pos}</b>位 <span class="rt">${E.RANKS[E.rankOf(E.netWorth(S, p))][2]}</span></button>`;
 }
 // ── 下のドック
 function dock() {
   if (S.over) { $('#dock').innerHTML = `<div class="actions"><button class="abtn" data-a="books"><span class="ai">📒</span>帳簿</button><button class="abtn" data-a="ranking"><span class="ai">👑</span>順位</button><button class="abtn go" data-a="showfinal">🏆 最終結果</button></div>`; return; }
+  if (F.build) { $('#dock').innerHTML = buildTray(); return; }
   const ev = S.evNext && E.evDef(S.evNext.id), p = me(), used = pendCard();
   const n = F.acts.length;
   $('#dock').innerHTML = `
@@ -74,6 +75,7 @@ function dock() {
     ${F.alerts && F.alerts.length && !S.over ? `<button class="evchip alertchip" data-a="alerts">⚠️ 判断が必要 ${F.alerts.length}件</button>` : ''}
     <div class="hand">${p.hand.map((c, i) => { const cd = E.cardDef(c); const isUsed = used && used.card === c && used.idx === i; return `<button class="card ${F.handT !== S.t ? 'fresh' : ''} ${isUsed ? 'sel' : used ? 'used' : ''}" data-a="card" data-i="${i}">${isUsed ? '<span class="tag">使う</span>' : ''}<div class="ci">${cd.spec ? '🧑‍🍳' : cd.icon}${cd.spec ? `<span class="cspec">${cd.icon}</span>` : ''}</div><div class="cn">${cd.name}</div><div class="cc">${cd.cost ? fmt(cd.cost) + 'G' : '無料'}</div></button>`; }).join('')}</div>
     <div class="actions">
+      <button class="abtn build" data-a="build"><span class="ai">🔨</span>建てる</button>
       <button class="abtn" data-a="market"><span class="ai">🛒</span>市場${(p.offers || []).length ? `<span class="badge">${p.offers.length}</span>` : ''}</button>
       <button class="abtn" data-a="books"><span class="ai">📒</span>帳簿</button>
       <button class="abtn" data-a="townhall"><span class="ai">🏛️</span>町${(S.vote && S.vote.t === S.t && S.vote.ballots[ME] == null) || (S.quests || []).some(q => q.taker == null && !q.done) ? '<span class="badge">!</span>' : ''}</button>
@@ -602,6 +604,77 @@ SHEETS.event = () => {
     <div class="t3">予報を見て、先に動いた人が勝つ。たとえば不作の前に材料を買っておく、祭りの前に店員を増やす。</div>`;
 };
 // 順位
+// ── 建設モード: 建物を選ぶ → 地図に見込みが出る → 場所をタップ → 建てる!
+const BUILD_INFO = { bread: '安くて毎日売れる。数で稼ぐ', potion: '冒険者と病気の季節に強い', tool: '高く売れるが、数は少ない', cloth: 'お祭りと貴族に人気', work: '原料を加工して市場に卸す' };
+function buildCost(g) { const ds = [...new Set(E.LOTS.map(l => l.d))].map(d => E.openCost(d, g)); return [Math.min(...ds), Math.max(...ds)]; }
+function lotEstimate(lot, g, res) {
+  const L = E.LOTS[lot];
+  if (g === 'work') { const R = E.RES[res || 'wheat'], P = E.PROC[R.proc], mg = S.market[R.proc].price * (1 - E.SPREAD) - S.market[res || 'wheat'].price * (1 + E.SPREAD); return { profit: Math.round(mg * P.rate * 2 - E.WAGE * 2 - E.DISTRICTS[L.d].rent), cost: E.openCost(L.d, 'work') }; }
+  const v = E.lotValue(S, ME, lot, g); return { profit: Math.round(v.profit), cost: v.cost };
+}
+const RATES = [{ c: 0x1fae5b, m: '◎', n: 'よく儲かりそう' }, { c: 0xe0a100, m: '○', n: 'ふつう' }, { c: 0xe5484d, m: '△', n: '厳しい' }];
+const rateOf = (lot, p) => F.build && F.build.rank && F.build.rank[lot] != null ? RATES[F.build.rank[lot]] : RATE(p);
+const RATE = (p) => p >= 60 ? { c: 0x1fae5b, m: '◎', n: 'よく儲かりそう' } : p >= 15 ? { c: 0xe0a100, m: '○', n: 'ふつう' } : { c: 0xe5484d, m: '△', n: '厳しい' };
+const freeLots = () => E.LOTS.filter(l => E.lotFree(S, l.id) && !F.acts.some(a => a.type === 'open' && a.lot === l.id));
+function buildStart(lot) {
+  if (S.over || F.busy) return;
+  const mine = E.shopsOf(S, ME).length + F.acts.filter(a => a.type === 'open').length;
+  if (mine >= E.MAX_SHOPS) return toast(`お店は${E.MAX_SHOPS}つまで`);
+  closeSheet(); F.build = { step: 'type', lot: lot ?? null }; sfx('open'); haptic(8); render();
+}
+function buildPick(g, res) {
+  F.build.g = g; F.build.res = res || null;
+  if (g === 'work' && !res) { F.build.step = 'res'; render(); return; }
+  if (F.build.lot != null) { F.build.step = 'confirm'; board.showRatings([ratingOf(F.build.lot)]); render(); return; }
+  F.build.step = 'place';
+  // 色は候補の中での順位(上位3分の1が◎)。数字は見込みの利益そのもの
+  const es = freeLots().map(l => ({ lot: l.id, e: lotEstimate(l.id, F.build.g, F.build.res) })).sort((a, b) => b.e.profit - a.e.profit);
+  F.build.rank = Object.fromEntries(es.map((x, i) => [x.lot, x.e.profit < 0 ? 2 : i < es.length / 3 ? 0 : i < es.length * 2 / 3 ? 1 : 2]));
+  board.showRatings(es.map(x => ratingOf(x.lot)));
+  document.body.classList.add('placing');
+  board.home(); render(); sfx('card');
+}
+function ratingOf(lot) { const e = lotEstimate(lot, F.build.g, F.build.res), R = rateOf(lot, e.profit); return { lot, color: R.c, text: `${R.m} ${e.profit >= 0 ? '+' : ''}${e.profit}G` }; }
+function buildEnd() { document.body.classList.remove('placing'); F.build = null; board.clearRatings(); board.highlightLot(-1); render(); }
+function buildTray() {
+  const B = F.build, step = B.step;
+  if (step === 'type' || step === 'res') {
+    const cards = Object.entries(E.GOODS).map(([g, G]) => [g, G.icon, G.name]).concat([['work', '🏭', '工房']]);
+    const one = B.lot != null ? E.DISTRICTS[E.LOTS[B.lot].d] : null;
+    return `<div class="btray"><div class="bth"><b>🔨 ${one ? `${one.name}に何を建てる?` : '何を建てる?'}</b><button class="bx" data-a="buildcancel">✕</button></div>
+      <div class="bcards">${cards.map(([g, ic, nm], i) => { const [lo, hi] = one ? [E.openCost(E.LOTS[B.lot].d, g), 0] : buildCost(g); const can = freeCash() >= lo; return `<button class="bcard ${B.g === g ? 'on' : ''} ${can ? '' : 'poor'}" data-a="buildpick" data-v="${g}" style="animation-delay:${i * 0.05}s"><span class="bi">${ic}</span><b>${nm}</b><small>${BUILD_INFO[g]}</small><em>${fmt(lo)}${hi && hi !== lo ? '〜' : ''}G</em></button>`; }).join('')}</div>
+      ${step === 'res' ? `<div class="bres"><div class="t3">何を加工する?</div>${Object.entries(E.RES).map(([k, R]) => `<button class="chip" data-a="buildres" data-v="${k}">${R.icon}${R.name}→${E.ITEMS[R.proc].icon}</button>`).join('')}</div>` : ''}
+      <div class="t3" style="text-align:center">💰 使えるお金 <b>${fmt(freeCash())}G</b></div></div>`;
+  }
+  if (step === 'place') {
+    const G = B.g === 'work' ? { icon: '🏭', name: '工房' } : E.GOODS[B.g];
+    return `<div class="btray"><div class="bth"><b>${G.icon} ${G.name}を建てる場所をタップ!</b><button class="bx" data-a="buildcancel">✕</button></div>
+      <div class="blegend"><span style="--c:#1fae5b">◎ よく儲かりそう</span><span style="--c:#e0a100">○ ふつう</span><span style="--c:#e5484d">△ 厳しい</span></div>
+      <div class="t3" style="text-align:center">数字は1か月の利益の見込み(お客の多さ・ライバル・家賃から計算)。◎は候補の中で上位3分の1</div>
+      <button class="btn sm" data-a="buildback" style="margin:6px auto 0;display:block">◀ 建物を選び直す</button></div>`;
+  }
+  if (step === 'confirm') {
+    const L = E.LOTS[B.lot], D = E.DISTRICTS[L.d], e = lotEstimate(B.lot, B.g, B.res), R = rateOf(B.lot, e.profit), G = B.g === 'work' ? { icon: '🏭', name: '工房' } : E.GOODS[B.g];
+    const comp = B.g === 'work' ? 0 : S.shops.filter(s => s.d === L.d && s.g === B.g).length, ok = freeCash() >= e.cost;
+    const nb = E.NEIGHBORS[B.lot].map(l => E.shopAt(S, l)).filter(Boolean), street = nb.some(o => o.owner === ME && o.g !== B.g), steal = nb.some(o => o.owner !== ME && o.g === B.g);
+    return `<div class="btray"><div class="bth"><b>${G.icon} ${G.name} @ ${D.name}</b><button class="bx" data-a="buildcancel">✕</button></div>
+      <div class="bconf"><div class="bstat" style="--c:#${R.c.toString(16).padStart(6, '0')}"><span>${R.m}</span><b>${e.profit >= 0 ? '+' : ''}${fmt(e.profit)}G</b><small>月の利益の見込み</small></div>
+      <div class="bfacts"><div>🏷️ 建てるお金 <b>${fmt(e.cost)}G</b></div><div>🏠 家賃 <b>${D.rent}G</b>/月</div>${B.g !== 'work' ? `<div>⚔️ 同じ業種のライバル <b>${comp}店</b></div>` : ''}${L.road ? '<div>🛣️ 大通り沿い 客+12%</div>' : ''}${street ? '<div class="up">🏘️ 商店街ボーナス</div>' : ''}${steal ? '<div class="up">🥊 隣のライバルから客を奪える(安くすれば)</div>' : ''}</div></div>
+      <button class="btn warm wide bgo" data-a="buildgo" ${ok ? '' : 'disabled'}>${ok ? `🔨 ここに建てる!  −${fmt(e.cost)}G` : 'お金が足りない'}</button>
+      <div class="row" style="gap:8px;margin-top:6px"><button class="btn sm" style="flex:1" data-a="buildother">📍 別の場所</button><button class="btn sm" style="flex:1" data-a="builddetail">🔎 くわしく</button></div></div>`;
+  }
+  return '';
+}
+// お金が飛んでいく(使う)・飛んでくる(稼ぐ)
+function coinFly(from, to, n = 8) {
+  for (let i = 0; i < n; i++) {
+    const c = document.createElement('div'); c.className = 'fcoin'; c.textContent = 'G'; document.body.appendChild(c);
+    const dx = to.x - from.x, dy = to.y - from.y, mx = (Math.random() - 0.5) * 80, delay = i * 45;
+    c.animate([{ transform: `translate(${from.x}px,${from.y}px) scale(.6)`, opacity: 0 }, { transform: `translate(${from.x + dx * 0.5 + mx}px,${from.y + dy * 0.5 - 70}px) scale(1.1)`, opacity: 1, offset: 0.5 }, { transform: `translate(${to.x}px,${to.y}px) scale(.7)`, opacity: 0.9 }], { duration: 650, delay, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+    setTimeout(() => c.remove(), 700 + delay);
+  }
+}
+const cashPos = () => { const el = $('#cashv'); if (!el) return { x: innerWidth / 2, y: 40 }; const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2 - 10, y: r.top + r.height / 2 - 10 }; };
 // ── 商会の顔ぶれ(ライバルが見えるように)
 const LOOK_BY_NAME = { 'ベルナ': { b: 3, h: 3, hat: -1, tint: 0xff9a9a, cape: 0 }, 'グスタフ': { b: 1, h: 2, hat: 2, tint: 0xffd77a, cape: 1 }, 'ミレイユ': { b: 2, h: 1, hat: 1, tint: 0xa6e6a0, cape: 0 } };
 const LOOK_HUMAN = [{ b: 0, h: 0, hat: -1, tint: 0x9ac2ff, cape: 1 }, { b: 3, h: 3, hat: 1, tint: 0xc9a6ff, cape: 0 }, { b: 1, h: 4, hat: -1, tint: 0xffb27a, cape: 1 }, { b: 2, h: 1, hat: -1, tint: 0x8fe0e0, cape: 0 }];
@@ -671,7 +744,7 @@ function monthBanner() {
 // ── やること(はじめの目標)。1つずつ出して、できたら「クリア!」
 const QKEY = 'capital-quests-v1';
 const QUESTS = [
-  { id: 'open', t: '地図の白い<b>＋</b>をタップして、店を開こう', ok: () => E.shopsOf(S, ME).length > 0 || F.acts.some(a => a.type === 'open') },
+  { id: 'open', t: '<b>🔨建てる</b>を押すか地図の<b>＋</b>をタップして、店を建てよう', ok: () => E.shopsOf(S, ME).length > 0 || F.acts.some(a => a.type === 'open') },
   { id: 'next', t: '準備ができたら<b>「次の月へ」</b>を押そう', ok: () => S.t >= 1 },
   { id: 'set', t: '自分の店をタップして、<b>値段か店員</b>を変えてみよう', ok: () => F.acts.some(a => a.type === 'set') || qDone('set') },
   { id: 'card', t: '下の<b>カード</b>を1枚使ってみよう', ok: () => F.acts.some(a => a.type === 'card') || qDone('card') },
@@ -691,7 +764,7 @@ function questTick() {
   if (!el) { el = document.createElement('div'); el.id = 'quest'; document.body.appendChild(el); }
   const n = QUESTS.filter(q => st[q.id]).length, html = `<div class="qh">🎯 やること <span>${n + 1}/${QUESTS.length}</span></div><div class="qt">${cur.t}</div>`;
   if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; el.classList.remove('qin'); void el.offsetWidth; el.classList.add('qin'); }
-  el.style.display = F.sheet || F.busy ? 'none' : '';
+  el.style.display = F.sheet || F.busy || F.build ? 'none' : '';
 }
 function questClear() { const d = document.createElement('div'); d.className = 'qclear'; d.textContent = '✔ クリア!'; document.body.appendChild(d); sfx('kaching'); haptic(20); setTimeout(() => d.remove(), 1300); }
 // ── チュートリアル(めくって読む、ゲーム風の遊び方)
@@ -734,7 +807,7 @@ function coachTick() {
   let el = $('#coach');
   const done = (() => { try { return localStorage.getItem(COACH) === '1'; } catch (e) { return true; } })();
   let step = null;
-  if (!done && S && !S.over && !F.mp && !F.sheet && !$('#tut') && !$('#vs') && !$('.title') && !F.busy && S.t === 0) step = F.acts.some(a => a.type === 'open') ? 'next' : E.shopsOf(S, ME).length ? null : 'open';
+  if (!done && S && !S.over && !F.mp && !F.sheet && !F.build && !$('#tut') && !$('#vs') && !$('.title') && !F.busy && S.t === 0) step = F.acts.some(a => a.type === 'open') ? 'next' : E.shopsOf(S, ME).length ? null : 'open';
   if (!done && S && S.t >= 1) { try { localStorage.setItem(COACH, '1'); } catch (e) { } }
   document.body.classList.toggle('coaching', step === 'open');
   if (!step) { if (el) el.remove(); return; }
@@ -855,6 +928,21 @@ const H = {
   fire: (d) => { F.acts.push({ type: 'fire', shop: +d.id, staffId: +d.v }); sfx('tap'); save(); render(); },
   setauto: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, autoSell: +d.v }); sfx('tap'); render(); },
   setproc: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, useProc: +d.v }); sfx('tap'); render(); },
+  build: () => buildStart(null),
+  buildpick: (d) => { sfx('tap'); buildPick(d.v); },
+  buildres: (d) => { sfx('tap'); buildPick('work', d.v); },
+  buildcancel: () => { sfx('close'); buildEnd(); },
+  buildback: () => { document.body.classList.remove('placing'); board.clearRatings(); F.build.step = 'type'; F.build.g = null; render(); },
+  buildother: () => { F.build.lot = null; buildPick(F.build.g, F.build.res); },
+  builddetail: () => { const B = F.build; buildEnd(); openSheet('lot', { lot: B.lot, g: B.g, res: B.res }); },
+  buildgo: () => {
+    const B = F.build, e = lotEstimate(B.lot, B.g, B.res); if (freeCash() < e.cost) return toast('お金が足りない');
+    F.acts = F.acts.filter(a => !(a.type === 'open' && a.lot === B.lot));
+    F.acts.push({ type: 'open', lot: B.lot, g: B.g, res: B.g === 'work' ? B.res : undefined, priceLv: 2, staff: 2 });
+    const pos = board.screenOfLot(B.lot); coinFly(cashPos(), { x: pos.x - 10, y: pos.y - 10 }, 10);
+    buildEnd(); board.preview(B.lot, B.g, me().color); setTimeout(() => board.dust(B.lot), 120);
+    sfx('build'); haptic(30); save(); render(); toast('🔨 建設開始! 月末に完成する');
+  },
   cancelopen: (d) => { const lot = +d.v; F.acts = F.acts.filter(a => !(a.type === 'open' && a.lot === lot)); board.preview(lot, null); save(); closeSheet(); render(); },
   setp: (d) => { const s = S.shops.find(x => x.id === +d.id); setPending(s.id, { priceLv: +d.v, staff: shopView(s).staff, ads: shopView(s).ads }); sfx('tap'); render(); },
   sets: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: Math.max(1, Math.min(5, v.staff + +d.v)), ads: v.ads }); sfx('tap'); render(); },
@@ -994,7 +1082,7 @@ async function nextMonth() {
   await wait(500);
   board.playMonth(S, sales);
   await wait(1500);
-  for (const f of sales) { const pos = board.screenOf(f.shop); if (pos) popAt(pos, f.profit, S.players[f.pid].color); }
+  for (const f of sales) { const pos = board.screenOf(f.shop); if (pos) { popAt(pos, f.profit, S.players[f.pid].color); if (f.pid === ME && f.profit > 0) setTimeout(() => coinFly(pos, cashPos(), Math.min(8, 2 + Math.round(f.profit / 40))), 500); } }
   { const ls = rivalLines(fx); Object.entries(ls).forEach(([pid, v], k) => setTimeout(() => rivalSay(+pid, v.t), k * 450)); }
   const myUp = sales.filter(f => f.pid === ME && f.profit > 0).length; if (myUp) sfx('coins', Math.min(8, 2 + myUp * 2));
   await wait(1300);
@@ -1167,7 +1255,7 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
 function popAt(pos, v, color) { const d = document.createElement('div'); d.className = 'pop ' + (v >= 0 ? 'g' : 'r'); d.style.left = pos.x + 'px'; d.style.top = pos.y + 'px'; d.textContent = sign(v) + 'G'; if (color) d.style.outline = `3px solid ${E.COLOR_HEX[color]}`; $('#pops').appendChild(d); setTimeout(() => d.remove(), 2300); }
 // 所持金が変わったら、数字が転がって弾む
 function cashRoll() {
-  const el = $('#cashv'); if (!el) return; const v = Math.round(me().cash), old = F.cashShown;
+  const el = $('#cashv'); if (!el) return; const v = Math.round(freeCash()), old = F.cashShown;
   F.cashShown = v; if (old == null || old === v) return;
   el.textContent = fmt(old); const pill = el.closest('.pill'); if (pill) { pill.classList.remove('bump', 'dip'); void pill.offsetWidth; pill.classList.add(v > old ? 'bump' : 'dip'); }
   const t0 = performance.now(), tick = (t) => { const k = Math.min(1, (t - t0) / 700), e = 1 - Math.pow(1 - k, 3); if (!el.isConnected) return; el.textContent = fmt(Math.round(old + (v - old) * e)); if (k < 1) requestAnimationFrame(tick); }; requestAnimationFrame(tick);
@@ -1234,7 +1322,12 @@ async function boot() {
   board.onTap = ({ shop, lot }) => {
     if (F.busy) return;
     if (shop != null) { const s = S.shops.find(x => x.id === shop); if (s) { board.focus(s.lot); openSheet('shop', { id: shop }); sfx('pop'); haptic(10); } return; }
-    if (lot != null && !S.over) { board.highlightLot(lot); const p = pendOpen(lot); openSheet('lot', { lot, g: p ? p.g : null, res: p ? p.res : null }); sfx('pop'); haptic(10); }
+    if (lot != null && !S.over) {
+      const p = pendOpen(lot);
+      if (p || !E.lotFree(S, lot)) { board.highlightLot(lot); openSheet('lot', { lot, g: p ? p.g : null, res: p ? p.res : null }); sfx('pop'); haptic(10); return; }
+      if (F.build && F.build.step === 'place') { document.body.classList.remove('placing'); F.build.lot = lot; F.build.step = 'confirm'; board.showRatings([ratingOf(lot)]); board.focus(lot); sfx('pop'); haptic(12); render(); return; }
+      board.highlightLot(lot); buildStart(lot); sfx('pop'); haptic(10);
+    }
   };
   const sv = loadSave();
   if (sv) { S = sv.S; F.acts = sv.acts || []; E.useStage(S.stage); } else { S = E.newGame({ seed: Math.floor(Math.random() * 1e9), stage: 'rose' }); }

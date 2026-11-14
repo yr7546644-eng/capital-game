@@ -266,6 +266,28 @@ export class Board {
     this.world.add(o); this.previews.set(lot, o); this.plus.get(lot).visible = false;
     this.popIn = (this.popIn || []).concat(o);
   }
+  // 建設モード: 空き地ごとの見込みを色つきの六角形と札で出す
+  showRatings(list) {
+    this.clearRatings(); this.ratings = new Map();
+    if (!this.hexFill) { this.hexFill = new THREE.CircleGeometry(0.86, 6); this.hexFill.rotateX(-Math.PI / 2); this.hexFill.rotateY(Math.PI / 6); }
+    for (const it of list) {
+      const l = LOTS[it.lot], g = new THREE.Group(); g.position.copy(hexPos(l.q, l.r));
+      const m = new THREE.Mesh(this.hexFill, new THREE.MeshBasicMaterial({ color: it.color, transparent: true, opacity: 0.55, depthWrite: false })); m.position.y = 0.06; m.userData.lot = it.lot; g.add(m);
+      const c = document.createElement('canvas'); c.width = 256; c.height = 112; const x = c.getContext('2d');
+      x.fillStyle = 'rgba(255,255,255,.95)'; const r = 40; x.beginPath(); x.moveTo(r, 8); x.arcTo(248, 8, 248, 104, r); x.arcTo(248, 104, 8, 104, r); x.arcTo(8, 104, 8, 8, r); x.arcTo(8, 8, 248, 8, r); x.fill();
+      x.fillStyle = '#' + it.color.toString(16).padStart(6, '0'); x.font = 'bold 52px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(it.text, 128, 58);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true })); sp.scale.set(1.9, 0.83, 1); sp.position.y = 1.15; sp.renderOrder = 12; sp.userData.lot = it.lot; g.add(sp);
+      g.userData.lot = it.lot; g.userData.ph = Math.random() * 6; this.world.add(g); this.ratings.set(it.lot, g);
+      const pl = this.plus.get(it.lot); if (pl) pl.visible = false;
+    }
+  }
+  clearRatings() { if (!this.ratings) return; for (const [lot, g] of this.ratings) { this.world.remove(g); const pl = this.plus.get(lot); if (pl && !(this.previews && this.previews.has(lot))) pl.visible = true; } this.ratings = null; }
+  // 建てたときの土けむり
+  dust(lot) {
+    const l = LOTS[lot]; if (!l) return; const p0 = hexPos(l.q, l.r);
+    if (!this.dustMat) { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 2, 32, 32, 30); g.addColorStop(0, 'rgba(255,250,235,.95)'); g.addColorStop(1, 'rgba(255,250,235,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); this.dustMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }); }
+    for (let i = 0; i < 14; i++) { const sp = new THREE.Sprite(this.dustMat.clone()); const a = (i / 14) * Math.PI * 2; sp.position.copy(p0).add(new THREE.Vector3(Math.cos(a) * 0.3, 0.2, Math.sin(a) * 0.3)); sp.scale.setScalar(0.4); sp.userData.v = new THREE.Vector3(Math.cos(a) * 1.6, 0.8 + Math.random() * 0.6, Math.sin(a) * 1.6); sp.userData.life = 0; this.world.add(sp); (this.dusts = this.dusts || []).push(sp); }
+  }
   clearPreview() { if (!this.previews) return; for (const [, o] of this.previews) this.world.remove(o); this.previews.clear(); }
   async reset() { this.clearPreview(); for (const [, o] of this.shopObjs) if (o) this.world.remove(o); this.shopObjs.clear(); }
   // 天気の見た目(雨・雪の粒、空の色、光)
@@ -403,7 +425,7 @@ export class Board {
     const r = this.R.domElement.getBoundingClientRect();
     const m = new THREE.Vector2((x - r.left) / r.width * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
     const ray = new THREE.Raycaster(); ray.setFromCamera(m, this.cam);
-    const objs = [...this.shopObjs.values()].filter(Boolean).concat([...(this.signs || new Map()).values()]).concat([...(this.previews || new Map()).values()]).concat([...this.lotObjs.values()]).concat([...this.plus.values()].filter(s => s.visible));
+    const objs = [...(this.ratings ? this.ratings.values() : [])].concat([...this.shopObjs.values()].filter(Boolean)).concat([...(this.signs || new Map()).values()]).concat([...(this.previews || new Map()).values()]).concat([...this.lotObjs.values()]).concat([...this.plus.values()].filter(s => s.visible));
     const hit = ray.intersectObjects(objs, true)[0];
     if (!hit) return;
     let o = hit.object; while (o && o.userData.shop == null && o.userData.lot == null) o = o.parent;
@@ -432,6 +454,8 @@ export class Board {
     }
     if (this.vel) { v.tx += this.vel.x * dt; v.tz += this.vel.z * dt; const rr = Math.hypot(v.tx, v.tz); if (rr > 11) { v.tx *= 11 / rr; v.tz *= 11 / rr; this.vel.x *= 0.5; this.vel.z *= 0.5; } const f = Math.pow(0.04, dt); this.vel.x *= f; this.vel.z *= f; if (Math.hypot(this.vel.x, this.vel.z) < 0.05) this.vel = null; }
     if (this.rips) this.rips = this.rips.filter(m => { m.userData.life += dt; const k = m.userData.life / 0.55; m.scale.setScalar(0.4 + k * 0.9); m.material.opacity = 0.9 * (1 - k); if (k >= 1) { this.world.remove(m); m.material.dispose(); return false; } return true; });
+    if (this.ratings) for (const [, g] of this.ratings) { const k = 1 + Math.sin(t * 3 + g.userData.ph) * 0.06; g.children[1].scale.set(1.9 * k, 0.83 * k, 1); g.children[0].material.opacity = 0.45 + Math.sin(t * 3 + g.userData.ph) * 0.12; }
+    if (this.dusts) this.dusts = this.dusts.filter(d => { d.userData.life += dt; const k = d.userData.life / 0.9; d.position.addScaledVector(d.userData.v, dt); d.userData.v.multiplyScalar(0.9); d.scale.setScalar(0.4 + k * 0.9); d.material.opacity = 1 - k; if (k >= 1) { this.world.remove(d); return false; } return true; });
     if (this.popIn) for (const o of this.popIn) { if (o.userData.pop < 1) { o.userData.pop = Math.min(1, o.userData.pop + dt * 2.5); o.scale.setScalar(Math.max(0.01, 1 - Math.pow(1 - o.userData.pop, 3))); } }
     if (this.signs) for (const [, sp] of this.signs) if (sp.userData.isNew) sp.position.y = 2.05 + Math.abs(Math.sin(t * 3)) * 0.18;
     for (const [, s] of this.plus) if (s.visible) s.position.y = 0.95 + Math.sin(t * 2.4 + s.userData.lot) * 0.08;
