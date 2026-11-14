@@ -1,5 +1,6 @@
-// キャピタル商会戦争: 資源の相場で勝負する。ニュースと予想を読んで、市場が開いている間に「上がる/下がる」に賭ける。
-// ライバル3人も売り買いし、戦争カード(買い占め・悪いうわさ…)で相場を動かしてくる。12か月後の総資産で順位を決める
+// キャピタル商会戦争: カードで戦う投資バトル。
+// 毎月、ニュースを読んで手札の投資カードを3枚まで出す。値動きがめくられ、役(的中・分散・一点集中・パーフェクト)で倍率。
+// ライバルも同じ月に投資し、稼いだ差がダメージになる。月の合間はお店で顧問とカードを買って強くなる
 import { sfx, bgm, unlockAudio, haptic } from '../js/sfx.js';
 
 const $ = (s) => document.querySelector(s);
@@ -11,791 +12,357 @@ const pct = (x) => (x >= 0 ? '+' : '−') + Math.abs(x * 100).toFixed(1) + '%';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
-const priceStr = (p) => p >= 100 ? p.toFixed(0) : p.toFixed(1);
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
-// ── 資源・ライバル・カード・ニュース
-const RES = [
-  { k: 'wheat', name: '小麦', icon: 'wheat', p0: 10, vol: 0.06, depth: 27000, color: '#ffd36e', kind: 'res' },
-  { k: 'iron', name: '鉄', icon: 'iron', p0: 24, vol: 0.08, depth: 24000, color: '#9fc3ff', kind: 'res' },
-  { k: 'herb', name: '薬草', icon: 'herb', p0: 16, vol: 0.09, depth: 21000, color: '#6ee07a', kind: 'res' },
-  { k: 'fabric', name: '布', icon: 'fabric', p0: 20, vol: 0.07, depth: 24000, color: '#ff9ac0', kind: 'res' },
-  { k: 'star', name: '星銀', icon: 'starsilver', p0: 80, vol: 0.15, depth: 12000, color: '#c79bff', kind: 'res' },
-  // 企業の株(1社 100株)。link の資源の値動きにつられて動く(sens: 資源が上がると株は…)
-  { k: 'bank', name: '王都銀行', short: '銀行', icon: 'o_cash', p0: 40, vol: 0.05, depth: 14000, color: '#ffe08a', kind: 'co', ability: 'lever', abilityText: '賭けられる上限が総資産の3倍になる' },
-  { k: 'ship', name: '港の海運商会', short: '海運', icon: 'o_boat', p0: 30, vol: 0.09, depth: 11000, color: '#5ad1ff', kind: 'co', ability: 'spread', abilityText: '売り買いの手数料が半分になる' },
-  { k: 'forge', name: '鍛冶ギルド', short: '鍛冶', icon: 'o_pick', p0: 25, vol: 0.08, depth: 10000, color: '#ff8a5c', kind: 'co', link: 'iron', sens: -0.6, ability: 'profit', abilityText: '会社の利益がそのまま入る(鉄が安いと儲かる)' },
-  { k: 'bakery', name: 'パン組合', short: 'パン', icon: 'b_bread', p0: 20, vol: 0.07, depth: 9000, color: '#f2c46d', kind: 'co', link: 'wheat', sens: -0.6, ability: 'profit', abilityText: '会社の利益がそのまま入る(小麦が安いと儲かる)' },
-  { k: 'arcane', name: '星銀魔導工房', short: '魔導', icon: 'o_crystal', p0: 60, vol: 0.13, depth: 13000, color: '#c79bff', kind: 'co', link: 'star', sens: 0.7, ability: 'profit', abilityText: '会社の利益がそのまま入る(星銀が高いと儲かる)' },
+// ── 資産(資源と会社)
+const AS = [
+  { k: 'wheat', name: '小麦', icon: 'wheat', color: '#ffd36e', vol: 0.07, p0: 10 },
+  { k: 'iron', name: '鉄', icon: 'iron', color: '#9fc3ff', vol: 0.09, p0: 24 },
+  { k: 'herb', name: '薬草', icon: 'herb', color: '#6ee07a', vol: 0.1, p0: 16 },
+  { k: 'fabric', name: '布', icon: 'fabric', color: '#ff9ac0', vol: 0.08, p0: 20 },
+  { k: 'star', name: '星銀', icon: 'starsilver', color: '#c79bff', vol: 0.16, p0: 80 },
+  { k: 'bank', name: '王都銀行', icon: 'o_cash', color: '#ffe08a', vol: 0.06, p0: 40, co: 1 },
+  { k: 'ship', name: '海運商会', icon: 'o_boat', color: '#5ad1ff', vol: 0.11, p0: 30, co: 1 },
+  { k: 'arcane', name: '魔導工房', icon: 'o_crystal', color: '#d0a8ff', vol: 0.13, p0: 60, co: 1 },
 ];
-const SHARES = 100;
-const isCo = (i) => !!RES[i] && RES[i].kind === 'co';
-const coIdx = () => RES.map((r, i) => i).filter(isCo);
-const RIVALS = [
-  { name: 'ガルド', icon: 'o_barb', color: '#ff6b5a', style: 'bull', say: { buy: '上がるに決まってる、全部買いだ!', win: 'がはは、儲かった!', card: '相場はおれが動かす!' } },
-  { name: 'ミーナ', icon: 'o_mage', color: '#5aa8ff', style: 'news', say: { buy: '確かな情報だけを信じるわ', win: '計算どおりね', card: 'この情報、使わせてもらうわ' } },
-  { name: 'ロウ', icon: 'o_rogue', color: '#9be87a', style: 'contra', say: { buy: 'みんなが買うなら、おれは売る', win: '逆張りは裏切らない', card: 'ちょっと噂を流しておいたよ' } },
-];
-const CARDS = {
-  pump: { name: '買い占め', icon: 'o_magnet', text: '選んだ資源が、今月 大きく上がる', target: 'res', power: 0.13 },
-  dump: { name: '悪いうわさ', icon: 'o_speech', text: '選んだ資源が、今月 大きく下がる', target: 'res', power: -0.13 },
-  spy: { name: '情報屋', icon: 'o_magnifier', text: '今月の本当の値動きの向きが全部分かる', target: null },
-  hedge: { name: '保険', icon: 'o_scales', text: '今月 損をしたら、その半分が戻ってくる', target: null },
-  seize: { name: '差し押さえ', icon: 'o_contract', text: '選んだライバルの資源を、むりやり全部売らせる(株は守られる)', target: 'rival' },
+const NEWS = {
+  wheat: [[1, '北の畑で日照り。小麦が不作'], [1, '王都でパン祭り'], [-1, '小麦が大豊作'], [-1, '隣国から安い小麦']],
+  iron: [[1, '王国軍が武具を大量注文'], [1, '鉱山で落盤'], [-1, '新しい鉱山が見つかった'], [-1, '戦争が終わり武具が余る']],
+  herb: [[1, '町で風邪が流行'], [1, '薬草の森が山火事'], [-1, '薬草の森で大収穫'], [-1, '新しい薬が発明された']],
+  fabric: [[1, '王都で舞踏会'], [1, '羊の病気で羊毛不足'], [-1, '東の国から安い布'], [-1, '流行が終わった']],
+  star: [[1, '魔導師ギルドが買い集め'], [1, '流れ星の夜が終わる'], [-1, '偽物が出回っている'], [-1, '大鉱脈が見つかった']],
+  bank: [[1, '王家の金庫番に選ばれた'], [-1, '大口の貸し倒れ']],
+  ship: [[1, '新しい航路が開かれた'], [-1, '嵐で船が沈んだ']],
+  arcane: [[1, '新しい魔導具を発明'], [-1, '実験で大爆発']],
 };
-const NEWS = [
-  ['wheat', 1, '北の畑で日照り。小麦が不作になりそう'], ['wheat', 1, '王都でパン祭り。小麦の注文が殺到'], ['wheat', -1, '今年は小麦が大豊作。倉があふれそう'], ['wheat', -1, '隣国から安い小麦が入ってくる'],
-  ['iron', 1, '王国軍が武具を大量に注文'], ['iron', 1, '鉱山で落盤。鉄が掘れない'], ['iron', -1, '新しい鉱山が見つかった'], ['iron', -1, '戦争が終わり、武具が余っている'],
-  ['herb', 1, '町で風邪が流行。薬が足りない'], ['herb', 1, '薬草の森が山火事で焼けた'], ['herb', -1, '薬草の森で大収穫'], ['herb', -1, '新しい薬が発明され、薬草がいらなくなる'],
-  ['fabric', 1, '王都で舞踏会。ドレスの注文が殺到'], ['fabric', 1, '羊の病気で羊毛が足りない'], ['fabric', -1, '東の国から安い布が大量に入荷'], ['fabric', -1, '流行が終わり、布が売れ残っている'],
-  ['bank', 1, '王都銀行が王家の金庫番に選ばれた'], ['bank', -1, '王都銀行で大口の貸し倒れ'],
-  ['ship', 1, '新しい航路が開かれ、船の注文が殺到'], ['ship', -1, '嵐で海運商会の船が沈んだ'], ['ship', 1, '港の税が下がる'],
-  ['forge', 1, '鍛冶ギルドが王国軍の武具を一手に請け負った'], ['forge', -1, '鍛冶ギルドの親方たちが独立'],
-  ['bakery', 1, 'パン組合の新しい菓子パンが大評判'], ['bakery', -1, 'パン組合で食中毒騒ぎ'],
-  ['arcane', 1, '星銀魔導工房が新しい魔導具を発明'], ['arcane', -1, '魔導工房の実験で大爆発'],
-  ['star', 1, '魔導師ギルドが星銀を買い集めている'], ['star', 1, '流れ星の夜が終わり、星銀が採れなくなる'], ['star', -1, '星銀の偽物が出回っている'], ['star', -1, '大きな星銀の鉱脈が見つかった'],
+const TIERS = [{ name: '確実', rel: 0.88, cls: 'sure' }, { name: '有力', rel: 0.72, cls: 'likely' }, { name: 'うわさ', rel: 0.55, cls: 'rumor' }];
+
+// ── ライバル(ステージのボス)
+const RIVALS = [
+  { name: 'ロウ', icon: 'o_rogue', color: '#9be87a', hp: 260, style: 'contra', rule: '逆張りのロウ: ニュースの逆に賭けてくる', say: { start: 'みんなが信じる話ほど、外れるもんさ', hit: '逆張りは裏切らない', hurt: 'ちっ、今回は素直な相場だったか', lose: 'まいった、あんたの勝ちだ' } },
+  { name: 'ミーナ', icon: 'o_mage', color: '#5aa8ff', hp: 280, style: 'news', rule: '情報戦のミーナ: 毎月ニュースを1つ隠す', hide: 1, say: { start: '情報を制する者が相場を制するのよ', hit: '計算どおりね', hurt: 'そんな情報、どこで…', lose: '…あなたの読み、本物ね' } },
+  { name: 'ガルド', icon: 'o_barb', color: '#ff6b5a', hp: 400, style: 'bull', rule: '大商人ガルド: 大相場(値動き1.6倍)。強いカードで攻めてくる', big: 1.6, boss: 1, say: { start: '相場はおれが動かす! かかってこい!', hit: 'がはは、これが資本の力だ!', hurt: 'なにぃ!?', lose: 'お、おれの商会が…!' } },
 ];
-const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-const START_CASH = 1000, SPREAD = 0.006, LEVER = 2, TICKS = 72, LIVE_SEC = 10;
+
+// ── 顧問(ずっと効く)
+const PERKS = {
+  starfan: { name: '星銀マニア', icon: 'starsilver', cost: 160, text: '星銀と魔導工房のカードの利益 ×2' },
+  spread: { name: '分散の達人', icon: 'o_scales', cost: 180, text: '「分散」の倍率が ×1.3 → ×2' },
+  bear: { name: '逆張り師', icon: 'o_chartdn', cost: 150, text: '下がる(▼)カードの利益 +60%' },
+  bull: { name: '強気の旦那', icon: 'o_chartup', cost: 150, text: '上がる(▲)カードの利益 +40%' },
+  spy: { name: '情報屋', icon: 'o_magnifier', cost: 200, text: '毎月ニュースの1つが「本当の向き」で分かる' },
+  insure: { name: '保険屋', icon: 'o_contract', cost: 170, text: '外れたカードの損が半分' },
+  hand: { name: '大きな鞄', icon: 'o_bag', cost: 140, text: '手札 +1 枚' },
+  redraw: { name: '引き直し上手', icon: 'o_dice', cost: 120, text: '引き直し +1 回' },
+  owner: { name: '株主', icon: 'o_crown', cost: 160, text: '会社(銀行・海運・魔導)のカードの利益 +50%' },
+  focus: { name: '一点張り', icon: 'o_target', cost: 170, text: '「一点集中」の倍率が ×1.5 → ×2.5' },
+  interest: { name: '複利の魔術', icon: 'o_cash', cost: 190, text: '毎月 持ち金の 8% が増える' },
+};
+const MAX_PERKS = 4;
 
 // ── 状態
-let G = null;
-function newGame(months) {
-  const players = [{ id: 0, name: 'あなた', icon: 'o_crown', color: '#ffd36e', me: true }, ...RIVALS.map((r, i) => ({ id: i + 1, ...r }))];
-  G = {
-    months, m: 0, phase: 'title', sel: 0, amount: 100,
-    price: RES.map(r => r.p0 * rand(0.92, 1.08)),
-    hist: RES.map(() => []), live: null,
-    players: players.map(p => ({ ...p, cash: START_CASH, pos: RES.map(() => ({ u: 0, avg: 0 })), hand: [], used: null, prevAssets: START_CASH, startAssets: START_CASH, hedge: false })),
-    news: [], effects: RES.map(() => 0), reveal: false, feed: [], trades: [], tab: 'res',
-    ctrl: RES.map(() => null), tob: {}, boost: RES.map(() => 0), meetingQueue: [], fade: RES.map(() => 0),
-  };
-  // 過去6か月の値動き(チャートが寂しくないように)
-  for (let k = 0; k < 6; k++) RES.forEach((r, i) => {
-    const o = G.price[i], c = o * Math.exp(gauss() * r.vol * 0.7 - 0.2 * Math.log(o / r.p0));
-    G.hist[i].push({ o, c, h: Math.max(o, c) * (1 + Math.random() * r.vol * 0.4), l: Math.min(o, c) * (1 - Math.random() * r.vol * 0.4), m: -6 + k });
-    G.price[i] = c;
+let S = null;
+const newCard = (a, dir, pow, extra = {}) => ({ id: Math.random().toString(36).slice(2), a, dir, pow, ...extra });
+function starterDeck() {
+  const d = [];
+  for (let a = 0; a < 5; a++) { d.push(newCard(a, 1, 1)); d.push(newCard(a, -1, 1)); }
+  d.push(newCard(1, 1, 2), newCard(4, -1, 2), newCard(5, 1, 1), newCard(6, -1, 1), newCard(7, 1, 1));
+  return d;
+}
+function newRun() {
+  S = { stage: 0, month: 0, hp: 500, hpMax: 500, cash: 300, deck: starterDeck(), perks: [], prices: AS.map(a => a.p0 * rand(0.9, 1.1)), hist: AS.map(() => []), sel: [], hand: [], pile: [], redraws: 0, phase: 'plan', news: [] };
+  startStage();
+}
+const R = () => RIVALS[S.stage];
+const has = (k) => S.perks.includes(k);
+const handSize = () => 5 + (has('hand') ? 1 : 0);
+function startStage() {
+  const r = R(); S.rhp = r.hp; S.rhpMax = r.hp;
+  bgm.play(r.boss ? 'ouji' : S.stage === 1 ? 'yuki' : 'kenso');
+  startMonth();
+  setTimeout(() => cutIn(r, r.say.start, r.rule, true), 300);
+}
+function startMonth() {
+  S.month++; S.phase = 'plan'; S.sel = [];
+  if (has('interest') && S.month > 1) { const g = Math.round(S.cash * 0.08); S.cash += g; setTimeout(() => toast(`複利の魔術 +${g}G`), 600); }
+  // ニュース(3つ。ミーナはひとつ隠す)と、本当の値動き
+  const picks = shuffle(AS.map((a, i) => i)).slice(0, 3), r = R();
+  S.news = picks.map((i, n) => { const [s, text] = pick(NEWS[AS[i].k]), t = TIERS[n]; return { i, s, text, tier: t, truth: Math.random() < t.rel ? s : -s, hidden: false }; });
+  if (r.hide) S.news[Math.floor(Math.random() * 3)].hidden = true;
+  if (has('spy')) { const n = S.news.find(x => !x.hidden) || S.news[0]; n.reveal = true; }
+  const big = r.big || 1;
+  S.moves = AS.map((a, i) => { const n = S.news.find(x => x.i === i); return clamp((n ? n.truth * rand(0.08, 0.17) : 0) + gauss() * a.vol * 0.6 - 0.1 * Math.log(S.prices[i] / a.p0), -0.4, 0.4) * big; });
+  S.moves[7] = clamp(S.moves[7] + 0.7 * S.moves[4], -0.5, 0.5);   // 魔導工房は星銀につられる
+  // 手札
+  S.redraws = 2 + (has('redraw') ? 1 : 0);
+  S.pile = shuffle(S.deck.slice());
+  S.hand = S.pile.splice(0, handSize());
+  S.rhand = rivalHand();
+  render();
+}
+function rivalHand() {
+  const lvl = S.stage, hand = [];
+  for (let k = 0; k < 4; k++) hand.push(newCard(Math.floor(Math.random() * AS.length), Math.random() < 0.5 ? 1 : -1, 1 + (Math.random() < 0.15 + lvl * 0.1 ? 1 : 0)));
+  for (const n of S.news) {
+    const want = R().style === 'contra' ? -n.s : n.s;
+    if (Math.random() < 0.45 + lvl * 0.1) hand.push(newCard(n.i, want, 1 + (lvl >= 2 && Math.random() < 0.5 ? 1 : 0)));
+  }
+  return hand;
+}
+function rivalPlay() {
+  const r = R(), scored = S.rhand.map(c => {
+    const n = S.news.find(x => x.i === c.a);
+    let v = c.pow * 0.2;
+    if (n) v += (r.style === 'contra' ? -n.s : n.s) === c.dir ? n.tier.rel : -0.4;
+    if (r.style === 'bull' && c.dir > 0) v += 0.3;
+    return { c, v: v + Math.random() * 0.3 };
+  }).sort((a, b) => b.v - a.v);
+  return scored.slice(0, 3).map(x => x.c);
+}
+
+// ── 点数の計算(役と倍率)
+const STAKE = 100;
+function scoreHand(cards, mine) {
+  const rows = cards.map(c => {
+    const mv = S.moves[c.a];
+    const gain = c.straddle ? Math.abs(mv) * c.pow * STAKE * 0.7 : mv * c.dir * c.pow * STAKE;
+    let mult = 1; const tags = [];
+    const n = S.news.find(x => x.i === c.a);
+    if (!c.straddle && n && c.dir === n.s && Math.sign(mv) === c.dir) { mult *= 1.5; tags.push('的中 ×1.5'); }
+    if (mine) {
+      if (has('starfan') && (c.a === 4 || c.a === 7) && gain > 0) { mult *= 2; tags.push('星銀マニア ×2'); }
+      if (has('bear') && c.dir < 0 && !c.straddle && gain > 0) { mult *= 1.6; tags.push('逆張り師 +60%'); }
+      if (has('bull') && c.dir > 0 && !c.straddle && gain > 0) { mult *= 1.4; tags.push('強気 +40%'); }
+      if (has('owner') && AS[c.a].co && gain > 0) { mult *= 1.5; tags.push('株主 +50%'); }
+      if (has('insure') && gain < 0) { mult *= 0.5; tags.push('保険 損半分'); }
+    }
+    return { c, mv, gain, mult, tags, total: gain * mult };
   });
-  for (const p of G.players) p.hand = [drawCard(), drawCard()];
-  // ライバルのねらい: ガルドは買収、ミーナは配当(銀行)、ロウは安い株
-  G.players[1].target = RES.findIndex(r => r.k === pick(['forge', 'arcane', 'ship']));
-  G.players[2].target = RES.findIndex(r => r.k === 'bank');
-}
-const me = () => G.players[0];
-const drawCard = () => pick(['pump', 'dump', 'spy', 'hedge', 'seize', 'pump', 'dump']);
-function assets(p, prices = curPrices()) { return p.cash + p.pos.reduce((a, q, i) => a + q.u * prices[i], 0); }
-function exposure(p, prices = curPrices()) { return p.pos.reduce((a, q, i) => a + Math.abs(q.u * prices[i]), 0); }
-function curPrices() { return G.live ? G.live.cur.slice() : G.price.slice(); }
-const ranking = () => G.players.slice().sort((a, b) => assets(b) - assets(a));
-
-// ── 月のはじめ: ニュース・予想・ライバルのカード
-function planMonth() {
-  G.phase = 'plan'; G.effects = RES.map(() => 0); G.reveal = false; G.trades = []; G.boost = G.boost.map(b => b * 0.5);
-  for (const p of G.players) { p.used = null; p.hedge = false; p.startAssets = assets(p, G.price); if (p.hand.length < 3) p.hand.push(drawCard()); }
-  // ニュースは2つ: 確かな筋(85%)と、うわさ(55%)
-  const pool = NEWS.slice().sort(() => Math.random() - 0.5), a = pool[0], b = pool.find(n => n[0] !== a[0]);
-  G.news = [[a, 0.85, rand(0.09, 0.16)], [b, 0.55, rand(0.07, 0.13)]].map(([n, rel, mag]) => {
-    const r = RES.findIndex(x => x.k === n[0]), truth = Math.random() < rel ? n[1] : (Math.random() < 0.5 ? -n[1] : 0);
-    return { r, s: n[1], text: n[2], rel, mag, truth };
-  });
-  // 大相場: ときどき値動きが2倍の月が来る
-  G.big = G.m > 0 && Math.random() < 0.22;
-  if (G.big) G.news.forEach(n => n.mag *= 1.5);
-  // 決算発表(3か月ごと): 会社の株価が月のはじめにいきなり動く
-  G.earn = [];
-  if (G.m > 0 && G.m % 3 === 0) for (const i of coIdx()) {
-    const x = clamp(gauss() * 0.07 + (G.ctrl[i] != null ? 0.02 : 0), -0.16, 0.16);
-    G.price[i] *= Math.exp(x); G.earn.push({ i, x });
-  }
-  if (G.earn.length) for (const p of G.players) p.startAssets = assets(p, G.price) - G.earn.reduce((a, e) => a + Math.max(0, p.pos[e.i].u) * G.price[e.i] * (1 - Math.exp(-e.x)), 0);
-  // ライバルのカード
-  for (const p of G.players.slice(1)) rivalCard(p);
-  // 一騎打ち: ライバルが勝負を申し込んでくる
-  G.duel = null;
-  if (Math.random() < 0.65) {
-    const r = pick(G.players.slice(1)), n = pick(G.news), i = n.r;
-    const f = forecast(i).up, side = r.style === 'contra' ? (f >= 50 ? -1 : 1) : r.style === 'news' ? (n.rel > 0.7 ? n.s : (f >= 50 ? 1 : -1)) : (f >= 50 ? 1 : -1);
-    const stake = Math.max(50, Math.round(Math.min(assets(r, G.price) * 0.25, assets(me(), G.price) * 0.3, 600) / 50) * 50);
-    G.duel = { pid: r.id, i, side, stake, state: 'offer' };
-  }
-  render(); renderPlan();
-  bgm.play('asa');
-  if (G.big) setTimeout(() => { flashBanner('<b>今月は大相場!</b><small>値動きがいつもの2倍。大きく勝つか、大きく負けるか</small>', 'bad'); sfx('horn'); shake(0.4); }, 400);
-}
-function forecast(i) {
-  // 上がる見込み(%)。ニュースとカードから
-  let up = 50;
-  for (const n of G.news) if (n.r === i) up += (n.rel - 0.5) * 100 * n.s * 0.9 + (n.rel > 0.7 ? 0 : 0);
-  up += G.effects[i] * 220;
-  const r = RES[i]; if (r.link) { const j = RES.findIndex(x => x.k === r.link); for (const n of G.news) if (n.r === j) up += (n.rel - 0.5) * 100 * n.s * 0.9 * r.sens; up += G.effects[j] * 220 * r.sens; }
-  up += (G.boost[i] || 0) * 200;
-  const truth = G.news.filter(n => n.r === i).reduce((a, n) => a + n.truth * n.mag, 0) + G.effects[i];
-  if (G.reveal) return { up: truth > 0.01 ? 100 : truth < -0.01 ? 0 : 50, sure: true };
-  return { up: clamp(Math.round(up), 5, 95), sure: false };
-}
-function rivalCard(p) {
-  if (!p.hand.length || Math.random() < 0.45) return;
-  const k = p.hand[Math.floor(Math.random() * p.hand.length)];
-  if (k === 'spy' || k === 'hedge') { p.hand.splice(p.hand.indexOf(k), 1); p.used = { k }; if (k === 'hedge') p.hedge = true; return; }
-  let target = null;
-  if (k === 'pump') { const held = p.pos.map((q, i) => q.u * G.price[i]); const i = held.indexOf(Math.max(...held)); target = held[i] > 0 ? i : G.news[0].r; }
-  if (k === 'dump') { const held = p.pos.map((q, i) => q.u * G.price[i]); const i = held.indexOf(Math.min(...held)); target = held[i] < 0 ? i : Math.floor(Math.random() * RES.length); }
-  if (k === 'seize') { const top = ranking().find(x => x !== p); if (!top || top.pos.reduce((a, q, i) => a + (isCo(i) ? 0 : Math.abs(q.u * G.price[i])), 0) < 50) return; target = top.id; }
-  p.hand.splice(p.hand.indexOf(k), 1); p.used = { k, target };
-  applyCard(p, k, target, true);
-}
-function applyCard(p, k, target, announce) {
-  const C = CARDS[k];
-  if (k === 'pump' || k === 'dump') G.effects[target] += C.power;
-  if (k === 'spy') { if (p.me) G.reveal = true; }
-  if (k === 'hedge') p.hedge = true;
-  if (k === 'seize') { const t = G.players[target]; t.pos.forEach((q, i) => { if (q.u && !isCo(i)) { t.cash += q.u * G.price[i] * (1 - SPREAD * Math.sign(q.u)); q.u = 0; q.avg = 0; } }); }
-  if (k === 'seize') coIdx().forEach(i => checkControl(i, G.players[target]));
-  if (announce) G.cardLog = (G.cardLog || []).concat({ p, k, target });
-}
-
-// ── 市場をひらく: 12秒のあいだ値段が動く
-function openMarket() {
-  G.phase = 'live';
-  const months = G.m;
-  const path = RES.map((r, i) => {
-    const o = G.price[i], newsMove = G.news.filter(n => n.r === i).reduce((a, n) => a + n.truth * n.mag, 0);
-    const vol = r.vol * (G.big ? 2 : 1);
-    let L = newsMove + G.effects[i] + gauss() * vol * 0.55 - 0.12 * Math.log(o / r.p0) + (G.boost[i] || 0) - 0.6 * (G.fade[i] || 0);
-    if (r.link) { const j = RES.findIndex(x => x.k === r.link); L += r.sens * (G.news.filter(n => n.r === j).reduce((a, n) => a + n.truth * n.mag, 0) + G.effects[j]); }
-    const shock = Math.floor(rand(22, 46));
-    // ブラウンブリッジのゆらぎ
-    const bn = [0]; for (let t = 1; t <= TICKS; t++) bn.push(bn[t - 1] + gauss() * vol * 0.07);
-    const pts = [];
-    for (let t = 0; t <= TICKS; t++) {
-      const f = t < shock ? 0.22 * t / shock : 0.22 + 0.78 * Math.pow((t - shock) / (TICKS - shock), 0.45);
-      pts.push(L * f + bn[t] - bn[TICKS] * t / TICKS);
-    }
-    return { o, L, shock, pts };
-  });
-  const pre = G.pre ? G.pre.impact.slice() : RES.map(() => 0); G.pre = null;
-  G.live = { t0: performance.now(), tick: 0, path, impact: pre, impHist: pre.map(v => [{ t: 0, v }]), cur: G.price.slice(), open: G.price.slice(), hi: G.price.slice(), lo: G.price.slice(), shockShown: RES.map(() => false), months };
-  if (G.duel && G.duel.state === 'on') G.duel.open = G.price[G.duel.i];
-  hideSheet(); render(); bgm.play('kenso'); sfx('horn'); flashBanner(`<b>${MONTHS[(G.m) % 12]}の市場 開場!</b><small>あとは見守るだけ。読みは当たるか…</small>`, 'open');
-  G.trades = [];
-}
-function liveStep(now) {
-  const L = G.live; if (!L) return;
-  const tf = Math.min(TICKS, (now - L.t0) / 1000 / LIVE_SEC * TICKS), t = Math.floor(tf), frac = tf - t;
-  for (let i = 0; i < RES.length; i++) {
-    const p = L.path[i], a = p.pts[t], b = p.pts[Math.min(TICKS, t + 1)], x = a + (b - a) * frac;
-    L.cur[i] = p.o * Math.exp(x + L.impact[i]);
-    L.hi[i] = Math.max(L.hi[i], L.cur[i]); L.lo[i] = Math.min(L.lo[i], L.cur[i]);
-    if (!L.shockShown[i] && t >= p.shock && G.news.some(n => n.r === i)) { L.shockShown[i] = true; newsShock(i); }
-  }
-  if (t > L.tick) { L.tick = t; onTick(t); }
-  if (tf >= TICKS) closeMarket();
-}
-function onTick(t) {
-  // ライバルの売り買い
-  if (t % 4 === 2) for (const p of G.players.slice(1)) rivalTrade(p, t);
-  // 強制決済(追い証)
-  for (const p of G.players) {
-    const A = assets(p), E = exposure(p);
-    if (E > 0 && A < E * 0.12) { closeAll(p, true); coIdx().forEach(i => checkControl(i, p)); if (p.me) { flashBanner('<b>強制決済!</b><small>損が大きくなりすぎたので、全部売り戻された</small>', 'bad'); sfx('bad'); shake(); } else feed(`${p.name}が強制決済された!`, p.color); }
-  }
-  if (t % 3 === 0) sfx('press');
-  // ラスト3秒
-  const left = Math.ceil((TICKS - t) / TICKS * LIVE_SEC);
-  void left;
-  // 追い抜き
-  const pos = ranking().indexOf(me()) + 1;
-  if (G.live.pos && pos < G.live.pos) { flashBanner(`<b>${pos}位に浮上!</b>`, 'gold'); sfx('rankup'); }
-  else if (G.live.pos && pos > G.live.pos) { feed(`${ranking()[pos - 2].name}に抜かれた!`, '#ff5a6a'); sfx('bad'); }
-  G.live.pos = pos;
-  // 損益が大きく動いたら数字を跳ねさせる
-  const pl = assets(me()) - me().startAssets;
-  if (G.live.lastPl != null && Math.abs(pl - G.live.lastPl) > Math.max(15, me().startAssets * 0.01)) { const e = $('#plv'); if (e) { e.classList.remove('jump'); void e.offsetWidth; e.classList.add('jump'); } haptic(6); }
-  G.live.lastPl = pl;
-  renderLiveNumbers();
-}
-function countdown(n) {
-  const el = document.createElement('div'); el.className = 'count'; el.textContent = n; $('#fx').appendChild(el); setTimeout(() => el.remove(), 800);
-  sfx(n === 1 ? 'kaching' : 'tap'); haptic(10);
-}
-function newsShock(i) {
-  const n = G.news.find(x => x.r === i), up = n.truth > 0, none = n.truth === 0;
-  sfx(none ? 'notify' : up ? 'kaching' : 'bad'); haptic(20);
-  feed(`ニュース:${RES[i].name} ${none ? 'うわさは外れ' : up ? '急上昇!' : '急落!'}`, none ? '#ccc' : up ? '#3ccf8e' : '#ff5a6a');
-  const mine = me().pos[i].u, hit = !none && mine && Math.sign(mine) === Math.sign(n.truth);
-  flashBanner(`<small class="flash">速報</small><b>${n.text}</b><small>${RES[i].name} ${none ? 'うわさは外れた' : up ? '急上昇!' : '急落!'}${mine ? (hit ? ' —— 読みどおり!' : none ? '' : ' —— 逆を行かれた…') : ''}</small>`, none ? '' : up ? 'gold' : 'bad');
-  if (hit) { confettiSmall(); sfx('coins', 6); }
-  if (i === G.sel) { chartFlash(up ? '#3ccf8e' : '#ff5a6a'); if (!none) shake(0.5); }
-}
-
-// ── 売り買い
-function trade(p, i, gold, side) {
-  // side: +1 買う(上がるに賭ける) / -1 売る(下がるに賭ける)。gold は金額
-  // 月のはじめ(plan)は今の値段で。市場がひらいている間はライバルだけが売り買いする
-  const L = G.live || (G.phase === 'plan' ? planBook() : null); if (!L || gold <= 0) return false;
-  const spread = SPREAD * (owns(p, 'ship') ? 0.5 : 1), lever = owns(p, 'bank') ? 3 : LEVER;
-  const price = L.cur[i] * (1 + spread * side), q = p.pos[i];
-  const A = assets(p), E = exposure(p), room = Math.max(0, A * lever - E);
-  if (isCo(i)) {
-    if (side < 0) gold = Math.min(gold, Math.max(0, q.u) * L.cur[i]);                   // 株は持っている分だけ売れる
-    else { const free = SHARES - G.players.reduce((a, x) => a + Math.max(0, x.pos[i].u), 0); gold = Math.min(gold, free * price); }
-    if (gold < 1) { if (p.me) { toast(side < 0 ? 'その株は持っていない' : '売りに出ている株がもうない'); sfx('bad'); } return false; }
-  }
-  // 持っている向きと反対なら、まず手じまい(限度なし)。それ以上は限度まで
-  const closing = q.u * side < 0 ? Math.abs(q.u) * L.cur[i] : 0;
-  gold = Math.min(gold, closing + room);
-  if (gold < 1) { if (p.me) { toast(`これ以上は賭けられない(総資産の${lever}倍まで)`); sfx('bad'); } return false; }
-  const du = side * gold / price;
-  const nu = q.u + du;
-  if (q.u === 0 || Math.sign(q.u) === Math.sign(du)) q.avg = (q.avg * Math.abs(q.u) + price * Math.abs(du)) / Math.abs(nu);
-  else if (Math.sign(nu) !== Math.sign(q.u) && nu !== 0) q.avg = price;
-  q.u = Math.abs(nu) < 1e-6 ? 0 : nu; if (!q.u) q.avg = 0;
-  p.cash -= du * price;
-  const tf = L.plan ? 0 : Math.min(TICKS, (performance.now() - L.t0) / 1000 / LIVE_SEC * TICKS);
-  if (!L.plan) G.trades.push({ i, t: tf, price: L.cur[i], side, who: p.id });
-  // 大きく売り買いすると、その分だけ値段が動く(それより前の線は変えない)
-  L.impact[i] += side * gold / RES[i].depth;
-  L.impHist[i].push({ t: tf, v: L.impact[i] });
-  if (isCo(i)) checkControl(i, p);
-  return true;
-}
-// 月のはじめの取引に使う「帳簿」: 値段は今の値段、値の動き(impact)は市場がひらいた時の始値に乗せる
-function planBook() {
-  if (!G.pre) G.pre = { cur: G.price.slice(), impact: RES.map(() => 0), impHist: RES.map(() => [{ t: 0, v: 0 }]), t0: performance.now() - 1e9, plan: true };
-  return G.pre;
-}
-const owns = (p, k) => { const i = RES.findIndex(r => r.k === k); return i >= 0 && G.ctrl[i] === p.id; };
-const share = (p, i) => Math.max(0, p.pos[i].u) / SHARES;
-// 買収: 30% で名乗りをあげ(株価が跳ねる)、50% を超えたら支配
-function checkControl(i, by) {
-  const r = RES[i], s = share(by, i), key = by.id + ':' + i;
-  if (s >= 0.3 && !G.tob[key] && G.ctrl[i] !== by.id) {
-    G.tob[key] = 1;
-    if (G.live && !G.live.plan) { G.live.impact[i] += 0.08; G.live.impHist[i].push({ t: Math.min(TICKS, (performance.now() - G.live.t0) / 1000 / LIVE_SEC * TICKS), v: G.live.impact[i] }); }
-    flashBanner(`<b>${by.me ? 'あなた' : by.name}が${r.name}の買収に乗り出した!</b><small>株が買い集められ、株価が跳ね上がる</small>`, by.me ? 'gold' : 'bad');
-    sfx('horn'); haptic(30); if (!by.me) speech(by, `${r.short}はいただくぞ`);
-  }
-  const holder = G.players.find(x => share(x, i) > 0.5) || null, prev = G.ctrl[i];
-  G.ctrl[i] = holder ? holder.id : (prev != null && share(G.players[prev], i) > 0.5 ? prev : null);
-  if (G.ctrl[i] !== prev) {
-    if (G.ctrl[i] != null) {
-      const w = G.players[G.ctrl[i]];
-      flashBanner(`<b>買収成立!</b><small>${w.me ? 'あなた' : w.name}が${r.name}を支配した。${r.abilityText}</small>`, w.me ? 'gold' : 'bad');
-      sfx(w.me ? 'rankup' : 'bad'); if (w.me) confetti(); else speech(w, '買収完了だ!'); shake(0.5);
-    } else if (prev != null) {
-      flashBanner(`<b>${G.players[prev].me ? 'あなた' : G.players[prev].name}が${r.name}の支配を失った</b>`, 'bad'); sfx('bad');
-    }
-    renderRivals(); renderChips();
-  }
-}
-function closeAll(p, forced) { const L = G.live; p.pos.forEach((q, i) => { if (!q.u || (forced === 'res' && isCo(i))) return; const price = (L ? L.cur[i] : G.price[i]) * (1 - SPREAD * Math.sign(q.u)); p.cash += q.u * price; q.u = 0; q.avg = 0; }); }
-function myTrade(side) {
-  if (G.phase !== 'plan') return;
-  const i = G.sel, p = me(), A = assets(p);
-  const gold = G.amount === 'all' ? A * LEVER : G.amount;
-  if (trade(p, i, gold, side)) {
-    sfx(side > 0 ? 'coin' : 'kaching'); haptic(15);
-    floatAt($(side > 0 ? '#bup' : '#bdn'), `${side > 0 ? '買い' : '売り'} ${fmt(Math.min(gold, A * LEVER))}G`, side > 0 ? 'up' : 'dn');
-    burst($(side > 0 ? '#bup' : '#bdn'), side > 0 ? '#3ccf8e' : '#ff5a6a');
-    feed(`あなたが${RES[i].name}を${side > 0 ? '買った' : '売った'}`, '#ffd36e');
-    renderPos(); renderCtrl(); renderChips(); renderTop(); renderRivals(); drawChart();
-  }
-}
-function myClose() {
-  if (G.phase !== 'plan') return;
-  const L = planBook(); const p = me(), i = G.sel, q = p.pos[i]; if (!q.u) return;
-  const side = -Math.sign(q.u), price = L.cur[i] * (1 + SPREAD * (owns(p, 'ship') ? 0.5 : 1) * side), gain = q.u * (price - q.avg), gold = Math.abs(q.u) * L.cur[i];
-  p.cash += q.u * price;
-  L.impact[i] += side * gold / RES[i].depth;
-  p.pos[i] = { u: 0, avg: 0 };
-  if (isCo(i)) checkControl(i, p);
-  sfx(gain >= 0 ? 'coins' : 'bad', 5); haptic(25);
-  floatAt($('#bclose'), `決済 ${sgn(gain)}G`, gain >= 0 ? 'up' : 'dn');
-  if (gain > 0) burst($('#bclose'), '#ffd36e', 30);
-  renderPos(); renderCtrl(); renderChips(); renderTop(); renderRivals(); drawChart();
-}
-// ライバルの考え方
-function rivalTrade(p, t) {
-  const L = G.live, A = assets(p);
-  rivalStocks(p, t, A);
-  for (let i = 0; i < RES.length; i++) {
-    if (isCo(i)) continue;
-    const f = forecast(i).up, move = L.cur[i] / L.open[i] - 1, q = p.pos[i], held = q.u * L.cur[i];
-    let side = 0, size = 0;
-    if (p.style === 'bull') {
-      if (t < 20 && f >= 62 && held < A * 0.5) { side = 1; size = A * 0.25; }
-      else if (move > 0.03 && held < A * 0.8 && Math.random() < 0.4) { side = 1; size = A * 0.15; }
-      else if (f <= 38 && held > 0) { side = -1; size = held; }
-    } else if (p.style === 'news') {
-      const sure = G.news.find(n => n.r === i && n.rel > 0.7);
-      if (sure && t < 16 && Math.abs(held) < A * 0.3) { side = sure.s; size = A * 0.3; }
-      if (t > 60 && held !== 0 && Math.random() < 0.5) { side = -Math.sign(held); size = Math.abs(held); }
-    } else {
-      if (Math.abs(move) > 0.04 && Math.abs(held) < A * 0.4 && Math.random() < 0.5) { side = -Math.sign(move); size = A * 0.2; }
-      else if (Math.abs(move) < 0.01 && held !== 0 && Math.random() < 0.3) { side = -Math.sign(held); size = Math.abs(held); }
-    }
-    if (side && size > 5 && trade(p, i, size, side)) {
-      feed(`${p.name}が${RES[i].name}を${fmt(size)}G ${side > 0 ? '買った' : '売った'}`, p.color);
-      if (size > A * 0.2 && Math.random() < 0.3) speech(p, p.say.buy);
-    }
-  }
-}
-
-function rivalStocks(p, t, A) {
-  if (t % 8 !== 2) return;
-  const L = G.live, buy = (i, g) => { if (trade(p, i, g, 1)) feed(`${p.name}が${RES[i].short}の株を${fmt(g)}G 買った`, p.color); };
-  const sell = (i, g) => { if (trade(p, i, g, -1)) feed(`${p.name}が${RES[i].short}の株を売った`, p.color); };
-  if (p.style === 'bull') {
-    // ねらいの会社を買い集めて支配する
-    const i = p.target; if (G.ctrl[i] !== p.id && Math.random() < 0.7) buy(i, A * rand(0.15, 0.3));
-  } else if (p.style === 'news') {
-    const i = p.target; if (share(p, i) < 0.35 && Math.random() < 0.5) buy(i, A * 0.15);
-    // 買収されそうな会社の株は高く売り抜ける
-    for (const j of coIdx()) if (j !== i && share(p, j) > 0 && L.cur[j] / L.open[j] > 1.08) sell(j, share(p, j) * SHARES * L.cur[j]);
-  } else {
-    for (const j of coIdx()) {
-      const mv = L.cur[j] / L.open[j] - 1;
-      if (mv < -0.04 && Math.random() < 0.4) buy(j, A * 0.12);
-      else if ((mv > 0.06 || Object.keys(G.tob).some(k => k.endsWith(':' + j))) && share(p, j) > 0 && Math.random() < 0.5) sell(j, share(p, j) * SHARES * L.cur[j]);
-    }
-  }
-}
-
-// ── 月末: 結果
-function closeMarket() {
-  const L = G.live; G.live = null; G.phase = 'result'; G.fade = L.impact.slice();
-  RES.forEach((r, i) => {
-    G.hist[i].push({ o: L.open[i], c: L.cur[i], h: L.hi[i], l: L.lo[i], m: G.m });
-    G.price[i] = L.cur[i];
-  });
-  for (const p of G.players) { p.div = 0; p.profit = 0; }
-  for (const i of coIdx()) {
-    const E = G.price[i] * SHARES * 0.02;   // 会社のひと月の利益(時価の2%)
-    for (const p of G.players) { const s = share(p, i); if (s > 0) { const d = E * 0.3 * s; p.cash += d; p.div += d; } }
-    if (G.ctrl[i] != null) { const w = G.players[G.ctrl[i]], x = E * 0.7; w.cash += x; w.profit += x; }
-  }
-  for (const p of G.players) {
-    const A = assets(p, G.price), d = A - p.startAssets;
-    if (p.hedge && d < 0) { p.cash += -d / 2; p.hedgeBack = -d / 2; } else p.hedgeBack = 0;
-  }
-  // 一騎打ちの決着
-  G.duelResult = null;
-  const D = G.duel;
-  if (D && D.state === 'on') {
-    const r = G.players[D.pid], ch = G.price[D.i] / D.open - 1;
-    const winner = Math.abs(ch) < 0.004 ? null : (Math.sign(ch) === D.side ? r : me());
-    if (winner === me()) { me().cash += D.stake; r.cash -= D.stake; } else if (winner) { me().cash -= D.stake; r.cash += D.stake; }
-    G.duelResult = { r, win: winner === me(), draw: !winner, stake: D.stake, ch, i: D.i };
-  }
-  // 連勝ボーナス
-  const d0 = assets(me(), G.price) - me().startAssets;
-  G.streak = d0 > 0 ? (G.streak || 0) + 1 : 0;
-  G.streakBonus = 0;
-  if (G.streak >= 3) { G.streakBonus = Math.round(assets(me(), G.price) * 0.02 * (G.streak - 2)); me().cash += G.streakBonus; }
-  sfx('whoosh');
-  showResult();
-}
-
-// ── 株主総会(3か月ごと): 筆頭株主が議案を出し、持ち株の数で投票する
-const PROPOSALS = {
-  div: { name: '特別配当', text: '株主に1株あたり 株価の6% を配る(株価は少し下がる)' },
-  buyback: { name: '自社株買い', text: '会社が自分の株を買い戻す。株価 +8%' },
-  expand: { name: '新事業に挑戦', text: 'これから数か月、株価が上がりやすいが、荒れる' },
-  ceo: { name: '社長を交代', text: '筆頭株主が選んだ社長で、利益が上がる(株価 +5%、しばらく上がりやすい)' },
-};
-function meetingsDue() { return (G.m + 1) % 3 === 0 && G.m + 1 < G.months; }
-function planMeetings() {
-  G.meetingQueue = coIdx().filter(i => share(me(), i) > 0 && G.players.some(p => share(p, i) >= 0.1)).map(i => {
-    const top = G.players.slice().sort((a, b) => share(b, i) - share(a, i))[0];
-    return { i, top: top.id };
-  });
-}
-function nextMeeting() {
-  const m = G.meetingQueue.shift();
-  if (!m) { $('#screen').innerHTML = ''; G.m++; setTimeout(planMonth, 250); return; }
-  const i = m.i, r = RES[i], top = G.players[m.top];
-  if (top.me) {
-    $('#screen').innerHTML = `<div class="meet"><div class="mcard"><div class="mh">${img(r.icon)}<div><small>株主総会</small><b>${r.name}</b></div></div>
-      <div class="mt">あなたが筆頭株主(${Math.round(share(top, i) * 100)}%)。議案を選ぼう</div>
-      <div class="props">${Object.entries(PROPOSALS).map(([k, P]) => `<button class="prop" data-a="propose" data-v="${k}" data-i="${i}"><b>${P.name}</b><small>${P.text}</small></button>`).join('')}</div></div></div>`;
-    sfx('notify');
-    return;
-  }
-  const k = top.style === 'bull' ? pick(['expand', 'ceo', 'buyback']) : top.style === 'news' ? pick(['div', 'div', 'buyback']) : pick(['buyback', 'div']);
-  showVote(i, k, top);
-}
-function showVote(i, k, proposer) {
-  const r = RES[i], P = PROPOSALS[k], mine = share(me(), i);
-  G.vote = { i, k, proposer: proposer.id };
-  $('#screen').innerHTML = `<div class="meet"><div class="mcard"><div class="mh">${img(r.icon)}<div><small>株主総会</small><b>${r.name}</b></div></div>
-    <div class="mt">${proposer.me ? 'あなた' : proposer.name}の議案:<b>「${P.name}」</b><small>${P.text}</small></div>
-    <div class="votes">${G.players.filter(p => share(p, i) > 0).map(p => `<div class="vrow" style="--c:${p.color}">${img(p.icon)}<b>${p.me ? 'あなた' : p.name}</b><span>${Math.round(share(p, i) * 100)}票</span><em id="vv${p.id}"></em></div>`).join('')}</div>
-    <div class="vbar"><i class="yes" id="vyes"></i><i class="no" id="vno"></i></div>
-    ${mine > 0 ? `<div class="vbtns"><button class="btn yes" data-a="vote" data-v="1">賛成(${Math.round(mine * 100)}票)</button><button class="btn no" data-a="vote" data-v="0">反対</button></div>` : `<button class="btn go" data-a="vote" data-v="-1">結果を見る(あなたは株を持っていない)</button>`}</div></div>`;
-  sfx('card');
-}
-function castVote(myVote) {
-  const { i, k, proposer } = G.vote, r = RES[i];
-  let yes = 0, no = 0;
-  const said = {};
-  for (const p of G.players) {
-    const s = share(p, i); if (s <= 0) continue;
-    let v;
-    if (p.me) v = myVote; else if (p.id === proposer) v = 1;
-    else if (p.style === 'bull') v = k === 'div' ? 0 : 1;
-    else if (p.style === 'news') v = k === 'expand' ? 0 : 1;
-    else v = G.players[proposer].style === 'contra' ? 1 : (k === 'buyback' ? 1 : 0);
-    if (v === 1) yes += s; else if (v === 0) no += s;
-    said[p.id] = v;
-  }
-  const pass = yes > no;
-  for (const p of G.players) { const e = $('#vv' + p.id); if (e && said[p.id] != null) { e.textContent = said[p.id] === 1 ? '賛成' : '反対'; e.className = said[p.id] === 1 ? 'up' : 'dn'; } }
-  const tot = Math.max(0.01, yes + no); $('#vyes').style.width = yes / tot * 100 + '%'; $('#vno').style.width = no / tot * 100 + '%';
-  setTimeout(() => {
-    if (pass) {
-      if (k === 'div') for (const p of G.players) { const d = share(p, i) * SHARES * G.price[i] * 0.06; p.cash += d; }
-      if (k === 'div') G.price[i] *= 0.97;
-      if (k === 'buyback') G.price[i] *= 1.08;
-      if (k === 'expand') G.boost[i] += 0.06;
-      if (k === 'ceo') { G.price[i] *= 1.05; G.boost[i] += 0.04; }
-    }
-    flashBanner(`<b>${pass ? '可決!' : '否決'}</b><small>${r.name}「${PROPOSALS[k].name}」 賛成${Math.round(yes * 100)}票・反対${Math.round(no * 100)}票</small>`, pass ? 'gold' : 'bad');
-    sfx(pass ? 'kaching' : 'bad'); renderTop(); renderRivals(); renderChips();
-    setTimeout(nextMeeting, 1400);
-  }, 900);
-}
-function showResult() {
-  const p = me(), A = assets(p, G.price), d = A - p.startAssets, rk = ranking(), pos = rk.indexOf(p) + 1;
-  const prevPos = G.lastPos || pos; G.lastPos = pos;
-  const last = G.m + 1 >= G.months;
-  const big = d / Math.max(1, p.startAssets);
-  $('#sheet').innerHTML = `<div class="res ${d >= 0 ? 'win' : 'lose'}"><div class="rh">${MONTHS[G.m % 12]}の結果</div>
-    ${G.duelResult ? `<div class="duelres ${G.duelResult.win ? 'win' : G.duelResult.draw ? '' : 'lose'}">${img(G.duelResult.r.icon)}<span>一騎打ち vs ${G.duelResult.r.name}</span><b>${G.duelResult.draw ? '引き分け' : G.duelResult.win ? '+' + fmt(G.duelResult.stake) + 'G' : '−' + fmt(G.duelResult.stake) + 'G'}</b></div>` : ''}
-    ${G.streak >= 2 ? `<div class="streak">${img('o_fire')}<b>${G.streak}連勝中</b>${G.streakBonus ? `<span>ボーナス +${fmt(G.streakBonus)}G</span>` : ''}</div>` : ''}
-    <div class="rbig" id="rbig">${sgn(0)}G</div><div class="rsub">総資産 ${fmt(A)}G${p.hedgeBack ? ` <em>保険で ${fmt(p.hedgeBack)}G 戻った</em>` : ''}${p.div ? ` <em>配当 +${fmt(p.div)}G</em>` : ''}${p.profit ? ` <em>支配している会社の利益 +${fmt(p.profit)}G</em>` : ''}</div>
-    <div class="rres">${RES.map((r, i) => i).filter(i => (RES[i].kind === 'co') === (G.tab === 'co')).map(i => RES[i]).map((r) => { const i = RES.indexOf(r); const c = G.hist[i][G.hist[i].length - 1], ch = c.c / c.o - 1; return `<div class="rr">${img(r.icon)}<b>${r.name}</b><span class="${ch >= 0 ? 'up' : 'dn'}">${ch >= 0 ? '▲' : '▼'} ${pct(ch)}</span></div>`; }).join('')}</div>
-    <div class="rrank">${rk.map((x, k) => `<div class="rk ${x.me ? 'me' : ''}"><span class="n">${k + 1}</span>${img(x.icon)}<b>${x.name}</b><span>${fmt(assets(x, G.price))}G</span><small class="${assets(x, G.price) - x.startAssets >= 0 ? 'up' : 'dn'}">${sgn(assets(x, G.price) - x.startAssets)}</small></div>`).join('')}</div>
-    <button class="btn go" data-a="${last ? 'final' : 'next'}">${last ? '最終結果へ' : meetingsDue() ? '株主総会へ' : `${MONTHS[(G.m + 1) % 12]}へ`}</button></div>`;
-  showSheet();
-  countUp($('#rbig'), d, (v) => `${sgn(v)}G`);
-  if (big > 0.15) { confetti(); sfx('rankup'); flashBanner('<b>大当たり!</b>', 'gold'); }
-  else if (big < -0.12) { shake(0.7); sfx('bad'); }
-  if (pos < prevPos) setTimeout(() => { flashBanner(`<b>${pos}位に上がった!</b>`, 'gold'); sfx('rankup'); }, 900);
-  const R = G.duelResult;
-  if (R) setTimeout(() => {
-    flashBanner(R.draw ? `<b>一騎打ち 引き分け</b><small>${RES[R.i].name}はほとんど動かなかった</small>` : R.win ? `<b>一騎打ち 勝利! +${fmt(R.stake)}G</b><small>${R.r.name}から奪った</small>` : `<b>一騎打ち 敗北… −${fmt(R.stake)}G</b><small>${R.r.name}の読みが当たった</small>`, R.win ? 'gold' : R.draw ? '' : 'bad');
-    sfx(R.win ? 'coins' : R.draw ? 'notify' : 'bad', 8); if (R.win) confetti(); else if (!R.draw) shake(0.6);
-    speech(R.r, R.draw ? '勝負はおあずけだ' : R.win ? 'くっ…次は負けん!' : 'おれの読みどおりだな!');
-  }, 1300);
-  if (G.streak >= 2) setTimeout(() => { flashBanner(`<b>${G.streak}連勝!</b><small>${G.streakBonus ? `連勝ボーナス +${fmt(G.streakBonus)}G` : 'あと1か月勝てば連勝ボーナス'}</small>`, 'gold'); sfx('rankup'); }, R ? 2700 : 1300);
-  const winner = rk[0]; if (!winner.me && Math.random() < 0.6) setTimeout(() => speech(winner, winner.say.win), 600);
-  renderTop(); renderRivals();
-}
-function finalResult() {
-  for (const p of G.players) closeAll(p);   // 株も時価で現金にして比べる
-  const rk = ranking(), pos = rk.findIndex(p => p.me) + 1, best = (() => { try { return +localStorage.getItem('war-best') || 0; } catch (e) { return 0; } })(), mine = assets(me(), G.price);
-  if (mine > best) try { localStorage.setItem('war-best', String(Math.round(mine))); } catch (e) { }
-  G.phase = 'over'; bgm.play(pos === 1 ? 'matsuri' : 'ouji');
-  $('#screen').innerHTML = `<div class="final ${pos === 1 ? 'win' : ''}"><div class="fcard"><div class="ft">${pos === 1 ? '商会戦争 優勝!' : `${pos}位`}</div>
-    <div class="fs">総資産 ${fmt(mine)}G(はじめ ${fmt(START_CASH)}G)${mine > best ? '<em>自己ベスト!</em>' : ''}</div>
-    <div class="rrank">${rk.map((x, k) => `<div class="rk ${x.me ? 'me' : ''}"><span class="n">${k + 1}</span>${img(x.icon)}<b>${x.name}</b><span>${fmt(assets(x, G.price))}G</span></div>`).join('')}</div>
-    <div class="fbtns"><button class="btn go" data-a="start" data-v="${G.months}">もう一度</button><button class="btn" data-a="title">タイトルへ</button></div></div></div>`;
-  hideSheet();
-  if (pos === 1) { confetti(); confetti(); sfx('rankup'); } else sfx('bad');
+  const counts = {}; cards.forEach(c => counts[c.a] = (counts[c.a] || 0) + 1);
+  const combos = [];
+  for (const r of rows) if (counts[r.c.a] >= 2 && r.total > 0) { const m = mine && has('focus') ? 2.5 : 1.5; r.total *= m; r.tags.push(`一点集中 ×${m}`); }
+  const sum = rows.reduce((a, r) => a + r.total, 0); let mult = 1;
+  if (cards.length === 3 && Object.keys(counts).length === 3 && sum > 0) { const m = mine && has('spread') ? 2 : 1.3; mult *= m; combos.push(`分散 ×${m}`); }
+  if (cards.length === 3 && rows.every(r => r.total > 0)) { mult *= 2; combos.push('パーフェクト ×2'); }
+  return { rows, sum, mult, combos, total: Math.round(sum * mult) };
 }
 
 // ── 画面
 function render() {
-  if (!G) return;
-  renderTop(); renderRivals(); renderChips(); renderPos(); renderCtrl(); drawChart();
+  if (!S) return;
+  renderVS(); renderNews(); renderBoard(); renderPerks(); renderHand(); renderAct();
 }
-function renderTop() {
-  const p = me(), A = assets(p), rk = ranking().indexOf(p) + 1;
-  $('#top').innerHTML = `<div class="month"><b>${MONTHS[G.m % 12]}</b><small>${G.m + 1} / ${G.months}か月</small></div>
-    <div class="money"><span class="cash">${img('coin')}<b id="assetv">${fmt(A)}</b>G</span><small>総資産(現金 ${fmt(p.cash)}G)</small></div>
-    <div class="rank"><b>${rk}</b>位</div>`;
+function bar(v, max, cls) { return `<div class="hp ${cls}"><i style="width:${clamp(v / max, 0, 1) * 100}%"></i><b>${fmt(Math.max(0, v))}</b></div>`; }
+function renderVS() {
+  const r = R();
+  $('#vs').innerHTML = `<div class="side me">${img('o_crown', 'face')}<div class="info"><small>あなた ・ ${img('coin', 'mini')}${fmt(S.cash)}G</small>${bar(S.hp, S.hpMax, 'me')}</div></div>
+    <div class="mid"><b>VS</b><small>${S.stage + 1}/3人目 ・ ${S.month}か月目</small></div>
+    <div class="side rv" style="--c:${r.color}"><div class="info"><small>${r.boss ? 'ボス ' : ''}${r.name}</small>${bar(S.rhp, S.rhpMax, 'rv')}</div>${img(r.icon, 'face')}</div>`;
 }
-function renderRivals() {
-  const rk = ranking();
-  $('#rivals').innerHTML = rk.map((p, k) => `<div class="rv ${p.me ? 'me' : ''}" style="--c:${p.color}" id="rv${p.id}"><span class="n">${k + 1}</span>${img(p.icon)}<div><b>${p.name}</b><small>${fmt(assets(p))}G</small></div></div>`).join('');
-}
-function renderChips() {
-  $('#tabs').innerHTML = `<button class="${G.tab === 'res' ? 'on' : ''}" data-a="tab" data-v="res">${img('wheat')}資源</button><button class="${G.tab === 'co' ? 'on' : ''}" data-a="tab" data-v="co">${img('o_chartup')}株・企業</button>`;
-  $('#chips').innerHTML = RES.map((r, i) => {
-    if ((r.kind === 'co') !== (G.tab === 'co')) return '';
-    const f = G.phase === 'plan' ? forecast(i) : null, cur = curPrices()[i], open = G.live ? G.live.open[i] : (G.hist[i].length ? G.hist[i][G.hist[i].length - 1].o : cur), ch = cur / open - 1;
-    return `<button class="chip ${i === G.sel ? 'on' : ''}" data-a="sel" data-from="chip" data-v="${i}" style="--c:${r.color}">${img(r.icon)}<b>${r.short || r.name}</b><span class="pr" id="pr${i}">${priceStr(cur)}</span>
-      ${r.kind === 'co' ? `<small class="own">${me().pos[i].u > 0 ? Math.round(share(me(), i) * 100) + '%' : ''}</small>` : ''}
-      ${f ? `<span class="fc ${f.up >= 55 ? 'up' : f.up <= 45 ? 'dn' : ''}">${f.sure ? '確定 ' : ''}${f.up >= 50 ? '▲' : '▼'}${f.up >= 50 ? f.up : 100 - f.up}%</span>` : `<span class="ch ${ch >= 0 ? 'up' : 'dn'}" id="ch${i}">${pct(ch)}</span>`}
-      ${me().pos[i].u ? `<i class="hold ${me().pos[i].u > 0 ? 'up' : 'dn'}"></i>` : ''}${r.kind === 'co' && G.ctrl[i] != null ? `<i class="crown" style="--c:${G.players[G.ctrl[i]].color}">${img(G.players[G.ctrl[i]].icon)}</i>` : ''}</button>`;
+function renderNews() {
+  $('#news').innerHTML = S.news.map(n => {
+    const a = AS[n.i];
+    if (n.hidden) return `<div class="nw hidden">${img('o_think')}<div><b>??? ミーナが隠した</b><small>どこかの相場が動く</small></div></div>`;
+    const dir = n.reveal ? n.truth : n.s;
+    return `<div class="nw ${n.reveal ? 'sure' : n.tier.cls}">${img(a.icon)}<div><span class="tag">${n.reveal ? '本当の向き' : n.tier.name}</span><b>${n.text}</b><small>${a.name}が<em class="${dir > 0 ? 'up' : 'dn'}">${dir > 0 ? '上がる' : '下がる'}</em>${n.reveal ? '(情報屋の裏取り済み)' : `かも 約${Math.round(n.tier.rel * 100)}%`}</small></div></div>`;
   }).join('');
 }
-function renderPos() {
-  const p = me(), i = G.sel, q = p.pos[i], cur = curPrices()[i], r = RES[i];
-  const pl = q.u ? q.u * (cur * (1 - SPREAD * Math.sign(q.u)) - q.avg) : 0;
-  const ch = $('#bclose'); if (ch) ch.disabled = !(G.phase === 'plan' && q.u);
-  if (isCo(i)) {
-    const s = share(p, i), c = G.ctrl[i], others = G.players.filter(x => !x.me && share(x, i) > 0).map(x => `${x.name}${Math.round(share(x, i) * 100)}%`).join('・');
-    $('#pos').innerHTML = `<div class="pl co ${pl > 0 ? 'up' : pl < 0 ? 'dn' : ''}"><small>${r.name}: あなた ${Math.round(s * 100)}%${others ? `(${others})` : ''}${c != null ? ` ・支配: ${G.players[c].me ? 'あなた' : G.players[c].name}` : ''}</small>
-      <b id="plv">${q.u ? sgn(pl) + 'G' : (G.phase === 'plan' ? '株を買う?' : '—')}</b><small>${c === 0 ? `支配中: ${r.abilityText}` : s > 0.5 ? '' : `支配(50%超)まで あと${Math.max(0, Math.ceil(SHARES * 0.5 - s * SHARES + 0.01))}株・毎月 配当あり`}</small></div>`;
-    return;
-  }
-  $('#pos').innerHTML = q.u ? `<div class="pl ${pl >= 0 ? 'up' : 'dn'}"><small>${r.name}に「${q.u > 0 ? '上がる' : '下がる'}」で ${fmt(Math.abs(q.u * q.avg))}G 賭け中</small><b id="plv">${sgn(pl)}G</b><small>平均 ${priceStr(q.avg)} → いま <span id="plcur">${priceStr(cur)}</span></small></div>`
-    : `<div class="pl none"><small>${r.name}にはまだ賭けていない</small><b>${G.phase === 'plan' ? '上がる?下がる?' : '—'}</b></div>`;
+function spark(i) {
+  const h = S.hist[i].slice(-6); if (!h.length) return '<svg class="spk"></svg>';
+  let p = S.prices[i]; const arr = [p]; for (let k = h.length - 1; k >= 0; k--) { p = p / (1 + h[k]); arr.unshift(p); }
+  const lo = Math.min(...arr), hi = Math.max(...arr), W = 56, H = 16;
+  const d = arr.map((v, k) => `${k ? 'L' : 'M'}${(k / (arr.length - 1) * W).toFixed(1)},${(H - 1 - (v - lo) / ((hi - lo) || 1) * (H - 2)).toFixed(1)}`).join('');
+  return `<svg class="spk" viewBox="0 0 ${W} ${H}"><path d="${d}" fill="none" stroke="${arr[arr.length - 1] >= arr[0] ? '#3ccf8e' : '#ff5a6a'}" stroke-width="1.8"/></svg>`;
 }
-function renderLiveNumbers() {
-  const pr = curPrices();
-  RES.forEach((r, i) => { const e = $('#pr' + i); if (e) e.textContent = priceStr(pr[i]); const c = $('#ch' + i); if (c && G.live) { const ch = pr[i] / G.live.open[i] - 1; c.textContent = pct(ch); c.className = 'ch ' + (ch >= 0 ? 'up' : 'dn'); } });
-  const a = $('#assetv'); if (a) a.textContent = fmt(assets(me()));
-  const rk = $('#top .rank b'); if (rk) rk.textContent = ranking().indexOf(me()) + 1;
-  const p = me(), q = p.pos[G.sel];
-  if (q.u) { const pl = q.u * (pr[G.sel] * (1 - SPREAD * Math.sign(q.u)) - q.avg), e = $('#plv'); if (e) { e.textContent = sgn(pl) + 'G'; e.parentElement.className = 'pl ' + (isCo(G.sel) ? 'co ' : '') + (pl >= 0 ? 'up' : 'dn'); } const c = $('#plcur'); if (c) c.textContent = priceStr(pr[G.sel]); }
-  if (G.live && G.live.tick % 6 === 0) renderRivals();
+function renderBoard() {
+  $('#board').innerHTML = AS.map((a, i) => {
+    const last = S.hist[i][S.hist[i].length - 1], n = S.news.find(x => x.i === i && !x.hidden);
+    return `<div class="tile" style="--c:${a.color}">${img(a.icon)}<b>${a.name}</b>${spark(i)}${last != null ? `<span class="lm ${last >= 0 ? 'up' : 'dn'}">先月 ${pct(last)}</span>` : '<span class="lm">先月 —</span>'}${n ? `<i class="nb ${(n.reveal ? n.truth : n.s) > 0 ? 'up' : 'dn'}">${(n.reveal ? n.truth : n.s) > 0 ? '▲' : '▼'}</i>` : ''}</div>`;
+  }).join('');
 }
-function renderCtrl() {
-  const plan = G.phase === 'plan';
-  if (G.phase === 'live') {
-    $('#ctrl').innerHTML = `<div class="watch"><div class="wt">${img('o_hourglass')}<b>見守り中</b><small>今月の賭けはもう決まった。チャートの動きを見よう</small></div><button class="btn ffwd" data-a="ffwd">早送り</button></div>`;
-    return;
-  }
-  const amts = [[100, '100G'], [300, '300G'], [1000, '1000G'], ['all', '全力']];
-  $('#ctrl').innerHTML = `<div class="amts">${amts.map(([v, t]) => `<button class="amt ${G.amount === v ? 'on' : ''}" data-a="amt" data-v="${v}">${t}</button>`).join('')}</div>
-    <div class="trade"><button class="tb up" id="bup" data-a="buy" ${plan ? '' : 'disabled'}><b>${isCo(G.sel) ? '株を買う' : '上がる'}</b><small>${isCo(G.sel) ? '配当・買収' : '買う'}</small></button>
-    <button class="tb close" id="bclose" data-a="closepos" ${plan && me().pos[G.sel].u ? '' : 'disabled'}><b>決済</b><small>利益・損を確定</small></button>
-    <button class="tb dn" id="bdn" data-a="sell" ${plan ? '' : 'disabled'}><b>${isCo(G.sel) ? '株を売る' : '下がる'}</b><small>${isCo(G.sel) ? '持っている分だけ' : '売る'}</small></button></div>
-    ${plan ? `<div class="go2"><button class="btn news2" data-a="newsopen">${img('o_envelope')}ニュース</button><button class="btn go" data-a="open">賭けを決めて 月を進める</button></div>` : ''}`;
+function renderPerks() {
+  $('#perks').innerHTML = `<span class="pl">顧問</span>` + (S.perks.length ? S.perks.map(k => `<button class="perk" data-a="perkinfo" data-k="${k}">${img(PERKS[k].icon)}<b>${PERKS[k].name}</b></button>`).join('') : '<small>まだいない(月の合間のお店で雇える)</small>');
 }
-function renderPlan() {
-  const log = G.cardLog || []; G.cardLog = [];
-  const p = me();
-  $('#sheet').classList.remove('mini');
-  $('#sheet').innerHTML = `<div class="plan"><div class="ph" data-a="mini">${MONTHS[G.m % 12]}のニュース<small>読んだら閉じて、チャートの予想を見ながら ゆっくり賭けよう(時間制限なし)</small></div>
-    ${G.news.map(n => `<div class="news ${n.rel > 0.7 ? 'sure' : 'rumor'}" data-a="sel" data-v="${n.r}">${img(RES[n.r].icon)}<div><span class="tag">${n.rel > 0.7 ? '確かな筋' : 'うわさ'}</span><b>${n.text}</b><small>${RES[n.r].name}が${n.s > 0 ? '上がる' : '下がる'}かも(当たる確率 約${Math.round(n.rel * 100)}%)</small></div></div>`).join('')}
-    ${G.big ? `<div class="bigm">${img('o_bolt')}<div><b>今月は大相場!</b><small>値動きがいつもの2倍。ニュースの効き目も大きい</small></div></div>` : ''}
-    ${G.earn && G.earn.length ? `<div class="earn"><div class="el">決算発表(株価がもう動いた)</div>${G.earn.map(e => `<div class="er" data-a="sel" data-v="${e.i}">${img(RES[e.i].icon)}<b>${RES[e.i].short}</b><span class="${e.x >= 0 ? 'up' : 'dn'}">${e.x >= 0.05 ? '好決算' : e.x <= -0.05 ? '悪決算' : '予想どおり'} ${pct(Math.exp(e.x) - 1)}</span></div>`).join('')}</div>` : ''}
-    ${G.duel ? duelHtml() : ''}
-    ${G.players.slice(1).filter(x => x.used && x.used.k !== 'spy' && x.used.k !== 'hedge').map(x => `<div class="enemy" style="--c:${x.color}">${img(x.icon)}<div><b>${x.name}が「${CARDS[x.used.k].name}」を使った!</b><small>${x.used.k === 'seize' ? `${G.players[x.used.target].name}の持ち物が売られた` : `${RES[x.used.target].name}が${x.used.k === 'pump' ? '上がり' : '下がり'}やすくなった`}</small></div></div>`).join('')}
-    <div class="hand"><div class="hl">戦争カード(月に1枚)</div><div class="cards">${p.hand.map((k, j) => `<button class="card ${p.used ? 'dim' : ''}" data-a="card" data-v="${j}">${img(CARDS[k].icon)}<b>${CARDS[k].name}</b><small>${CARDS[k].text}</small></button>`).join('') || '<small class="none">カードがない</small>'}</div>
-    ${p.used ? `<div class="usedc">使った:「${CARDS[p.used.k].name}」${p.used.target != null ? (CARDS[p.used.k].target === 'res' ? ` → ${RES[p.used.target].name}` : ` → ${G.players[p.used.target].name}`) : ''}</div>` : ''}</div>
-    <button class="btn go big" data-a="mini">閉じて、賭けを決める</button></div>`;
-  showSheet();
-  log.forEach((l, k) => setTimeout(() => { speech(l.p, l.p.say.card); sfx('card'); }, 500 + k * 900));
+function cardHtml(c, opt = {}) {
+  const a = AS[c.a];
+  return `<button class="card ${opt.sel ? 'sel' : ''} ${c.straddle ? 'strad' : c.dir > 0 ? 'cu' : 'cd'}" ${opt.act ? `data-a="${opt.act}" data-id="${c.id}"` : ''} style="--c:${a.color}">
+    <span class="pw">${'<i></i>'.repeat(c.pow)}</span>${img(a.icon, 'ci')}<b>${a.name}</b>
+    <span class="dir">${c.straddle ? '両張り' : c.dir > 0 ? '▲上がる' : '▼下がる'}</span><small>${c.straddle ? `どちらでも ×${c.pow}` : `${STAKE * c.pow}G`}</small></button>`;
 }
-function duelHtml() {
-  const D = G.duel, r = G.players[D.pid], R = RES[D.i];
-  const head = `<div class="duel ${D.state}" style="--c:${r.color}">${img(r.icon, 'dface')}<div class="dt"><small>一騎打ち</small><b>${r.name}「${R.name}は${D.side > 0 ? '上がる' : '下がる'}! お前は${D.side > 0 ? '下がる' : '上がる'}に ${fmt(D.stake)}G 賭けるか?」</b>`;
-  if (D.state === 'offer') return head + `<small>月末に${R.name}が${D.side > 0 ? '下がって' : '上がって'}いれば あなたの勝ち(${fmt(D.stake)}G もらえる)</small><div class="dbtns"><button class="btn yes" data-a="duel" data-v="1">受けて立つ</button><button class="btn" data-a="duel" data-v="0">断る</button></div></div></div>`;
-  if (D.state === 'on') return head + `<small class="on">勝負成立! 市場がひらいた瞬間の値段から、月末にどちらへ動くか</small></div></div>`;
-  return head + `<small>断った</small></div></div>`;
+function renderHand() {
+  $('#hand').innerHTML = S.hand.map(c => cardHtml(c, { sel: S.sel.includes(c.id), act: S.phase === 'plan' ? 'card' : null })).join('');
 }
-function chooseTarget(k, j) {
-  const C = CARDS[k];
-  const opts = C.target === 'res' ? RES.map((r, i) => `<button class="opt" data-a="target" data-k="${k}" data-j="${j}" data-v="${i}">${img(r.icon)}<b>${r.name}</b></button>`)
-    : G.players.slice(1).map(p => `<button class="opt" data-a="target" data-k="${k}" data-j="${j}" data-v="${p.id}">${img(p.icon)}<b>${p.name}</b><small>持ち物 ${fmt(exposure(p, G.price))}G</small></button>`);
-  $('#screen').innerHTML = `<div class="pick"><div class="pcard"><div class="pt">「${C.name}」をどれに使う?</div><div class="opts">${opts.join('')}</div><button class="btn" data-a="cancelpick">やめる</button></div></div>`;
+function renderAct() {
+  if (S.phase !== 'plan') { $('#act').innerHTML = ''; return; }
+  const n = S.sel.length;
+  $('#act').innerHTML = `<button class="btn redraw" data-a="redraw" ${n && S.redraws ? '' : 'disabled'}>${img('o_dice')}<span>捨てて引く<small>のこり${S.redraws}回</small></span></button>
+    <button class="btn go" data-a="invest" ${n ? '' : 'disabled'}>${n ? `${n}枚で投資する!` : 'カードを選ぶ(3枚まで)'}</button>`;
 }
 
-// ── チャート
-const cv = $('#chart'), cx = cv.getContext('2d');
-let chartFlashUntil = 0, chartFlashColor = '#fff';
-function chartFlash(c) { chartFlashUntil = performance.now() + 350; chartFlashColor = c; }
-function drawChart() {
-  if (!G) return;
-  const dpr = Math.min(2, devicePixelRatio || 1), W = cv.clientWidth, H = cv.clientHeight;
-  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
-  cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.clearRect(0, 0, W, H);
-  const i = G.sel, r = RES[i], hist = G.hist[i].slice(-7), L = G.live;
-  const padR = 52, padT = 14, padB = 22, plotW = W - padR - 8, histW = plotW * 0.52, liveX0 = 8 + histW + 8, liveW = plotW - histW - 16;
-  // 値の範囲
-  let lo = Infinity, hi = -Infinity;
-  for (const c of hist) { lo = Math.min(lo, c.l); hi = Math.max(hi, c.h); }
-  const cur = curPrices()[i];
-  lo = Math.min(lo, cur); hi = Math.max(hi, cur);
-  let fc = null;
-  if (G.phase === 'plan') { fc = forecast(i); const sp = r.vol * 1.6 + 0.06; lo = Math.min(lo, cur * (1 - sp)); hi = Math.max(hi, cur * (1 + sp)); }
-  if (L) { const pts = L.path[i]; for (let t = 0; t <= TICKS; t++) { /* 先の値は見せないが、目盛りは広めに */ } lo = Math.min(lo, L.lo[i], cur * 0.9); hi = Math.max(hi, L.hi[i], cur * 1.1); }
-  const pad = (hi - lo) * 0.1 || 1; lo -= pad; hi += pad;
-  const Y = (p) => padT + (1 - (p - lo) / (hi - lo)) * (H - padT - padB);
-  // 背景の目盛り
-  cx.font = '600 10px "M PLUS Rounded 1c", sans-serif'; cx.textAlign = 'left';
-  for (let k = 0; k <= 4; k++) { const p = lo + (hi - lo) * k / 4, y = Y(p); cx.strokeStyle = 'rgba(255,255,255,.07)'; cx.beginPath(); cx.moveTo(8, y); cx.lineTo(W - padR, y); cx.stroke(); cx.fillStyle = 'rgba(255,255,255,.4)'; cx.fillText(priceStr(p), W - padR + 6, y + 3); }
-  // ろうそく(月ごと)
-  const cw = histW / Math.max(7, hist.length);
-  hist.forEach((c, k) => {
-    const x = 8 + cw * (k + 0.5), up = c.c >= c.o, col = up ? '#3ccf8e' : '#ff5a6a';
-    cx.strokeStyle = col; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(x, Y(c.h)); cx.lineTo(x, Y(c.l)); cx.stroke();
-    const y1 = Y(Math.max(c.o, c.c)), y2 = Y(Math.min(c.o, c.c));
-    cx.fillStyle = col; cx.fillRect(x - cw * 0.3, y1, cw * 0.6, Math.max(2, y2 - y1));
-    cx.fillStyle = 'rgba(255,255,255,.45)'; cx.textAlign = 'center'; cx.fillText(c.m < 0 ? '' : MONTHS[c.m % 12].replace('月', ''), x, H - 6);
-  });
-  // 今月(市場が開いている間): 線で
-  const x0 = liveX0, sx = (t) => x0 + liveW * t / TICKS;
-  cx.fillStyle = 'rgba(255,255,255,.04)'; cx.fillRect(x0 - 4, padT - 6, liveW + 8, H - padT - padB + 10);
-  cx.fillStyle = 'rgba(255,255,255,.55)'; cx.textAlign = 'center'; cx.fillText(G.phase === 'plan' ? `${MONTHS[G.m % 12]}の予想` : MONTHS[G.m % 12], x0 + liveW / 2, H - 6);
-  const open = L ? L.open[i] : (G.price[i]);
-  cx.setLineDash([4, 4]); cx.strokeStyle = 'rgba(255,255,255,.25)'; cx.beginPath(); cx.moveTo(x0, Y(open)); cx.lineTo(x0 + liveW, Y(open)); cx.stroke(); cx.setLineDash([]);
-  let lastX = x0, lastY = Y(cur);
-  if (L) {
-    const tf = Math.min(TICKS, (performance.now() - L.t0) / 1000 / LIVE_SEC * TICKS), p = L.path[i];
-    const ih = L.impHist[i], impAt = (t) => { let v = 0; for (const e of ih) { if (e.t <= t) v = e.v; else break; } return v; };
-    const P = (t) => p.o * Math.exp(p.pts[Math.floor(t)] + (p.pts[Math.min(TICKS, Math.floor(t) + 1)] - p.pts[Math.floor(t)]) * (t - Math.floor(t)) + impAt(t));
-    const grad = cx.createLinearGradient(0, padT, 0, H - padB); grad.addColorStop(0, r.color + '55'); grad.addColorStop(1, r.color + '00');
-    cx.beginPath(); cx.moveTo(sx(0), Y(P(0)));
-    for (let t = 0.5; t < tf; t += 0.5) cx.lineTo(sx(t), Y(P(t)));
-    cx.lineTo(sx(tf), Y(cur)); lastX = sx(tf); lastY = Y(cur);
-    cx.save(); cx.lineTo(lastX, H - padB); cx.lineTo(sx(0), H - padB); cx.closePath(); cx.fillStyle = grad; cx.fill(); cx.restore();
-    cx.beginPath(); cx.moveTo(sx(0), Y(P(0))); for (let t = 0.5; t < tf; t += 0.5) cx.lineTo(sx(t), Y(P(t))); cx.lineTo(lastX, lastY);
-    cx.strokeStyle = r.color; cx.lineWidth = 2.5; cx.shadowColor = r.color; cx.shadowBlur = 10; cx.stroke(); cx.shadowBlur = 0;
-    // ニュースの瞬間
-    if (L.shockShown[i]) { const x = sx(p.shock); cx.strokeStyle = 'rgba(255,211,110,.6)'; cx.setLineDash([3, 3]); cx.beginPath(); cx.moveTo(x, padT); cx.lineTo(x, H - padB); cx.stroke(); cx.setLineDash([]); cx.fillStyle = '#ffd36e'; cx.fillText('ニュース', x, padT + 8); }
-    // 売り買いの印
-    for (const tr of G.trades) if (tr.i === i) {
-      const x = sx(Math.min(tf, tr.t)), y = Y(tr.price), col = G.players[tr.who].color;
-      cx.fillStyle = col; cx.beginPath();
-      if (tr.side > 0) { cx.moveTo(x, y + 6); cx.lineTo(x - 6, y + 15); cx.lineTo(x + 6, y + 15); } else { cx.moveTo(x, y - 6); cx.lineTo(x - 6, y - 15); cx.lineTo(x + 6, y - 15); }
-      cx.closePath(); cx.fill(); if (tr.who === 0) { cx.strokeStyle = '#fff'; cx.lineWidth = 1.5; cx.stroke(); }
-    }
+// ── 月の結果: めくって、役で倍率、ライバルと比べてダメージ
+async function invest() {
+  const mine = S.hand.filter(c => S.sel.includes(c.id));
+  if (!mine.length || S.phase !== 'plan') return;
+  S.phase = 'reveal'; renderHand(); renderAct();
+  const rc = rivalPlay(), A = scoreHand(mine, true), B = scoreHand(rc, false), r = R();
+  sfx('card'); haptic(15);
+  $('#screen').innerHTML = `<div class="reveal"><div class="rvh">${S.month}か月目の決算</div>
+    <div class="col me"><div class="who">${img('o_crown')}あなた</div><div class="rows" id="rowsA"></div><div class="combo" id="comboA"></div><div class="tot" id="totA">±0G</div></div>
+    <div class="col rv" style="--c:${r.color}"><div class="who">${img(r.icon)}${r.name}</div><div class="rows" id="rowsB"></div><div class="combo" id="comboB"></div><div class="tot" id="totB">±0G</div></div>
+    <div class="clash" id="clash"></div><div class="nextbox" id="nextbox"></div></div>`;
+  await wait(450);
+  const n = Math.max(A.rows.length, B.rows.length);
+  for (let k = 0; k < n; k++) {
+    if (A.rows[k]) await flip('#rowsA', A.rows[k]);
+    if (B.rows[k]) await flip('#rowsB', B.rows[k]);
   }
-  // 予想(月のはじめ): 向きと幅
-  if (fc) {
-    const exp = (fc.up - 50) / 50 * (r.vol * 1.3 + 0.04), sp = r.vol * (fc.sure ? 0.4 : 1.1);
-    const xa = x0, xb = x0 + liveW, ya = Y(cur);
-    cx.beginPath(); cx.moveTo(xa, ya); cx.lineTo(xb, Y(cur * Math.exp(exp + sp))); cx.lineTo(xb, Y(cur * Math.exp(exp - sp))); cx.closePath();
-    const col = fc.up >= 55 ? '#3ccf8e' : fc.up <= 45 ? '#ff5a6a' : '#aab0c8';
-    cx.fillStyle = col + '30'; cx.fill();
-    cx.strokeStyle = col; cx.lineWidth = 2.5; cx.setLineDash([6, 4]); cx.beginPath(); cx.moveTo(xa, ya); cx.lineTo(xb - 6, Y(cur * Math.exp(exp))); cx.stroke(); cx.setLineDash([]);
-    const ex = xb - 6, ey = Y(cur * Math.exp(exp)), ang = Math.atan2(ey - ya, ex - xa);
-    cx.fillStyle = col; cx.beginPath(); cx.moveTo(ex + 8 * Math.cos(ang), ey + 8 * Math.sin(ang)); cx.lineTo(ex + 9 * Math.cos(ang + 2.4), ey + 9 * Math.sin(ang + 2.4)); cx.lineTo(ex + 9 * Math.cos(ang - 2.4), ey + 9 * Math.sin(ang - 2.4)); cx.fill();
-    cx.font = '900 15px "M PLUS Rounded 1c", sans-serif'; cx.fillStyle = col; cx.textAlign = 'center';
-    cx.fillText(`${fc.sure ? '確定 ' : ''}${fc.up >= 50 ? '上がる' : '下がる'} ${fc.up >= 50 ? fc.up : 100 - fc.up}%`, x0 + liveW / 2, padT + 14);
-  }
-  // 一騎打ちの基準の値段
-  if (G.duel && G.duel.state === 'on' && G.duel.i === i && G.duel.open) {
-    const y = Y(G.duel.open), r = G.players[G.duel.pid]; cx.strokeStyle = r.color; cx.lineWidth = 1.5; cx.setLineDash([8, 4]); cx.beginPath(); cx.moveTo(x0, y); cx.lineTo(x0 + liveW, y); cx.stroke(); cx.setLineDash([]);
-    cx.font = '800 10px "M PLUS Rounded 1c", sans-serif'; cx.textAlign = 'left'; cx.fillStyle = r.color; cx.fillText(`一騎打ち vs ${r.name}(あなたは${G.duel.side > 0 ? '下がる' : '上がる'})`, x0 + 2, y + 13);
-  }
-  // 自分の平均の値段
-  const q = me().pos[i];
-  if (isCo(i)) {
-    const c = G.ctrl[i]; cx.font = '800 11px "M PLUS Rounded 1c", sans-serif'; cx.textAlign = 'left'; cx.fillStyle = c != null ? G.players[c].color : 'rgba(255,255,255,.5)';
-    cx.fillText(c != null ? `支配: ${G.players[c].me ? 'あなた' : G.players[c].name}` : '支配している人はいない', 10, H - padB - 6);
-  }
-  if (q.u) { const y = Y(q.avg); cx.strokeStyle = q.u > 0 ? '#3ccf8e' : '#ff5a6a'; cx.setLineDash([2, 3]); cx.beginPath(); cx.moveTo(8, y); cx.lineTo(W - padR, y); cx.stroke(); cx.setLineDash([]); cx.font = '800 10px "M PLUS Rounded 1c", sans-serif'; cx.textAlign = 'left'; cx.fillStyle = cx.strokeStyle; cx.fillText(`あなたの平均 ${priceStr(q.avg)}`, 10, y - 4); }
-  // 今の値段の札
-  cx.font = '900 12px "M PLUS Rounded 1c", sans-serif';
-  const up = cur >= open, tag = up ? '#3ccf8e' : '#ff5a6a';
-  cx.fillStyle = tag; cx.beginPath(); cx.arc(lastX, lastY, 4.5, 0, Math.PI * 2); cx.fill();
-  if (L) { cx.globalAlpha = 0.35 + 0.35 * Math.sin(performance.now() / 120); cx.beginPath(); cx.arc(lastX, lastY, 10, 0, Math.PI * 2); cx.fill(); cx.globalAlpha = 1; }
-  const tw = 48; cx.fillStyle = tag; roundRect(W - padR + 2, lastY - 10, tw, 20, 6); cx.fill(); cx.fillStyle = '#0b1020'; cx.textAlign = 'center'; cx.fillText(priceStr(cur), W - padR + 2 + tw / 2, lastY + 4);
-  if (performance.now() < chartFlashUntil) { cx.fillStyle = chartFlashColor; cx.globalAlpha = (chartFlashUntil - performance.now()) / 350 * 0.25; cx.fillRect(0, 0, W, H); cx.globalAlpha = 1; }
+  await showCombo('#comboA', '#totA', A, true);
+  await showCombo('#comboB', '#totB', B, false);
+  await wait(350);
+  const d = A.total - B.total, cl = $('#clash');
+  if (d >= 0) { const dmg = Math.max(d, 10); S.rhp -= dmg; cl.innerHTML = `<b class="win">${sgn(d)}G 差で勝ち!</b><small>${r.name}の信用に ${fmt(dmg)} ダメージ</small>`; sfx('kaching'); confetti(); shakeEl('.col.rv'); setTimeout(() => speech(r, r.say.hurt), 300); }
+  else { S.hp += d; cl.innerHTML = `<b class="lose">${sgn(d)}G 差で負け…</b><small>あなたの信用に ${fmt(-d)} ダメージ</small>`; sfx('bad'); shake(); shakeEl('.col.me'); setTimeout(() => speech(r, r.say.hit), 300); }
+  cl.classList.add('on');
+  S.cash = Math.max(0, S.cash + A.total);
+  AS.forEach((a, i) => { S.prices[i] *= 1 + S.moves[i]; S.hist[i].push(S.moves[i]); });
+  renderVS();
+  await wait(1100);
+  $('#nextbox').innerHTML = `<button class="btn go" data-a="after">${S.rhp <= 0 ? '勝負あり!' : S.hp <= 0 ? '……' : '月の合間のお店へ'}</button>`;
 }
-function roundRect(x, y, w, h, r) { cx.beginPath(); cx.moveTo(x + r, y); cx.arcTo(x + w, y, x + w, y + h, r); cx.arcTo(x + w, y + h, x, y + h, r); cx.arcTo(x, y + h, x, y, r); cx.arcTo(x, y, x + w, y, r); cx.closePath(); }
+async function flip(sel, row) {
+  const el = document.createElement('div'); el.className = 'row';
+  const c = row.c, a = AS[c.a], up = row.mv >= 0, good = row.total >= 0;
+  const W = 110, H = 30, pts = [0]; for (let k = 1; k <= 12; k++) pts.push(pts[k - 1] + row.mv / 12 + gauss() * Math.max(0.01, Math.abs(row.mv)) * 0.15);
+  pts[12] = row.mv; const lo = Math.min(...pts, 0), hi = Math.max(...pts, 0);
+  const path = pts.map((v, k) => `${k ? 'L' : 'M'}${(k / 12 * W).toFixed(1)},${(H - 2 - (v - lo) / ((hi - lo) || 1) * (H - 4)).toFixed(1)}`).join('');
+  el.innerHTML = `${img(a.icon)}<div class="rl"><b>${a.name}<em class="${c.straddle ? '' : c.dir > 0 ? 'up' : 'dn'}">${c.straddle ? '両張り' : c.dir > 0 ? '▲' : '▼'}×${c.pow}</em></b>
+    <svg viewBox="0 0 ${W} ${H}"><path d="${path}" class="${up ? 'pu' : 'pd'}" pathLength="1"/></svg></div><div class="rr"><span class="mv ${up ? 'up' : 'dn'}">${pct(row.mv)}</span><b class="${good ? 'up' : 'dn'}">±0</b></div>${row.tags.length ? `<div class="tags">${row.tags.map(t => `<span>${t}</span>`).join('')}</div>` : ''}`;
+  $(sel).appendChild(el);
+  sfx('swipe'); await wait(600);
+  countUp(el.querySelector('.rr b'), row.total, (v) => sgn(v));
+  sfx(good ? 'coin' : 'bad'); if (row.tags.length && good) sfx('kaching');
+  haptic(good ? 12 : 30);
+  await wait(420);
+}
+async function showCombo(cs, ts, X, mine) {
+  $(cs).innerHTML = X.combos.map(t => `<span>${t}</span>`).join('');
+  if (X.combos.length) { sfx('rankup'); haptic(20); if (mine && X.combos.some(t => t.startsWith('パーフェクト'))) { banner('<b>パーフェクト!</b><small>3枚とも当たり。合計 ×2</small>', 'gold'); confetti(); } }
+  countUp($(ts), X.total, (v) => `${sgn(v)}G`);
+  $(ts).className = 'tot ' + (X.total >= 0 ? 'up' : 'dn');
+  await wait(650);
+}
+function after() {
+  $('#screen').innerHTML = '';
+  if (S.hp <= 0) return gameOver();
+  if (S.rhp <= 0) return stageWin();
+  shop();
+}
+function stageWin() {
+  const r = R(); sfx('rankup'); confetti(); confetti();
+  const last = S.stage === RIVALS.length - 1;
+  $('#screen').innerHTML = `<div class="over win"><div class="ocard">${img(r.icon, 'big')}<div class="ot">${r.name}に勝った!</div><div class="os">「${r.say.lose}」</div>
+    ${last ? `<div class="os gold">商会戦争 制覇! 持ち金 ${fmt(S.cash)}G ・ ${S.month}か月</div>` : `<div class="os">信用が回復(+180)。次の相手は ${RIVALS[S.stage + 1].name}</div>`}
+    <button class="btn go" data-a="${last ? 'title' : 'nextstage'}">${last ? 'タイトルへ' : '次の相手へ'}</button></div></div>`;
+  if (last) { try { const b = +localStorage.getItem('war2-best') || 0; if (S.cash > b) localStorage.setItem('war2-best', String(Math.round(S.cash))); } catch (e) { } bgm.play('matsuri'); }
+}
+function gameOver() {
+  sfx('bad'); const r = R();
+  $('#screen').innerHTML = `<div class="over"><div class="ocard">${img(r.icon, 'big')}<div class="ot lose">信用が尽きた…</div><div class="os">${r.name}「${r.say.hit}」</div><div class="os">${S.stage + 1}人目・${S.month}か月目で敗退</div>
+    <button class="btn go" data-a="start">もう一度</button><button class="btn" data-a="title">タイトルへ</button></div></div>`;
+}
+
+// ── お店: 顧問・カード・カードを捨てる
+function shop() {
+  S.phase = 'shop';
+  const perkKeys = shuffle(Object.keys(PERKS).filter(k => !has(k))).slice(0, 2);
+  const cards = [0, 1].map(() => { const a = Math.floor(Math.random() * AS.length); return Math.random() < 0.25 ? newCard(a, 1, 2, { straddle: 1 }) : newCard(a, Math.random() < 0.5 ? 1 : -1, Math.random() < 0.55 ? 2 : 3); });
+  S.offer = { perks: perkKeys, cards: cards.map(c => ({ c, cost: c.straddle ? 130 : c.pow * 45 })) };
+  renderShop();
+  bgm.play('asa');
+}
+function renderShop() {
+  const o = S.offer;
+  $('#screen').innerHTML = `<div class="shop"><div class="sh">${img('ui_market')}<div><b>月の合間のお店</b><small>持ち金 ${img('coin', 'mini')}${fmt(S.cash)}G ・ 顧問 ${S.perks.length}/${MAX_PERKS}</small></div></div>
+    <div class="sl">顧問を雇う(ずっと効く)</div>
+    <div class="offers">${o.perks.map(k => { const P = PERKS[k]; return `<button class="offer" data-a="buyperk" data-k="${k}" ${S.cash < P.cost || S.perks.length >= MAX_PERKS ? 'disabled' : ''}>${img(P.icon)}<div><b>${P.name}</b><small>${P.text}</small></div><span class="cost">${P.cost}G</span></button>`; }).join('') || '<small class="none">売り切れ</small>'}</div>
+    <div class="sl">カードを買う(山札に入る)</div>
+    <div class="cardoffs">${o.cards.map((x, j) => `<div class="cardoff">${cardHtml(x.c)}<button class="btn buy" data-a="buycard" data-j="${j}" ${S.cash < x.cost ? 'disabled' : ''}>買う ${x.cost}G</button></div>`).join('') || '<small class="none">売り切れ</small>'}</div>
+    <div class="sl">弱いカードを捨てる(40G・山札 ${S.deck.length}枚)</div>
+    <div class="deck">${S.deck.map(c => `<button class="mini ${c.straddle ? 'strad' : c.dir > 0 ? 'cu' : 'cd'}" data-a="trash" data-id="${c.id}" ${S.cash < 40 || S.deck.length <= 8 ? 'disabled' : ''}>${img(AS[c.a].icon)}<span>${c.straddle ? '両' : c.dir > 0 ? '▲' : '▼'}${c.pow}</span></button>`).join('')}</div>
+    <button class="btn go" data-a="nextmonth">次の月へ</button></div>`;
+}
 
 // ── 演出
-function feed(text, color) { const el = document.createElement('div'); el.className = 'fd'; el.style.color = color; el.textContent = text; const f = $('#feed'); f.prepend(el); while (f.children.length > 3) f.lastChild.remove(); setTimeout(() => el.classList.add('old'), 2500); }
+function banner(html, cls = '') { const el = document.createElement('div'); el.className = 'banner ' + cls; el.innerHTML = html; $('#fx').appendChild(el); setTimeout(() => el.remove(), 1600); }
 function toast(t) { const el = document.createElement('div'); el.className = 'toast'; el.textContent = t; $('#fx').appendChild(el); setTimeout(() => el.remove(), 1800); }
-function flashBanner(html, cls = '') { const el = document.createElement('div'); el.className = 'banner ' + cls; el.innerHTML = html; $('#fx').appendChild(el); setTimeout(() => el.remove(), 1500); }
-function floatAt(target, text, cls) { if (!target) return; const r = target.getBoundingClientRect(), el = document.createElement('div'); el.className = 'flt ' + cls; el.textContent = text; el.style.left = r.left + r.width / 2 + 'px'; el.style.top = r.top + 'px'; $('#fx').appendChild(el); setTimeout(() => el.remove(), 1100); }
-function burst(target, color, n = 16) { if (!target) return; const r = target.getBoundingClientRect(); for (let k = 0; k < n; k++) { const el = document.createElement('i'); el.className = 'spark'; const a = Math.random() * Math.PI * 2, d = 40 + Math.random() * 60; el.style.cssText = `left:${r.left + r.width / 2}px;top:${r.top + r.height / 2}px;background:${color};--dx:${Math.cos(a) * d}px;--dy:${Math.sin(a) * d}px`; $('#fx').appendChild(el); setTimeout(() => el.remove(), 700); } }
-function shake(s = 0.4) { document.body.style.setProperty('--sh', s * 10 + 'px'); document.body.classList.remove('shake'); void document.body.offsetWidth; document.body.classList.add('shake'); }
-function confettiSmall() { const cols = ['#ffd36e', '#3ccf8e']; for (let k = 0; k < 24; k++) { const el = document.createElement('i'); el.className = 'conf'; el.style.cssText = `left:${30 + Math.random() * 40}vw;background:${pick(cols)};animation-delay:${Math.random() * 0.2}s;--rot:${rand(-540, 540)}deg`; $('#fx').appendChild(el); setTimeout(() => el.remove(), 2200); } }
-function confetti() { const cols = ['#ffd36e', '#3ccf8e', '#5aa8ff', '#ff9ac0', '#c79bff']; for (let k = 0; k < 60; k++) { const el = document.createElement('i'); el.className = 'conf'; el.style.cssText = `left:${Math.random() * 100}vw;background:${pick(cols)};animation-delay:${Math.random() * 0.4}s;--rot:${rand(-720, 720)}deg`; $('#fx').appendChild(el); setTimeout(() => el.remove(), 2200); } }
-function speech(p, text) { const rv = $('#rv' + p.id); if (!rv) return; const r = rv.getBoundingClientRect(), el = document.createElement('div'); el.className = 'say'; el.style.setProperty('--c', p.color); el.innerHTML = `${img(p.icon)}<span>${text}</span>`; el.style.left = clamp(r.left, 8, innerWidth - 230) + 'px'; el.style.top = r.bottom + 6 + 'px'; $('#fx').appendChild(el); setTimeout(() => el.remove(), 2200); }
-function countUp(el, to, f) { if (!el) return; const t0 = performance.now(); const step = (now) => { const k = Math.min(1, (now - t0) / 900), v = to * (1 - Math.pow(1 - k, 3)); el.textContent = f(v); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
-function showSheet() { $('#sheet').classList.add('on'); }
-function hideSheet() { $('#sheet').classList.remove('on'); }
+function shake() { document.body.classList.remove('shake'); void document.body.offsetWidth; document.body.classList.add('shake'); }
+function shakeEl(s) { const e = $(s); if (!e) return; e.classList.remove('hit'); void e.offsetWidth; e.classList.add('hit'); }
+function confetti() { const cols = ['#ffd36e', '#3ccf8e', '#5aa8ff', '#ff9ac0', '#c79bff']; for (let k = 0; k < 50; k++) { const el = document.createElement('i'); el.className = 'conf'; el.style.cssText = `left:${Math.random() * 100}vw;background:${pick(cols)};animation-delay:${Math.random() * 0.4}s;--rot:${rand(-720, 720)}deg`; $('#fx').appendChild(el); setTimeout(() => el.remove(), 2300); } }
+function countUp(el, to, f) { if (!el) return; const t0 = performance.now(); const step = (now) => { const k = Math.min(1, (now - t0) / 700), v = to * (1 - Math.pow(1 - k, 3)); el.textContent = f(v); if (k < 1) requestAnimationFrame(step); }; requestAnimationFrame(step); }
+function speech(r, text) { const el = document.createElement('div'); el.className = 'say'; el.style.setProperty('--c', r.color); el.innerHTML = `${img(r.icon)}<span>${text}</span>`; $('#fx').appendChild(el); setTimeout(() => el.remove(), 2400); }
+function cutIn(r, line, sub, big) {
+  const el = document.createElement('div'); el.className = 'cutin'; el.style.setProperty('--c', r.color);
+  el.innerHTML = `<div class="band"></div>${img(r.icon, 'cface')}<div class="ct"><small>${big ? (r.boss ? 'ボス登場' : '勝負の相手') : ''}</small><b>${r.name}「${line}」</b>${sub ? `<em>${sub}</em>` : ''}</div>`;
+  $('#fx').appendChild(el); sfx('horn'); haptic(25);
+  el.addEventListener('pointerdown', () => el.remove()); setTimeout(() => el.remove(), 2800);
+}
 
 // ── タイトル・あそびかた
 const HOW = [
-  { t: '相場で勝ち抜け', b: '資源は5つ(小麦・鉄・薬草・布・星銀)。<b>12か月後の総資産</b>がいちばん多い商会の勝ち。', ic: 'o_trophy' },
-  { t: 'ニュースと予想を読む', b: '月のはじめにニュースが出る。<b>確かな筋</b>はよく当たり、<b>うわさ</b>は半分くらい。チャートに「上がる 85%」のような予想が出る。', ic: 'o_envelope' },
-  { t: 'ゆっくり賭けて、見守る', b: '月のはじめに、時間を気にせず<b>上がる(買う)</b>か<b>下がる(売る)</b>に賭ける。前の月の分は<b>決済</b>で確定。決めたら月を進めると、チャートが動き出す。あとは<b>見守るだけ</b>。総資産の2倍まで賭けられる。', ic: 'o_chartup' },
-  { t: '株を買って、買収する', b: '「株・企業」のタブで会社の株が買える。毎月<b>配当</b>が入る。<b>30%</b>集めると買収に名乗り、<b>50%を超える</b>と会社を支配して、利益と特典(銀行なら賭けの上限3倍など)が手に入る。3か月ごとに<b>株主総会</b>で投票。', ic: 'o_crown' },
-  { t: '戦争カードで仕掛ける', b: '月に1枚。<b>買い占め</b>・<b>悪いうわさ</b>で相場を動かし、<b>差し押さえ</b>でライバルの持ち物を売らせる。ライバルも使ってくる。', ic: 'o_swords' },
+  { t: 'カードで投資バトル', b: 'ライバルと同じ相場で稼ぎを競う。毎月、稼いだ<b>差</b>がそのまま相手の<b>信用ゲージ</b>へのダメージ。0にしたら勝ち。3人に勝てば制覇。', ic: 'o_swords' },
+  { t: 'ニュースを読んでカードを選ぶ', b: '手札の投資カード(例: <b>鉄 ▲上がる ×2</b>)から<b>3枚まで</b>選ぶ。いらないカードは<b>捨てて引く</b>。時間制限はないので、じっくり考えよう。', ic: 'o_envelope' },
+  { t: '役で倍率アップ', b: '<b>的中</b>(ニュースどおり)×1.5、<b>一点集中</b>(同じ資産に2枚)×1.5、<b>分散</b>(3枚とも別)×1.3、<b>パーフェクト</b>(3枚とも当たり)×2。', ic: 'o_star' },
+  { t: 'お店で強くなる', b: '月の合間に、稼いだお金で<b>顧問</b>(星銀の利益2倍など、ずっと効く)や<b>強いカード</b>を買う。自分だけの勝ち方を作ろう。', ic: 'ui_market' },
 ];
 function showTitle() {
-  G = null; bgm.play('asa');
-  let best = 0; try { best = +localStorage.getItem('war-best') || 0; } catch (e) { }
-  $('#screen').innerHTML = `<div class="title"><div class="logo"><small>キャピタル</small><b>商会戦争</b><span>相場で勝ち抜け</span></div>
-    <div class="tchart">${img('o_chartup', 'big')}${img('starsilver', 'mid')}${img('iron', 'mid2')}</div>
-    <div class="tbtns"><button class="btn go big" data-a="start" data-v="12">はじめる(12か月)</button><button class="btn" data-a="start" data-v="6">さくっと(6か月)</button><button class="btn" data-a="how">あそびかた</button></div>
-    ${best ? `<div class="best">自己ベスト ${fmt(best)}G</div>` : ''}<a class="back" href="../">商会バトルへ</a></div>`;
+  S = null; bgm.play('asa');
+  let best = 0; try { best = +localStorage.getItem('war2-best') || 0; } catch (e) { }
+  ['#vs', '#news', '#board', '#perks', '#hand', '#act'].forEach(s => $(s).innerHTML = '');
+  $('#screen').innerHTML = `<div class="title"><div class="logo"><small>キャピタル</small><b>商会戦争</b><span>カード投資バトル</span></div>
+    <div class="tfaces">${RIVALS.map(r => `<div style="--c:${r.color}">${img(r.icon)}<small>${r.name}</small></div>`).join('')}</div>
+    <div class="tbtns"><button class="btn go big" data-a="start">はじめる</button><button class="btn" data-a="how">あそびかた</button></div>
+    ${best ? `<div class="best">制覇した時の持ち金 最高 ${fmt(best)}G</div>` : ''}<a class="back" href="../">商会バトルへ</a></div>`;
 }
-function showHow(i = 0, then) {
-  const h = HOW[i]; showHow.then = then ?? showHow.then;
-  document.querySelector('.how')?.remove();
+function showHow(i = 0) {
+  const h = HOW[i]; document.querySelector('.how')?.remove();
   $('#screen').insertAdjacentHTML('beforeend', `<div class="how"><div class="hcard"><div class="hn">${i + 1} / ${HOW.length}</div>${img(h.ic, 'hic')}<b>${h.t}</b><p>${h.b}</p>
     <div class="hbtns">${i ? `<button class="btn" data-a="howgo" data-v="${i - 1}">もどる</button>` : ''}<button class="btn go" data-a="${i < HOW.length - 1 ? 'howgo' : 'howend'}" data-v="${i + 1}">${i < HOW.length - 1 ? 'つぎへ' : 'はじめる'}</button></div></div></div>`);
-}
-function start(months) {
-  unlockAudio(); $('#screen').innerHTML = '';
-  newGame(months); G.m = 0;
-  planMonth();
 }
 
 // ── 操作
 const ACT = {
-  start: (d) => { let seen = false; try { seen = localStorage.getItem('war-how') === '1'; } catch (e) { } if (!seen) { showHow(0, +d.v); return; } start(+d.v); },
-  how: () => showHow(0, null), howgo: (d) => showHow(+d.v),
-  howend: () => { document.querySelector('.how')?.remove(); try { localStorage.setItem('war-how', '1'); } catch (e) { } if (showHow.then) { const m = showHow.then; showHow.then = null; start(m); } },
+  start: () => { let seen = false; try { seen = localStorage.getItem('war2-how') === '1'; } catch (e) { } if (!seen) { showHow(0); return; } $('#screen').innerHTML = ''; newRun(); },
+  how: () => showHow(0), howgo: (d) => showHow(+d.v),
+  howend: () => { try { localStorage.setItem('war2-how', '1'); } catch (e) { } $('#screen').innerHTML = ''; newRun(); },
   title: () => showTitle(),
-  sel: (d) => { if (!G || !RES[+d.v]) return; G.sel = +d.v; G.tab = isCo(G.sel) ? 'co' : 'res'; sfx('tap'); renderChips(); renderPos(); renderCtrl(); drawChart(); if (G.phase === 'plan' && d.from !== 'chip') hideSheet(); },
-  mini: () => { hideSheet(); },
-  newsopen: () => { renderPlan(); },
-  ffwd: () => { if (G.live) { G.live.t0 -= LIVE_SEC * 1000 * 0.6; sfx('whoosh'); } },
-  amt: (d) => { G.amount = d.v === 'all' ? 'all' : +d.v; sfx('toggle'); renderCtrl(); },
-  buy: () => myTrade(1), sell: () => myTrade(-1), closepos: () => { myClose(); renderCtrl(); },
-  open: () => openMarket(),
-  card: (d) => { const p = me(); if (p.used) { toast('カードは月に1枚まで'); return; } const k = p.hand[+d.v]; if (CARDS[k].target) chooseTarget(k, +d.v); else useMyCard(k, +d.v, null); },
-  target: (d) => { $('#screen').innerHTML = ''; useMyCard(d.k, +d.j, +d.v); },
-  cancelpick: () => { $('#screen').innerHTML = ''; },
-  next: () => { hideSheet(); if (meetingsDue()) { planMeetings(); if (G.meetingQueue.length) { flashBanner('<b>株主総会</b><small>3か月に1度。持ち株の数で投票する</small>', 'gold'); setTimeout(nextMeeting, 900); return; } } G.m++; setTimeout(planMonth, 250); },
-  propose: (d) => showVote(+d.i, d.v, me()),
-  vote: (d) => { document.querySelectorAll('.vbtns .btn, .meet .btn.go').forEach(b => b.disabled = true); castVote(+d.v); },
-  tab: (d) => { G.tab = d.v; const list = RES.map((r, i) => i).filter(i => (RES[i].kind === 'co') === (G.tab === 'co')); if (!list.includes(G.sel)) G.sel = list[0]; sfx('toggle'); render(); },
-  final: () => finalResult(),
-  duel: (d) => {
-    const D = G.duel; if (!D || D.state !== 'offer') return;
-    const r = G.players[D.pid];
-    if (+d.v) { D.state = 'on'; sfx('horn'); haptic(30); shake(0.3); speech(r, 'いい度胸だ!'); flashBanner(`<b>一騎打ち成立!</b><small>vs ${r.name} ・ ${RES[D.i].name} ・ ${fmt(D.stake)}G</small>`, 'gold'); }
-    else { D.state = 'no'; speech(r, '腰抜けめ'); sfx('bad'); }
-    G.sel = D.i; G.tab = isCo(D.i) ? 'co' : 'res'; render(); renderPlan();
+  card: (d) => {
+    const id = d.id, k = S.sel.indexOf(id);
+    if (k >= 0) S.sel.splice(k, 1); else { if (S.sel.length >= 3) { toast('出せるのは3枚まで'); sfx('bad'); return; } S.sel.push(id); }
+    sfx('tap'); haptic(6); renderHand(); renderAct();
   },
+  redraw: () => {
+    if (!S.redraws || !S.sel.length) return;
+    S.redraws--; S.hand = S.hand.filter(c => !S.sel.includes(c.id));
+    if (S.pile.length < handSize()) S.pile.push(...shuffle(S.deck.filter(c => !S.hand.some(h => h.id === c.id) && !S.pile.some(p => p.id === c.id))));
+    S.hand.push(...S.pile.splice(0, handSize() - S.hand.length));
+    S.sel = []; sfx('card'); renderHand(); renderAct();
+  },
+  invest: () => invest(),
+  after: () => after(),
+  nextmonth: () => { $('#screen').innerHTML = ''; startMonth(); },
+  nextstage: () => { $('#screen').innerHTML = ''; S.stage++; S.hp = Math.min(S.hpMax, S.hp + 180); startStage(); },
+  buyperk: (d) => { const P = PERKS[d.k]; if (S.cash < P.cost || S.perks.length >= MAX_PERKS) return; S.cash -= P.cost; S.perks.push(d.k); S.offer.perks = S.offer.perks.filter(k => k !== d.k); sfx('kaching'); banner(`<b>「${P.name}」を雇った!</b><small>${P.text}</small>`, 'gold'); renderShop(); renderPerks(); renderVS(); },
+  buycard: (d) => { const x = S.offer.cards[+d.j]; if (!x || S.cash < x.cost) return; S.cash -= x.cost; S.deck.push(x.c); S.offer.cards.splice(+d.j, 1); sfx('coin'); toast('山札に入れた'); renderShop(); renderVS(); },
+  trash: (d) => { if (S.cash < 40 || S.deck.length <= 8) return; S.cash -= 40; S.deck = S.deck.filter(c => c.id !== d.id); sfx('close'); renderShop(); renderVS(); },
+  perkinfo: (d) => toast(`${PERKS[d.k].name}: ${PERKS[d.k].text}`),
 };
-function useMyCard(k, j, target) {
-  const p = me(); p.hand.splice(j, 1); p.used = { k, target }; applyCard(p, k, target, false);
-  sfx('card'); haptic(20); flashBanner(`<b>「${CARDS[k].name}」!</b><small>${k === 'pump' || k === 'dump' ? `${RES[target].name}が${k === 'pump' ? '上がり' : '下がり'}やすくなった` : k === 'seize' ? `${G.players[target].name}の持ち物を売らせた` : CARDS[k].text}</small>`, 'gold');
-  if (k === 'seize') { const t = G.players[target]; setTimeout(() => speech(t, 'なっ、なにをする!'), 500); }
-  if (target != null && CARDS[k].target === 'res') G.sel = target;
-  render(); renderPlan();
-}
-let pressing = null;
-document.addEventListener('pointerdown', (e) => {
-  const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
-  unlockAudio();
-  const a = b.dataset.a;
-  if (a === 'buy' || a === 'sell') { e.preventDefault(); ACT[a](b.dataset); b.classList.add('press'); pressing = b; return; }
-});
-document.addEventListener('pointerup', () => { if (pressing) { pressing.classList.remove('press'); pressing = null; } });
 document.addEventListener('click', (e) => {
-  const b = e.target.closest('[data-a]'); if (!b || b.disabled) return; const a = b.dataset.a;
-  if (a === 'buy' || a === 'sell') return;
-  if (a !== 'sel' && a !== 'amt') sfx('tap');
+  const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
+  unlockAudio(); const a = b.dataset.a;
+  if (a !== 'card') sfx('tap');
   if (ACT[a]) ACT[a](b.dataset);
 });
-addEventListener('resize', () => drawChart());
-
-// ── 毎フレーム
-function frame(now) {
-  requestAnimationFrame(frame);
-  if (!G) return;
-  if (G.live) {
-    liveStep(now);
-    const tm = $('#timer i'); if (tm && G.live) tm.style.width = Math.max(0, 100 - (now - G.live.t0) / 1000 / LIVE_SEC * 100) + '%';
-    drawChart();
-  } else if (now < chartFlashUntil) drawChart();
-  document.body.classList.toggle('live', !!G.live);
-}
-requestAnimationFrame(frame);
 showTitle();
-window.__war = { get G() { return G; }, start, openMarket, myTrade, myClose, closeMarket };
+window.__war = { get S() { return S; }, newRun, invest, ACT, scoreHand, rivalPlay, startMonth, startStage };
