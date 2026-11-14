@@ -731,3 +731,9 @@ body:has(.title) #ticker{opacity:0;pointer-events:none}
   #hud .pill.rank{padding:6px 8px}
 }
 @media (max-width:360px){ .turnb .ttx small{display:none} #hud .pill.rank .rt{display:none} }
+/* 右上: 現金を大きく、総資産は小さくグレー */
+.pill.cash{display:flex;align-items:center}
+.cashcol{display:flex;flex-direction:column;line-height:1.05;align-items:flex-start}
+.pill.cash .num{font-size:26px;font-weight:900;color:#1f2a44}
+.nwsub{font-size:11px;font-weight:800;color:#8a94ab;letter-spacing:.02em}
+@media (max-width:390px){.pill.cash .num{font-size:22px}.nwsub{font-size:10px}}

@@ -92,7 +92,7 @@ function hud() {
   const pc = pendCost();
   $('#hud').innerHTML = `
     <button class="turnb" data-a="menu"><svg class="tring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="5"/><circle cx="22" cy="22" r="19" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-dasharray="${2 * Math.PI * 19 * prog} ${2 * Math.PI * 19}" transform="rotate(-90 22 22)"/></svg><span class="tnum">${S.over ? '終' : S.t + 1}</span><span class="ttx"><small>${S.over ? '最終結果' : `ターン /${S.months}`}</small><b>${S.over ? 'おわり' : `${Math.floor(S.t / 12) + 1}年目 ${S.t % 12 + 1}月`}</b></span></button>
-    <div class="pill cash">${ico('coin', 'coin3')}<span class="num" id="cashv">${fmt(freeCash())}</span></div>
+    <button class="pill cash" data-a="books">${ico('coin', 'coin3')}<span class="cashcol"><span class="num" id="cashv">${fmt(freeCash())}</span><small class="nwsub">総資産 ${fmt(E.netWorth(S, me()))}</small></span></button>
     <button class="pill rank" data-a="ranking"><b class="num">${pos}</b>位 <span class="rt">${E.RANKS[E.rankOf(E.netWorth(S, p))][2]}</span></button>`;
 }
 // ── 下のドック
@@ -1768,7 +1768,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114040313';
+const BUILD = '20261114041021';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
