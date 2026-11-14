@@ -1,0 +1,26 @@
+<!doctype html><html><head><meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"/capital-game/vendor/three/three.module.js"}}</script></head><body style="margin:0">
+<script type="module">
+import * as THREE from 'three';
+import { SVGLoader } from '/iconsrc/SVGLoader.js';
+const SZ = 256, R = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+R.setSize(SZ, SZ); R.setClearColor(0, 0); R.outputColorSpace = THREE.SRGBColorSpace; R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.1;
+document.body.appendChild(R.domElement);
+window.render3d = async (url, c1, c2) => {
+  const txt = await (await fetch(url)).text(); const data = new SVGLoader().parse(txt);
+  const g = new THREE.Group();
+  const front = new THREE.MeshStandardMaterial({ color: c1, roughness: 0.38, metalness: 0.15 }), side = new THREE.MeshStandardMaterial({ color: c2, roughness: 0.5, metalness: 0.1 });
+  for (const p of data.paths) { const shapes = SVGLoader.createShapes(p); for (const sh of shapes) { const geo = new THREE.ExtrudeGeometry(sh, { depth: 46, bevelEnabled: true, bevelThickness: 10, bevelSize: 6, bevelSegments: 3, curveSegments: 10 }); g.add(new THREE.Mesh(geo, [front, side])); } }
+  // SVGはy軸が下向きなので裏返し、真ん中に寄せる
+  g.scale.set(1, -1, 1); const box = new THREE.Box3().setFromObject(g), c = box.getCenter(new THREE.Vector3()); g.position.sub(c);
+  const pivot = new THREE.Group(); pivot.add(g); pivot.rotation.set(-0.35, 0.45, 0.05);
+  const scene = new THREE.Scene(); scene.add(pivot);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8090b0, 1.5));
+  const sun = new THREE.DirectionalLight(0xffffff, 2.6); sun.position.set(-300, 500, 600); scene.add(sun);
+  const rim = new THREE.DirectionalLight(0xcfe4ff, 1.2); rim.position.set(500, 200, -400); scene.add(rim);
+  const b2 = new THREE.Box3().setFromObject(pivot), sz = b2.getSize(new THREE.Vector3()), r = Math.max(sz.x, sz.y) * 0.62;
+  const cam = new THREE.OrthographicCamera(-r, r, r, -r, -2000, 2000); cam.position.set(0, 0, 1000); cam.lookAt(0, 0, 0);
+  R.render(scene, cam); return R.domElement.toDataURL('image/png');
+};
+window.ready = true;
+</script></body></html>

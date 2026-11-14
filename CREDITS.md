@@ -12,4 +12,4 @@
 - **M PLUS Rounded 1c** — SIL Open Font License 1.1(Google Fonts から読み込み)
 
 - アイコン: KayKit Medieval Hexagon Pack / KayKit Restaurant Bits — Kay Lousberg(CC0)を3Dで描画。小麦・瓶・布・金属などは手作りのローポリ模型(tools/render-icons.*)
-- アイコン(バッジ): game-icons.net — Lorc, Delapouite ほか(CC BY 3.0) https://game-icons.net
+- アイコン: game-icons.net — Lorc, Delapouite ほか(CC BY 3.0) https://game-icons.net の形をもとに、厚みのある立体にして描画(tools/render-icons-svg3d.*)
