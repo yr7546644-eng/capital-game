@@ -111,11 +111,15 @@ function dock() {
   const ev = S.evNext && E.evDef(S.evNext.id), p = me(), used = pendCard();
   const n = F.acts.length;
   $('#dock').innerHTML = `
-    <div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="weather"><span class="ei">${wx(S.t ? S.w : 'sun').icon}</span><span><span class="et">いまの天気</span><br>${wx(S.t ? S.w : 'sun').name}</span><span class="ewarr">→</span><span class="ei">${wx(me().scout === S.t ? S.wNext : S.wFore).icon}</span><span><span class="et">来月${me().scout === S.t ? '(確実)' : '(予報)'}</span><br>${wx(me().scout === S.t ? S.wNext : S.wFore).name}</span></button>${ev ? `<button class="evchip" data-a="event"><span class="ei">${ev.icon}</span><span><span class="et">来月の予報${E.marketDay({ t: S.t }) ? ' · 🛍️市の日' : ''}</span><br>${esc(ev.name)}</span></button>` : ''}${S.t >= S.months - 18 ? `<button class="evchip grand" data-a="grand"><span class="ei">🏰</span><span><span class="et">${E.finalYear(S) ? '大祭の年' : '大祭まで'}</span><br>${E.finalYear(S) ? `のこり${S.months - S.t}か月` : `あと${S.months - 12 - S.t}か月`}</span></button>` : ''}</div>
+    <div class="strip">
+      <button class="sc" data-a="weather"><span class="scw">${wx(S.t ? S.w : 'sun').icon}<i>→</i>${wx(me().scout === S.t ? S.wNext : S.wFore).icon}</span></button>
+      ${ev ? `<button class="sc scev" data-a="event"><span class="ei">${ev.icon}</span><span class="sct">${esc(ev.name)}</span></button>` : ''}
+      <button class="sc scbag" data-a="bag">${(() => { const its = Object.keys(E.ITEMS).filter(k => freeStock(k) >= 1).sort((a, b) => freeStock(b) * S.market[b].price - freeStock(a) * S.market[a].price).slice(0, 3); return its.length ? its.map(k => `<span class="bbi">${ico(k)}<b>${fmt(freeStock(k))}</b></span>`).join('') : '<span class="sct">持ち物なし</span>'; })()}</button>
+      <button class="sc scplan ${F.acts.length ? 'has' : ''}" data-a="plans"><b>${F.acts.length}</b><span>予定</span></button>
+      ${(() => { const w = (F.alerts && F.alerts.length ? F.alerts.length : 0) + (freeCash() < nextFixed() ? 1 : 0); return w ? `<button class="sc scwarn" data-a="alerts">⚠️<b>${w}</b></button>` : ''; })()}
+      ${S.t >= S.months - 18 ? `<button class="sc" data-a="grand">🏰<b>${E.finalYear(S) ? S.months - S.t : S.months - 12 - S.t}</b></button>` : ''}
+    </div>
     ${F.mp ? `<div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="stamps">💬 スタンプ</button><button class="evchip" data-a="online">🌐 ${humansOf().filter(x => x.cid === NET.cid || NET.online(x.cid)).length}/${humansOf().length}人</button></div>${F.stampOpen ? `<div class="stray">${STAMPS.map(x => `<button class="stb" data-a="stamp" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}` : ''}
-    <div class="row invrow"><button class="bagbar2" data-a="bag"><span class="bbl">持ち物</span>${(() => { const its = Object.keys(E.ITEMS).filter(k => freeStock(k) >= 1 || (me().inv[k] || 0) >= 1).sort((a, b) => freeStock(b) * S.market[b].price - freeStock(a) * S.market[a].price).slice(0, 5); return its.length ? its.map(k => `<span class="bbi">${ico(k)}<b>${fmt(freeStock(k))}</b></span>`).join('') : '<span class="bbe">品物なし</span>'; })()}</button><button class="planbtn ${F.acts.length ? 'has' : ''}" data-a="plans"><b>${F.acts.length}</b><small>今月の<br>予定</small></button></div>
-    ${!S.over && freeCash() < nextFixed() ? `<button class="evchip cashwarn" data-a="books">⚠️ 来月の支払い 約${fmt(Math.round(nextFixed()))}G に現金が足りない</button>` : ''}
-    ${F.alerts && F.alerts.length && !S.over ? `<button class="evchip alertchip" data-a="alerts">⚠️ 判断が必要 ${F.alerts.length}件</button>` : ''}
     <div class="actions">
       <button class="abtn build" data-a="build"><span class="ai">🔨</span>建てる</button>
       <button class="abtn" data-a="market"><span class="ai">🛒</span>市場${(p.offers || []).length ? `<span class="badge">${p.offers.length}</span>` : ''}</button>
@@ -176,7 +180,7 @@ function pickBgm() {
 // ── シート
 const SHEETS = {};
 function openSheet(kind, args = {}) { const tu = document.getElementById('tut'); if (tu) tu.remove(); F.sheet = kind; F.args = args; renderSheet(); $('#sheet').scrollTop = 0; $('#sheet').classList.toggle('half', kind === 'stages'); $('#sheet').className = $('#sheet').className.replace(/\b(k-\S+|anim)\b/g, '').trim() + ' anim k-' + kind; clearTimeout(F.animT); F.animT = setTimeout(() => $('#sheet').classList.remove('anim'), 1000); $('#sheetwrap').classList.add('on'); sfx('open'); }
-function closeSheet() { F.sheet = null; $('#sheetwrap').classList.remove('on'); board && board.highlightLot(-1); }
+function closeSheet() { F.sheet = null; $('#sheetwrap').classList.remove('on'); board && board.highlightLot(-1); if (S && !F.busy) try { dock(); applyHint(); } catch (e) { } }
 function renderSheet() { const f = SHEETS[F.sheet]; if (!f) return; $('#sheet').innerHTML = '<div class="grab"></div>' + pix(f(F.args)); foldTips($('#sheet')); }
 // 長い説明は「？ くわしく」にたたむ(画面は大事なことだけ)
 function foldTips(root) {
@@ -1761,7 +1765,7 @@ SHEETS.townhall = () => {
     <div class="box"><div class="lbl">🗣️ 町のうわさ</div>${(S.rumors || []).length ? S.rumors.map(r => `<div class="news">${esc(r.t)}</div>`).join('') : '<div class="t3">まだうわさはない</div>'}</div>
     <div class="box"><div class="lbl">🧾 年末の決算</div><div class="t2">毎年12月の終わりに、その年の店の利益の${Math.round((E.lawsActive(S).includes('guildTax') ? 0.1 : E.TAX_RATE) * 100)}%を税として払う。その年に出店や育て方にかけたお金の半分は利益から差し引ける。</div><div class="kv"><span class="k">今年ここまでの利益</span><span class="num">${fmt(me().yProfit || 0)}G</span></div><div class="kv"><span class="k">今年の設備投資</span><span class="num">${fmt(me().yCapex || 0)}G</span></div></div>`;
 };
-SHEETS.alerts = () => head('⚠️', '判断が必要なこと', '方針を変えるならここ') + `<div class="box">${(F.alerts || []).map(a => `<button class="news" style="width:100%;text-align:left" data-a="alert" data-k="${a.a || ''}" data-id="${a.id || ''}">${a.t}${a.a ? ' ›' : ''}</button>`).join('') || '<div class="t2">いまはない</div>'}</div><button class="btn wide" data-a="manager">🤵 店長と仕入れ係</button>`;
+SHEETS.alerts = () => head('⚠️', '判断が必要なこと', '方針を変えるならここ') + (freeCash() < nextFixed() ? `<div class="box sosbox"><div class="t1">来月の支払いに現金が足りない</div><div class="t2">家賃・お給料など 約<b>${fmt(Math.round(nextFixed()))}G</b> に対して、現金 <b>${fmt(freeCash())}G</b>。このままだと月末に銀行が1割の手数料つきで貸す</div><button class="btn wide" data-a="bag" style="margin-top:6px">持ち物を売ってお金をつくる</button></div>` : '') + `<div class="box">${(F.alerts || []).map(a => `<button class="news" style="width:100%;text-align:left" data-a="alert" data-k="${a.a || ''}" data-id="${a.id || ''}">${a.t}${a.a ? ' ›' : ''}</button>`).join('') || '<div class="t2">いまはない</div>'}</div><button class="btn wide" data-a="manager">🤵 店長と仕入れ係</button>`;
 SHEETS.manager = () => {
   const P = pol(), mine = E.storesOf(S, ME);
   return head('🤵', '店長と仕入れ係', 'ルールを決めておくと、毎月の作業を任せられる') +
@@ -1940,7 +1944,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114051440';
+const BUILD = '20261114052436';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
