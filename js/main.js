@@ -97,7 +97,7 @@ function pickBgm() {
 
 // ── シート
 const SHEETS = {};
-function openSheet(kind, args = {}) { const tu = document.getElementById('tut'); if (tu) tu.remove(); F.sheet = kind; F.args = args; renderSheet(); $('#sheet').scrollTop = 0; $('#sheet').classList.toggle('half', kind === 'stages'); $('#sheetwrap').classList.add('on'); sfx('open'); }
+function openSheet(kind, args = {}) { const tu = document.getElementById('tut'); if (tu) tu.remove(); F.sheet = kind; F.args = args; renderSheet(); $('#sheet').scrollTop = 0; $('#sheet').classList.toggle('half', kind === 'stages'); $('#sheet').className = $('#sheet').className.replace(/\b(k-\S+|anim)\b/g, '').trim() + ' anim k-' + kind; clearTimeout(F.animT); F.animT = setTimeout(() => $('#sheet').classList.remove('anim'), 1000); $('#sheetwrap').classList.add('on'); sfx('open'); }
 function closeSheet() { F.sheet = null; $('#sheetwrap').classList.remove('on'); board && board.highlightLot(-1); }
 function renderSheet() { const f = SHEETS[F.sheet]; if (!f) return; $('#sheet').innerHTML = '<div class="grab"></div>' + f(F.args); }
 const head = (icon, title, sub) => `<div class="sh"><div class="si">${icon}</div><h3>${title}${sub ? `<small>${sub}</small>` : ''}</h3><button class="x" data-a="close">✕</button></div>`;
@@ -604,6 +604,89 @@ SHEETS.event = () => {
     <div class="t3">予報を見て、先に動いた人が勝つ。たとえば不作の前に材料を買っておく、祭りの前に店員を増やす。</div>`;
 };
 // 順位
+// ── 画面のエフェクト(すべての行動に手ごたえを)
+const FX = {
+  layer() { let l = $('#fxl'); if (!l) { l = document.createElement('div'); l.id = 'fxl'; document.body.appendChild(l); } return l; },
+  // 粒がはじける
+  burst(x, y, colors = ['#ffd36e', '#ff9a3c', '#fff'], n = 14, emoji) {
+    const L = this.layer();
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement('i'); d.className = 'fxp'; const a = Math.random() * Math.PI * 2, r = 40 + Math.random() * 60, sz = emoji ? 16 + Math.random() * 8 : 5 + Math.random() * 6;
+      if (emoji) { d.textContent = emoji; d.style.fontSize = sz + 'px'; d.style.background = 'none'; } else { d.style.width = d.style.height = sz + 'px'; d.style.background = colors[i % colors.length]; }
+      L.appendChild(d);
+      d.animate([{ transform: `translate(${x}px,${y}px) scale(1)`, opacity: 1 }, { transform: `translate(${x + Math.cos(a) * r}px,${y + Math.sin(a) * r - 20}px) scale(.2) rotate(${Math.random() * 360}deg)`, opacity: 0 }], { duration: 500 + Math.random() * 300, easing: 'cubic-bezier(.2,.8,.3,1)', fill: 'forwards' });
+      setTimeout(() => d.remove(), 850);
+    }
+  },
+  // 輪が広がる
+  ring(x, y, color = '#ffd36e') { const d = document.createElement('i'); d.className = 'fxr'; d.style.borderColor = color; d.style.left = x + 'px'; d.style.top = y + 'px'; this.layer().appendChild(d); setTimeout(() => d.remove(), 650); },
+  // 文字が浮かぶ
+  float(x, y, text, color = '#1f2a44') { const d = document.createElement('div'); d.className = 'fxf'; d.innerHTML = text; d.style.color = color; d.style.left = x + 'px'; d.style.top = y + 'px'; this.layer().appendChild(d); setTimeout(() => d.remove(), 1200); },
+  // はんこ(大きな決定)
+  stamp(text, color = '#e5484d') { const d = document.createElement('div'); d.className = 'fxs'; d.textContent = text; d.style.color = color; d.style.borderColor = color; this.layer().appendChild(d); sfx('stamp'); haptic(25); setTimeout(() => d.remove(), 1100); },
+  // 画面のゆれ・光
+  shake(n = 1) { document.body.classList.remove('shk'); void document.body.offsetWidth; document.body.classList.add('shk'); setTimeout(() => document.body.classList.remove('shk'), 450); },
+  flash(color = 'rgba(255,255,255,.7)') { const d = document.createElement('div'); d.className = 'fxfl'; d.style.background = color; this.layer().appendChild(d); setTimeout(() => d.remove(), 450); },
+  // 物が飛ぶ(カード・品物)
+  fly(from, to, html, cls = '') { const d = document.createElement('div'); d.className = 'fxfly ' + cls; d.innerHTML = html; this.layer().appendChild(d); const a = d.animate([{ transform: `translate(${from.x}px,${from.y}px) scale(1) rotate(0)`, opacity: 1 }, { transform: `translate(${(from.x + to.x) / 2}px,${Math.min(from.y, to.y) - 80}px) scale(1.25) rotate(-8deg)`, opacity: 1, offset: 0.5 }, { transform: `translate(${to.x}px,${to.y}px) scale(.5) rotate(10deg)`, opacity: 0.2 }], { duration: 620, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' }); setTimeout(() => d.remove(), 650); return new Promise(r => setTimeout(r, 600)); },
+};
+const center = (r) => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+const shopScreen = (id) => { const s = S.shops.find(x => x.id === id); if (!s) return null; const p = board.screenOfLot(s.lot); return p && p.vis ? p : null; };
+// 行動ごとのエフェクト(押したボタンの位置 r、前後の状態から決める)
+const ATTACK = new Set(['poach', 'headhunt', 'shout']);
+function actionFx(a, d, r, before) {
+  const c = center(r), added = F.acts.length > before.n, removed = F.acts.length < before.n, sid = d.id ? +d.id : null, s = sid != null ? S.shops.find(x => x.id === sid) : null;
+  const lot = s ? s.lot : null;
+  switch (a) {
+    case 'setp': { const lv = +d.v, up = s && lv > before.pl; FX.burst(c.x, c.y, up ? ['#ffb84d', '#ffd36e'] : ['#3ccf8e', '#9be7c4']); FX.float(c.x, c.y - 10, up ? '💴 値上げ!' : lv === before.pl ? '💴' : '🏷️ 値下げ!', up ? '#e07b1a' : '#16a34a'); if (lot != null) { board.bounceLot(lot); board.burst(lot, up ? 0xffc53d : 0x3ccf8e, 10); } break; }
+    case 'sets': { const up = +d.v > 0; FX.burst(c.x, c.y, ['#7cc7ff', '#4f7cff', '#fff'], 10); FX.float(c.x, c.y - 10, up ? '👤 +1' : '👤 −1', up ? '#2f5fd0' : '#6b7280'); if (lot != null) { board.bounceLot(lot); if (up) board.burst(lot, 0x7cc7ff, 8); } break; }
+    case 'seta': { FX.burst(c.x, c.y, ['#ff9a3c', '#ffd36e'], 12, +d.v > 0 ? '📣' : null); FX.float(c.x, c.y - 10, +d.v > 0 ? '📣 宣伝!' : '📣 なし', '#e07b1a'); if (lot != null) { board.bounceLot(lot); if (+d.v > 0) board.burst(lot, 0xff9a3c, 14); } break; }
+    case 'setauto': case 'setproc': case 'polbuy': case 'polmax': case 'polstaff': FX.ring(c.x, c.y, '#3ccf8e'); FX.burst(c.x, c.y, ['#3ccf8e', '#fff'], 8); break;
+    case 'setfeat': case 'setfeatq': FX.burst(c.x, c.y, ['#c79bff', '#fff', '#7c4dff'], 16, d.v ? '💎' : null); if (lot != null) board.burst(lot, 0xc79bff, 18); if (d.v) FX.float(c.x, c.y - 10, '💎 目玉商品!', '#7c4dff'); break;
+    case 'hire': FX.stamp('ようこそ!', '#2fb77a'); FX.burst(c.x, c.y, ['#ffd36e', '#3ccf8e', '#7cc7ff', '#ff9aa8'], 22); if (lot != null) board.pillar(lot, 0x9be7c4); break;
+    case 'fire': FX.float(c.x, c.y - 10, '👋 おつかれさま', '#6b7280'); FX.burst(c.x, c.y, ['#c9ced9'], 8); break;
+    case 'route': if (added) { FX.stamp('育て方 決定!', '#7c4dff'); if (lot != null) board.pillar(lot, 0xc79bff); } break;
+    case 'routecancel': case 'cancelopen': case 'unpropose': case 'cardcancel': FX.float(c.x, c.y - 10, '↩︎ 取り消し', '#6b7280'); FX.burst(c.x, c.y, ['#c9ced9', '#fff'], 8); break;
+    case 'closeshop': FX.stamp('閉店…', '#6b7280'); if (lot != null) board.burst(lot, 0x9aa3b5, 16, 0.5); break;
+    case 'buy': if (added) { coinFly(cashPos(), c, 6); FX.float(c.x, c.y - 14, `📦 +${fmt(F.acts[F.acts.length - 1].qty)}`, '#2f5fd0'); FX.burst(c.x, c.y, ['#7cc7ff', '#fff'], 10); } break;
+    case 'sell': if (added) { coinFly(c, cashPos(), 6); FX.float(c.x, c.y - 14, `💰 売り!`, '#e07b1a'); FX.burst(c.x, c.y, ['#ffd36e', '#fff'], 10); } break;
+    case 'deal': if (added) { FX.stamp('取引成立!', '#e07b1a'); coinFly(c, cashPos(), 6); } else FX.float(c.x, c.y - 10, '↩︎ やめた', '#6b7280'); break;
+    case 'propose': FX.stamp('申し込み!', '#2f5fd0'); break;
+    case 'factor': case 'bridge': if (added) { coinFly(c, cashPos(), 8); FX.float(c.x, c.y - 12, '💰 入金予定!', '#16a34a'); } break;
+    case 'repay': if (added) { coinFly(cashPos(), c, 8); FX.stamp('返済!', '#16a34a'); } break;
+    case 'vote': FX.stamp('投票!', '#2f5fd0'); FX.burst(c.x, c.y, ['#7cc7ff', '#fff'], 12, '🗳️'); break;
+    case 'questtake': FX.stamp('受注!', '#e07b1a'); break;
+    case 'questdeliver': coinFly(c, cashPos(), 8); FX.stamp('納品!', '#16a34a'); break;
+    case 'buyshop': FX.stamp('買い取りを申し込む', '#e5484d'); break;
+    case 'repayall': break;
+    case 'next': FX.ring(c.x, c.y, '#ff7a59'); FX.burst(c.x, c.y, ['#ffb84d', '#ff7a59', '#fff'], 18); break;
+    case 'card': FX.ring(c.x, c.y, '#7c4dff'); break;
+    case 'cardgo': { const ca = F.acts.find(x => x.type === 'card'); if (!ca) break; const cd = E.cardDef(ca.card), hand = document.querySelectorAll('#dock .card')[ca.idx];
+      const from = hand ? center(hand.getBoundingClientRect()) : c, tgt = ca.shop != null ? shopScreen(ca.shop) : null, to = tgt || { x: innerWidth / 2, y: innerHeight * 0.4 };
+      FX.fly(from, to, `<span class="fxcard">${cd.spec ? '🧑‍🍳' : cd.icon}<small>${cd.name}</small></span>`).then(() => {
+        const atk = ATTACK.has(cd.base) && ca.shop != null && S.shops.find(x => x.id === ca.shop && x.owner !== ME);
+        if (atk) { FX.flash('rgba(255,77,94,.25)'); FX.shake(); board.shock(S.shops.find(x => x.id === ca.shop).lot); sfx('bad'); } else { FX.burst(to.x, to.y, ['#c79bff', '#ffd36e', '#fff'], 18); if (ca.shop != null) board.burst(S.shops.find(x => x.id === ca.shop).lot, 0xc79bff, 16); }
+        FX.float(to.x, to.y - 20, `🃏 ${cd.name}${atk ? ' 予約!' : ''}`, atk ? '#e5484d' : '#7c4dff');
+      }); break; }
+    default: break;
+  }
+}
+// 月末: 決まったことが動き出すときのエフェクト(地図の上)
+function monthFx(fx) {
+  let k = 0; const later = (f) => setTimeout(f, 250 + (k++) * 220);
+  for (const f of fx) {
+    const sh = f.shop != null ? S.shops.find(x => x.id === f.shop) : null;
+    if (f.kind === 'open' && sh) later(() => { board.pillar(sh.lot, Number('0x' + E.COLOR_HEX[S.players[f.pid].color].slice(1))); if (f.pid === ME) sfx('build'); });
+    if (f.kind === 'card' && sh && f.target === ME && ATTACK.has(f.card)) later(() => { board.shock(sh.lot); FX.flash('rgba(255,77,94,.3)'); FX.shake(); sfx('bad'); });
+    else if (f.kind === 'card' && sh) later(() => board.burst(sh.lot, 0xc79bff, 14));
+    if (f.kind === 'route' && sh) later(() => board.pillar(sh.lot, 0xc79bff));
+    if (f.kind === 'buyshop' && sh) later(() => { board.pillar(sh.lot, 0xffd36e); if (f.pid === ME || f.from === ME) FX.stamp(f.pid === ME ? '買い取り成功!' : '店を買われた!', f.pid === ME ? '#16a34a' : '#e5484d'); });
+    if (f.kind === 'hire' && f.pid === ME && sh) later(() => board.pillar(sh.lot, 0x9be7c4));
+  }
+}
+function salesFx(sales) {
+  for (const f of sales) { const sh = S.shops.find(x => x.id === f.shop); if (!sh) continue; if (f.profit > 0) board.burst(sh.lot, f.pid === ME ? 0xffd36e : 0xfff1c0, f.pid === ME ? Math.min(26, 8 + Math.round(f.profit / 15)) : 6); else if (f.pid === ME) board.burst(sh.lot, 0x6b8cc7, 8, -0.3); }
+}
 // ── 建設モード: 建物を選ぶ → 地図に見込みが出る → 場所をタップ → 建てる!
 const BUILD_INFO = { bread: '安くて毎日売れる。数で稼ぐ', potion: '冒険者と病気の季節に強い', tool: '高く売れるが、数は少ない', cloth: 'お祭りと貴族に人気', work: '原料を加工して市場に卸す' };
 function buildCost(g) { const ds = [...new Set(E.LOTS.map(l => l.d))].map(d => E.openCost(d, g)); return [Math.min(...ds), Math.max(...ds)]; }
@@ -1049,7 +1132,12 @@ document.addEventListener('pointerup', release, { passive: true }); document.add
 })();
 document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-a]'); if (!t) return;
-  const f = H[t.dataset.a]; if (f) { unlockAudio(); f(t.dataset); }
+  const f = H[t.dataset.a]; if (!f) return;
+  unlockAudio();
+  const r = t.getBoundingClientRect(), d = { ...t.dataset }, sid = d.id ? +d.id : null, s0 = sid != null && S ? S.shops.find(x => x.id === sid) : null;
+  const before = { n: F.acts.length, pl: s0 ? (pendSet(s0.id) && pendSet(s0.id).priceLv != null ? pendSet(s0.id).priceLv : s0.priceLv) : null };
+  f(t.dataset);
+  try { actionFx(t.dataset.a, d, r, before); } catch (err) { console.warn('fx', err); }
 });
 
 // ── 月を進める
@@ -1080,8 +1168,9 @@ async function nextMonth() {
   const sales = fx.filter(f => f.kind === 'sales' || f.kind === 'made');
   board.home();
   await wait(500);
-  board.playMonth(S, sales);
+  board.playMonth(S, sales); monthFx(fx);
   await wait(1500);
+  salesFx(sales);
   for (const f of sales) { const pos = board.screenOf(f.shop); if (pos) { popAt(pos, f.profit, S.players[f.pid].color); if (f.pid === ME && f.profit > 0) setTimeout(() => coinFly(pos, cashPos(), Math.min(8, 2 + Math.round(f.profit / 40))), 500); } }
   { const ls = rivalLines(fx); Object.entries(ls).forEach(([pid, v], k) => setTimeout(() => rivalSay(+pid, v.t), k * 450)); }
   const myUp = sales.filter(f => f.pid === ME && f.profit > 0).length; if (myUp) sfx('coins', Math.min(8, 2 + myUp * 2));

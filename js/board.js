@@ -288,6 +288,35 @@ export class Board {
     if (!this.dustMat) { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 2, 32, 32, 30); g.addColorStop(0, 'rgba(255,250,235,.95)'); g.addColorStop(1, 'rgba(255,250,235,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); this.dustMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }); }
     for (let i = 0; i < 14; i++) { const sp = new THREE.Sprite(this.dustMat.clone()); const a = (i / 14) * Math.PI * 2; sp.position.copy(p0).add(new THREE.Vector3(Math.cos(a) * 0.3, 0.2, Math.sin(a) * 0.3)); sp.scale.setScalar(0.4); sp.userData.v = new THREE.Vector3(Math.cos(a) * 1.6, 0.8 + Math.random() * 0.6, Math.sin(a) * 1.6); sp.userData.life = 0; this.world.add(sp); (this.dusts = this.dusts || []).push(sp); }
   }
+  // ── 3Dのエフェクト: 粒の爆発・光の柱・衝撃の輪
+  sparkTex() { if (this._spark) return this._spark; const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 0, 32, 32, 30); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,.8)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return (this._spark = new THREE.CanvasTexture(c)); }
+  lotPos(lot) { const l = LOTS[lot]; return l ? hexPos(l.q, l.r) : null; }
+  shopLot(id) { const s = this.shopObjs.get(id); return s ? s.userData.lot ?? null : null; }
+  burst(lot, color = 0xffd36e, n = 18, up = 1) {
+    const p0 = this.lotPos(lot); if (!p0) return;
+    for (let i = 0; i < n; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.sparkTex(), color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); const a = Math.random() * Math.PI * 2, r = 0.6 + Math.random() * 1.6; sp.position.copy(p0).add(new THREE.Vector3(0, 0.8 + Math.random() * 0.6, 0)); sp.scale.setScalar(0.28 + Math.random() * 0.2); sp.userData = { v: new THREE.Vector3(Math.cos(a) * r, (1.5 + Math.random() * 2) * up, Math.sin(a) * r), life: 0, max: 0.7 + Math.random() * 0.5, g: 1 }; this.world.add(sp); (this.fxs = this.fxs || []).push(sp); }
+  }
+  pillar(lot, color = 0x9fd4ff) {
+    const p0 = this.lotPos(lot); if (!p0) return;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.75, 6, 18, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+    m.position.copy(p0).add(new THREE.Vector3(0, 3, 0)); m.userData = { life: 0, max: 1.3, pillar: 1 }; this.world.add(m); (this.fxs = this.fxs || []).push(m); this.burst(lot, color, 14);
+  }
+  shock(lot, color = 0xff4d5e) {
+    const p0 = this.lotPos(lot); if (!p0) return;
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.75, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide })); m.rotation.x = -Math.PI / 2;
+    m.position.copy(p0).add(new THREE.Vector3(0, 0.2, 0)); m.userData = { life: 0, max: 0.7, ring: 1 }; this.world.add(m); (this.fxs = this.fxs || []).push(m);
+    this.burst(lot, color, 12, 0.6);
+    for (const [, o] of this.shopObjs) if (o && o.userData.lot === lot) { o.userData.shake = 0.6; }
+  }
+  bounceLot(lot) { for (const [, o] of this.shopObjs) if (o && o.userData.lot === lot) o.userData.bounce = 0.0001; }
+  fxTick(dt) {
+    if (!this.fxs) return;
+    this.fxs = this.fxs.filter(o => { const u = o.userData; u.life += dt; const k = u.life / u.max;
+      if (u.v) { o.position.addScaledVector(u.v, dt); u.v.y -= 4 * dt; u.v.multiplyScalar(0.97); o.material.opacity = 1 - k; }
+      if (u.pillar) { o.scale.set(1 + k * 0.4, 1, 1 + k * 0.4); o.material.opacity = 0.55 * (1 - k); }
+      if (u.ring) { o.scale.setScalar(1 + k * 3); o.material.opacity = 0.9 * (1 - k); }
+      if (k >= 1) { this.world.remove(o); o.material.dispose(); return false; } return true; });
+  }
   clearPreview() { if (!this.previews) return; for (const [, o] of this.previews) this.world.remove(o); this.previews.clear(); }
   async reset() { this.clearPreview(); for (const [, o] of this.shopObjs) if (o) this.world.remove(o); this.shopObjs.clear(); }
   // 天気の見た目(雨・雪の粒、空の色、光)
@@ -456,6 +485,8 @@ export class Board {
     if (this.rips) this.rips = this.rips.filter(m => { m.userData.life += dt; const k = m.userData.life / 0.55; m.scale.setScalar(0.4 + k * 0.9); m.material.opacity = 0.9 * (1 - k); if (k >= 1) { this.world.remove(m); m.material.dispose(); return false; } return true; });
     if (this.ratings) for (const [, g] of this.ratings) { const k = 1 + Math.sin(t * 3 + g.userData.ph) * 0.06; g.children[1].scale.set(1.9 * k, 0.83 * k, 1); g.children[0].material.opacity = 0.45 + Math.sin(t * 3 + g.userData.ph) * 0.12; }
     if (this.dusts) this.dusts = this.dusts.filter(d => { d.userData.life += dt; const k = d.userData.life / 0.9; d.position.addScaledVector(d.userData.v, dt); d.userData.v.multiplyScalar(0.9); d.scale.setScalar(0.4 + k * 0.9); d.material.opacity = 1 - k; if (k >= 1) { this.world.remove(d); return false; } return true; });
+    this.fxTick(dt);
+    for (const [, o] of this.shopObjs) if (o && o.userData.shake > 0) { o.userData.shake -= dt; const k = Math.max(0, o.userData.shake); o.rotation.z = Math.sin(t * 60) * 0.08 * k; if (k <= 0) o.rotation.z = 0; }
     if (this.popIn) for (const o of this.popIn) { if (o.userData.pop < 1) { o.userData.pop = Math.min(1, o.userData.pop + dt * 2.5); o.scale.setScalar(Math.max(0.01, 1 - Math.pow(1 - o.userData.pop, 3))); } }
     if (this.signs) for (const [, sp] of this.signs) if (sp.userData.isNew) sp.position.y = 2.05 + Math.abs(Math.sin(t * 3)) * 0.18;
     for (const [, s] of this.plus) if (s.visible) s.position.y = 0.95 + Math.sin(t * 2.4 + s.userData.lot) * 0.08;
