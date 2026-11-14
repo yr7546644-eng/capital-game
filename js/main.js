@@ -678,6 +678,26 @@ function pactTab() {
     ${pend.map(a => `<div class="t2" style="margin-top:6px">⏳ ${esc(S.players[a.to].name)}に ${E.ITEMS[a.item].name} ${fmt(a.qty)}個/月 を${a.role === 'sell' ? '売る' : '買う'}契約を申し込む予定 <button class="btn sm" data-a="unpropose" data-v="${a.to}:${a.item}">やめる</button></div>`).join('')}</div>`;
   return h;
 }
+// 建設中の店: 何ができて、何が必要で、いくら稼げそうか
+SHEETS.planned = ({ lot }) => {
+  const a = pendOpen(lot); if (!a) return head('🏗️', '空き地', '');
+  const L = E.LOTS[lot], D = E.DISTRICTS[L.d], work = a.g === 'work', e = lotEstimate(lot, a.g, a.res), nm = work ? `工房(${E.ITEMS[E.RES[a.res].proc].name})` : E.GOODS[a.g].name;
+  const raw = work ? a.res : E.GOODS[a.g].res, staff = a.staff || 2, cap = work ? Math.round(E.PROC[E.RES[a.res].proc].rate * staff) : Math.round(E.GOODS[a.g].capPer * staff);
+  const have = Math.floor(me().inv[raw] || 0);
+  return head('🏗️', `建設中: ${nm}`, `${D.name} · 月末に完成`) + `
+    <div class="plan3d">${ico(work ? 'b_work' : 'b_' + a.g)}<div><b>${nm}</b><span>${S.t % 12 + 2 > 12 ? 1 : S.t % 12 + 2}月から営業</span></div></div>
+    ${work ? recipeWork(a.res, staff) : recipeShop(a.g, null)}
+    <div class="box"><div class="lbl">必要な材料</div>
+      <div class="kv"><span class="k">${ico(raw)} ${E.ITEMS[raw].name}</span><span>${work ? '毎月' : 'お客1人に1個・毎月最大'} <b>${fmt(cap)}個</b></span></div>
+      <div class="kv"><span class="k">いまの在庫</span><span><b>${fmt(have)}個</b></span></div>
+      <div class="t2" style="margin-top:4px">${have >= cap ? '材料は足りている' : `足りない分は、月末にその月の相場(1個 ${S.market[raw].price.toFixed(2)}G)で自動で買う。安いうちに買っておくと得`}</div>
+      <button class="btn wide pri" style="margin-top:8px" data-a="planbuy" data-v="${raw}">${ico('ui_market')} 市場で${E.ITEMS[raw].name}を見る</button></div>
+    <div class="box"><div class="lbl">見込み(1か月)</div>
+      <div class="kv"><span class="k">利益</span><span><b class="${cls(e.profit)}">${sign(e.profit)}G</b></span></div>
+      <div class="kv"><span class="k">家賃</span><span>−${fmt(D.rent)}G</span></div>
+      <div class="kv"><span class="k">店員${staff}人のお給料</span><span>−${fmt(E.WAGE * staff)}G</span></div></div>
+    <div class="row" style="gap:8px"><button class="btn pri" style="flex:1" data-a="moveopen" data-v="${lot}">📍 場所を変える</button><button class="btn" style="flex:1" data-a="cancelopen" data-v="${lot}">やめる(お金が戻る)</button></div>`;
+};
 // 持ち物: 持っている品物と、それで何ができるか
 SHEETS.bag = () => {
   const p = me(), items = Object.keys(E.ITEMS).filter(k => (p.inv[k] || 0) >= 1).sort((a, b) => p.inv[b] * S.market[b].price - p.inv[a] * S.market[a].price);
@@ -1025,7 +1045,7 @@ function questTick() {
   const cur = QUESTS.find(q => !st[q.id]);
   if (!cur) { st.all = 1; try { localStorage.setItem(QKEY, JSON.stringify(st)); } catch (e) { } toast('🎉 基本はバッチリ! あとは1位をめざそう'); if (el) el.remove(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'quest'; document.body.appendChild(el); }
-  const n = QUESTS.filter(q => st[q.id]).length, html = `<div class="qh">🎯 やること <span>${n + 1}/${QUESTS.length}</span></div><div class="qt">${cur.t}</div>`;
+  const n = QUESTS.filter(q => st[q.id]).length, waitOpen = cur.id === 'set' && !E.shopsOf(S, ME).length, html = `<div class="qh">🎯 やること <span>${n + 1}/${QUESTS.length}</span></div><div class="qt">${waitOpen ? '店は工事中。月末に完成するので、まず<b>「次の月へ」</b>を押そう' : cur.t}</div>`;
   if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; el.classList.remove('qin'); void el.offsetWidth; el.classList.add('qin'); }
   el.style.display = F.sheet || F.busy || F.build ? 'none' : '';
 }
@@ -1344,6 +1364,7 @@ const H = {
   },
   moveopen: (d) => { const lot = +d.v, a = F.acts.find(x => x.type === 'open' && x.lot === lot); if (!a) return; F.acts = F.acts.filter(x => x !== a); board.preview(lot, null); save(); closeSheet(); F.build = { step: 'type', lot: null }; buildPick(a.g, a.res); toast('新しい場所をタップ'); },
   bag: () => openSheet('bag'),
+  planbuy: (d) => { F.mtab = E.isProc(d.v) ? 'proc' : 'raw'; F.mSel = d.v; F.mT = { mode: 'buy', q: E.isProc(d.v) ? 20 : 50 }; openSheet('market'); },
   bagsell: (d) => { F.mtab = E.isRare(d.v) ? 'rare' : E.isProc(d.v) ? 'proc' : 'raw'; F.mSel = d.v; F.mT = { mode: 'sell', q: Math.floor(me().inv[d.v] || 0) }; openSheet('market'); },
   bagfeat: (d) => { const s = E.storesOf(S, ME).find(x => x.g === E.RARES[d.v].use); if (!s) return toast('使える店がない'); setPending(s.id, { ...(pendSet(s.id) || {}), feat: d.v, featQty: Math.min(10, Math.floor(me().inv[d.v])) }); sfx('card'); toast(`${gd(s).name}の目玉商品にした`); render(); },
   cancelopen: (d) => { const lot = +d.v; F.acts = F.acts.filter(a => !(a.type === 'open' && a.lot === lot)); board.preview(lot, null); save(); closeSheet(); render(); },
@@ -1751,7 +1772,8 @@ async function boot() {
     if (shop != null) { const s = S.shops.find(x => x.id === shop); if (s) { board.focus(s.lot); openSheet('shop', { id: shop }); sfx('pop'); haptic(10); } return; }
     if (lot != null && !S.over) {
       const p = pendOpen(lot);
-      if (p || !E.lotFree(S, lot)) { board.highlightLot(lot); openSheet('lot', { lot, g: p ? p.g : null, res: p ? p.res : null }); sfx('pop'); haptic(10); return; }
+      if (p) { board.highlightLot(lot); board.bounceLot(lot); openSheet('planned', { lot }); sfx('pop'); haptic(10); return; }
+      if (!E.lotFree(S, lot)) { board.highlightLot(lot); openSheet('lot', { lot, g: null, res: null }); sfx('pop'); haptic(10); return; }
       if (F.build && F.build.step === 'place') { document.body.classList.remove('placing'); F.build.lot = lot; F.build.step = 'confirm'; board.showRatings([ratingOf(lot)]); board.focus(lot); sfx('pop'); haptic(12); render(); return; }
       board.highlightLot(lot); buildStart(lot); sfx('pop'); haptic(10);
     }
@@ -1772,7 +1794,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114041427';
+const BUILD = '20261114042009';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
