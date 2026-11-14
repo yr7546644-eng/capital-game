@@ -404,7 +404,7 @@ SHEETS.market = () => {
     const have = p.inv[k] || 0, pq = pendQ(k);
     let h0 = `<button class="mrow ${open ? 'open' : ''}" data-a="msel" data-v="${k}"><span class="mri">${r.icon}</span><span class="mrn"><b>${r.name}</b><small>在庫 ${fmt(have)}${pq ? ` <em class="${pq > 0 ? 'up' : 'down'}">${pq > 0 ? '+' : ''}${fmt(pq)}予定</em>` : ''}</small></span>
       <svg width="66" height="26"><polyline points="${pts}" fill="none" stroke="${vsb > 0 ? '#ff4f64' : '#20b26b'}" stroke-width="2.2" stroke-linecap="round"/></svg>
-      <span class="mrp"><b>${m.price.toFixed(2)}G</b><i class="mtag ${tag[1]}">${tag[0]}</i></span><span class="mchev">${open ? '▲' : '▼'}</span></button>`;
+      <span class="mrp"><b>${m.price.toFixed(2)}G</b><i class="mtag ${tag[1]}">${tag[0]}</i></span><span class="mchev">${open ? '閉じる' : '開く'}</span></button>`;
     if (!open) return h0;
     // 開いたとき: 意味をことばで + 数を決める
     const mk = S.mk && S.mk[k], N = E.normalStock(k), lv = mk ? mk.stock / N : 1;
@@ -432,7 +432,7 @@ SHEETS.market = () => {
       <div class="chips mpre">${presets.map(v => `<button class="chip ${q === v ? 'on' : ''}" data-a="mqset" data-v="${v}">${v}</button>`).join('')}${T.mode === 'buy' && use ? `<button class="chip" data-a="mqset" data-v="${Math.max(step, Math.ceil(use / step) * step)}">1か月分</button>` : ''}${T.mode === 'sell' && canSell ? `<button class="chip" data-a="mqset" data-v="${canSell}">ぜんぶ</button>` : ''}</div>
       <div class="msum">${T.mode === 'buy' ? `合計 <b class="down">−${fmt(Math.round(cost))}G</b>` : `合計 <b class="up">+${fmt(Math.round(cost))}G</b>`}${q ? ` <small>(1個平均 ${(cost / q).toFixed(2)}G)</small>` : ''}<br><small>${T.mode === 'buy' ? '買うと倉が減って' : '売ると倉が増えて'} 相場 ${m.price.toFixed(2)} → <b class="${dp > 0 ? 'down' : 'up'}">${after.toFixed(2)}G</b>(${dp >= 0 ? '+' : ''}${Math.round(dp * 100)}%)</small></div>
       <button class="btn wide ${T.mode === 'buy' ? 'pri' : 'warm'} mgo" data-a="mgo" data-v="${k}" ${q > 0 && (T.mode === 'sell' || freeCash() >= cost) && (!E.isRare(k) || E.peddlerHas(S, k)) ? '' : 'disabled'}>${E.isRare(k) && !E.peddlerHas(S, k) ? '行商人が来たときだけ' : q <= 0 ? '数を選んで' : T.mode === 'buy' ? (freeCash() >= cost ? `🛒 ${fmt(q)}個 買う` : 'お金が足りない') : `💰 ${fmt(q)}個 売る`}</button>
-      ${pend.length ? `<div class="mpend">${pend.map((a, i) => `<span>${a.type === 'buy' ? '🛒 買う' : '💰 売る'} ${fmt(a.qty)}個</span>`).join(' · ')} <small>(月末に実行)</small> <button class="btn sm" data-a="mcancel" data-v="${k}">取り消す</button></div>` : ''}
+      ${pend.length ? `<div class="mpend"><div class="mpt">✓ 予約ずみ</div>${pend.map((a, i) => `<div class="mpr ${a.type}"><b>${a.type === 'buy' ? '買う' : '売る'} ${fmt(a.qty)}個</b><span>月末に${a.type === 'buy' ? '届く' : '渡す'}</span></div>`).join('')}<button class="btn wide" data-a="mcancel" data-v="${k}">取り消す(お金が戻る)</button></div>` : ''}
     </div>`;
     return h0;
   };
@@ -760,7 +760,7 @@ function actionFx(a, d, r, before) {
     case 'route': if (added) { FX.stamp('育て方 決定!', '#7c4dff'); if (lot != null) board.pillar(lot, 0xc79bff); } break;
     case 'routecancel': case 'cancelopen': case 'unpropose': case 'cardcancel': FX.float(c.x, c.y - 10, '↩︎ 取り消し', '#6b7280'); FX.burst(c.x, c.y, ['#c9ced9', '#fff'], 8); break;
     case 'closeshop': FX.stamp('閉店…', '#6b7280'); if (lot != null) board.burst(lot, 0x9aa3b5, 16, 0.5); break;
-    case 'mgo': if (added) { const la = F.acts[F.acts.length - 1]; if (la.type === 'buy') { coinFly(cashPos(), c, 8); FX.float(c.x, c.y - 16, `📦 +${fmt(la.qty)}個`, '#2f5fd0'); FX.burst(c.x, c.y, ['#7cc7ff', '#fff'], 14); } else { coinFly(c, cashPos(), 8); FX.float(c.x, c.y - 16, `💰 ${fmt(la.qty)}個 売り!`, '#e07b1a'); FX.burst(c.x, c.y, ['#ffd36e', '#fff'], 14); } } break;
+    case 'mgo': if (added) { const la = F.acts[F.acts.length - 1]; tradeShow(la, c); } break;
     case 'mcancel': FX.float(c.x, c.y - 10, '↩︎ 取り消し', '#6b7280'); break;
     case 'buy': if (added) { coinFly(cashPos(), c, 6); FX.float(c.x, c.y - 14, `📦 +${fmt(F.acts[F.acts.length - 1].qty)}`, '#2f5fd0'); FX.burst(c.x, c.y, ['#7cc7ff', '#fff'], 10); } break;
     case 'sell': if (added) { coinFly(c, cashPos(), 6); FX.float(c.x, c.y - 14, `💰 売り!`, '#e07b1a'); FX.burst(c.x, c.y, ['#ffd36e', '#fff'], 10); } break;
@@ -1082,6 +1082,14 @@ function missionBox() {
   return `<div class="box" style="background:linear-gradient(135deg,#f6f0ff,#fff)"><div class="lbl">🤫 あなたの秘密の目標(+${E.MISSION_BONUS}G)</div><div style="font-size:16px">${M.name} ${done ? '<span class="up">✔ 達成中</span>' : ''}</div><div class="t3">${M.text} · ${E.missionProgress(S, p)}</div><div class="t3" style="margin-top:4px">ライバルにもそれぞれ秘密の目標がある(最後に公開)。</div></div>`;
 }
 // 月の結果
+// 売り買いの演出: 品物が大きく飛び出して、在庫に入る/出ていく。お金も同時に動く
+function tradeShow(a, c) {
+  const buy = a.type === 'buy', r = E.ITEMS[a.res], el = document.createElement('div'); el.className = 'trade ' + (buy ? 'tb' : 'ts');
+  el.innerHTML = `<div class="trin"><div class="trart">${ico(a.res)}</div><div class="trq">${buy ? '+' : '−'}${fmt(a.qty)}<small>個</small></div><div class="trn">${r.name}</div><div class="trl">${buy ? '購入!' : '売却!'}</div><div class="trs">月末に${buy ? '届く' : '渡す'}</div></div>`;
+  document.body.appendChild(el); sfx(buy ? 'kaching' : 'coins', 6); haptic(30); FX.burst(innerWidth / 2, innerHeight * 0.42, buy ? ['#7cc7ff', '#ffd36e', '#fff'] : ['#ffd36e', '#ff9a3c', '#fff'], 26);
+  if (buy) coinFly(cashPos(), { x: innerWidth / 2, y: innerHeight * 0.42 }, 10); else setTimeout(() => coinFly({ x: innerWidth / 2, y: innerHeight * 0.42 }, cashPos(), 10), 300);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); const row = document.querySelector(`.mrow[data-v="${a.res}"]`); if (row) { row.classList.remove('bump'); void row.offsetWidth; row.classList.add('bump'); } }, 1100);
+}
 // カードを使ったとき: 大きなカードが画面の真ん中でひるがえる
 function castCard(cd, target) {
   return new Promise((res) => {
@@ -1671,7 +1679,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114031257';
+const BUILD = '20261114031806';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

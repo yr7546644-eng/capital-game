@@ -644,3 +644,19 @@ body:has(.title) #rivals,body:has(.title) #quest{opacity:0;pointer-events:none}
 .offer .oitem small,.orow b{font-size:13.5px}
 details.tipd summary{font-size:13.5px}
 .rk .nm{font-size:16px}
+/* 売り買いの演出 */
+.trade{position:fixed;inset:0;z-index:63;display:flex;align-items:center;justify-content:center;pointer-events:none;background:radial-gradient(circle at 50% 42%,rgba(255,255,255,.55),rgba(15,25,55,.35) 70%);animation:tfade .2s}
+.trade.out{animation:castout .38s ease-in forwards}
+.trin{display:flex;flex-direction:column;align-items:center;animation:castin .6s cubic-bezier(.34,1.5,.5,1)}
+.trart img.em3{width:150px;height:150px;filter:drop-shadow(0 12px 18px rgba(0,0,0,.35))}
+.trq{font-size:54px;font-weight:900;line-height:1;color:#fff;-webkit-text-stroke:2px #2350b0;text-shadow:0 5px 0 #2350b0}.trq small{font-size:22px;margin-left:2px}
+.ts .trq{-webkit-text-stroke-color:#c2410c;text-shadow:0 5px 0 #c2410c}
+.trn{font-size:20px;font-weight:900;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.4);margin-top:4px}
+.trl{margin-top:8px;font-size:28px;font-weight:900;color:#fff;background:linear-gradient(180deg,#6fa3ff,#2f62d0);border-bottom:5px solid #1d3f91;border-radius:16px;padding:4px 22px;animation:tbeat .6s ease-in-out 2}
+.ts .trl{background:linear-gradient(180deg,#ffc35c,#ff7a4a);border-bottom-color:#b0451d}
+.trs{margin-top:6px;font-size:14px;font-weight:900;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.5)}
+.mrow.bump{animation:bump .5s cubic-bezier(.34,1.8,.5,1)}
+.mchev{width:auto!important;font-size:11px!important;font-weight:900;color:#2350b0!important;background:#e6efff;border-radius:999px;padding:3px 8px}
+.mpend{margin-top:10px;background:#e6efff;border:2px solid #8fb8ff;border-radius:16px;padding:10px;text-align:left}
+.mpt{font-weight:900;color:#2350b0;font-size:15px;margin-bottom:6px}
+.mpr{display:flex;justify-content:space-between;align-items:center;background:#fff;border-radius:12px;padding:8px 10px;margin-bottom:6px}.mpr b{font-size:17px}.mpr.buy b{color:#2350b0}.mpr.sell b{color:#c2410c}.mpr span{font-size:13px;font-weight:800;color:#3a4560}
