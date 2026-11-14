@@ -764,8 +764,11 @@ SHEETS.bag = () => {
   const mine = E.shopsOf(S, ME);
   let h = head('🎒', '持ち物', `現金 ${fmt(freeCash())}G · 店 ${mine.length}つ`);
   h += `<div class="bagshops">${mine.length ? mine.map(s => `<button class="bagshop" data-a="shop" data-id="${s.id}">${ico(s.g === 'work' ? 'b_work' : 'b_' + s.g)}<b>${gd(s).name}</b><small>${E.DISTRICTS[s.d].short}</small><em class="${cls(s.last ? s.last.profit : 0)}">${s.last ? sign(Math.round(s.last.profit)) + 'G' : '新店'}</em></button>`).join('') : '<div class="t2">まだ店がない。🔨建てるから</div>'}</div>`;
-  h += `<div class="baggrid">${items.length ? items.map(k => { const r = E.ITEMS[k], v = Math.round(p.inv[k] * S.market[k].price), feat = E.isRare(k) && E.storesOf(S, ME).some(s => s.g === E.RARES[k].use); const avgC = p.invCost[k] / p.inv[k], plu = Math.round(E.sellQuote(S, k, Math.floor(p.inv[k])) - p.invCost[k]);
-      return `<div class="bagit">${ico(k)}<b>${r.name}</b><small>${fmt(p.inv[k])}個 · 仕入れ 1個 ${avgC.toFixed(2)}G → いま ${S.market[k].price.toFixed(2)}G</small><div class="bagpl ${plu >= 0 ? 'win' : 'lose'}">いま全部売ると <b>${plu >= 0 ? '+' : '−'}${fmt(Math.abs(plu))}G</b></div><div class="row" style="gap:4px">${!E.isRare(k) || E.peddlerHas(S, k) ? `<button class="btn sm warm" data-a="bagsell" data-v="${k}">売る</button>` : ''}${feat ? `<button class="btn sm pri" data-a="bagfeat" data-v="${k}">目玉に</button>` : ''}</div></div>`; }).join('') : '<div class="t2" style="grid-column:1/-1">品物は持っていない。🛒市場で安いときに買える</div>'}</div>`;
+  h += `<div class="baglist">${items.length ? items.map(k => { const r = E.ITEMS[k], v = Math.round(p.inv[k] * S.market[k].price), feat = E.isRare(k) && E.storesOf(S, ME).some(s => s.g === E.RARES[k].use); const avgC = p.invCost[k] / p.inv[k], q = Math.floor(p.inv[k]), nowU = q ? E.sellQuote(S, k, q) / q : S.market[k].price * (1 - E.SPREAD), plu = Math.round((nowU - avgC) * q);
+      return `<div class="bagit2">${ico(k)}<div class="grow"><div class="bgh"><b>${r.name}</b><span>${fmt(p.inv[k])}個</span></div>
+        <div class="bgcmp"><div><small>買った値段</small><b>1個 ${avgC.toFixed(2)}G</b><em>合計 ${fmt(Math.round(p.invCost[k]))}G</em></div><i>→</i><div><small>いま売ると</small><b>1個 ${nowU.toFixed(2)}G</b><em>合計 ${fmt(Math.round(nowU * q))}G</em></div></div>
+        <div class="bagpl ${plu >= 0 ? 'win' : 'lose'}">${plu >= 0 ? 'いま売ると' : 'いま売ると'} <b>${plu >= 0 ? '+' : '−'}${fmt(Math.abs(plu))}G</b> ${plu >= 0 ? 'の得' : 'の損'}</div>
+        <div class="row" style="gap:6px">${!E.isRare(k) || E.peddlerHas(S, k) ? `<button class="btn sm warm" data-a="bagsell" data-v="${k}">売る</button>` : ''}${feat ? `<button class="btn sm pri" data-a="bagfeat" data-v="${k}">目玉に</button>` : ''}</div></div></div>`; }).join('') : '<div class="t2" style="grid-column:1/-1">品物は持っていない。🛒市場で安いときに買える</div>'}</div>`;
   return h;
 };
 // 帳簿(自分の店の一覧・借金)
@@ -1959,7 +1962,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114053105';
+const BUILD = '20261114054233';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

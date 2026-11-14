@@ -832,3 +832,9 @@ body:has(.title) #handcol{display:none}
 .adv.bad .advface{border-color:#e5484d}
 .adv img.advic{width:34px!important;height:34px!important;flex:0 0 34px}
 .adv .advt{flex:1}
+.baglist{display:flex;flex-direction:column;gap:10px}
+.bagit2{display:flex;gap:10px;align-items:flex-start;background:#fff;border-radius:18px;border-bottom:4px solid #e1e6f2;padding:10px;box-shadow:0 4px 12px rgba(20,40,90,.08)}
+.bagit2>img.em3{width:64px;height:64px;flex:0 0 64px}
+.bgh{display:flex;justify-content:space-between;align-items:baseline}.bgh b{font-size:18px}.bgh span{font-size:16px;font-weight:900;color:#2350b0}
+.bgcmp{display:flex;align-items:center;gap:6px;margin:6px 0}.bgcmp>div{flex:1;background:#f3f6fd;border-radius:12px;padding:6px 8px;display:flex;flex-direction:column}.bgcmp small{font-size:11.5px;font-weight:800;color:#4a5570}.bgcmp b{font-size:15.5px}.bgcmp em{font-style:normal;font-size:12px;font-weight:800;color:#4a5570}.bgcmp i{font-style:normal;font-weight:900;color:#9aa6c0}
+.bagit2 .bagpl{display:inline-block;margin:0 0 6px}
