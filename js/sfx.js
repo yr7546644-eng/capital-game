@@ -85,6 +85,7 @@ export function sfx(k, arg) {
     if (k === 'card') { noise(t, 0.09, 0.16, 3500 * j, 0.7, sfxBus, 'highpass'); tone(660 * j, t + 0.03, 0.2, 'triangle', 0.06, sfxBus, 1100 * j, 0.2); }
     if (k === 'build') { for (let i = 0; i < 3; i++) { noise(t + i * 0.1, 0.05, 0.28, 800 * j, 2.5, sfxBus); tone(150 * j, t + i * 0.1, 0.08, 'sine', 0.14, sfxBus, 80, 0.05); } [72, 76, 79].forEach((m, i) => pluck(m, t + 0.32 + i * 0.06, 0.25, sfxBus, 0.3, 0.7, 0.8)); }
     if (k === 'whoosh') { noise(t, 0.5, 0.12, 600, 0.5, sfxBus, 'bandpass', 0.2); noise(t + 0.05, 0.4, 0.07, 2400, 0.7, sfxBus); }
+    if (k === 'horn') { [60, 64, 67, 72].forEach((m, i) => { tone(mtof(m) * j, t + i * 0.1, 0.2, 'sawtooth', 0.045, sfxBus, null, 0.25, 0.02); tone(mtof(m + 12) * j, t + i * 0.1, 0.2, 'square', 0.018, sfxBus, null, 0.25, 0.02); }); tone(mtof(72) * j, t + 0.42, 0.8, 'sawtooth', 0.055, sfxBus, null, 0.4, 0.02); tone(mtof(76) * j, t + 0.42, 0.8, 'sawtooth', 0.04, sfxBus, null, 0.4, 0.02); tone(mtof(79) * j, t + 0.42, 0.8, 'square', 0.02, sfxBus, null, 0.4, 0.02); noise(t + 0.42, 0.5, 0.08, 6000, 1, sfxBus, 'highpass', 0.3); }
     if (k === 'rankup') [72, 76, 79, 84, 88].forEach((m, i) => { pluck(m, t + i * 0.07, 0.3, sfxBus, 0.35, 0.8, 1.2); tone(mtof(m + 12), t + i * 0.07, 0.3, 'sine', 0.025, sfxBus, null, 0.3); });
     if (k === 'bad') { tone(220, t, 0.3, 'triangle', 0.07, sfxBus, 150, 0.15); tone(208, t + 0.18, 0.45, 'triangle', 0.06, sfxBus, 130, 0.2); }
     if (k === 'pop') { tone(700 * j, t, 0.07, 'sine', 0.09, sfxBus, 1400 * j, 0.05); }

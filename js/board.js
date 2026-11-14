@@ -87,6 +87,7 @@ export class Board {
   }
   fit() { const w = this.el.clientWidth, h = this.el.clientHeight; this.R.setSize(w, h); this.cam.aspect = w / h; this.cam.fov = w / h < 0.7 ? 46 : 36; this.cam.updateProjectionMatrix(); }
   async build(stageId = 'rose') {
+    this.terr = new Map(); this.flags = new Map();
     this.peddlerObj = null;
     this.signs = new Map(); this.bunting = null; this.trafficPer = 2; this.folkN = 0; this.folk = []; this.traffic = []; this.crowd = new Map(); this.crowdMx = [];
     const st = STAGES[stageId] || STAGES.rose;
@@ -423,6 +424,33 @@ export class Board {
     g.traverse(m => { m.userData.peddler = 1; });
     this.world.add(g); this.peddlerObj = g; this.anim.push((t) => { if (this.peddlerObj !== g) return; sp.position.y = 1.35 + Math.sin(t * 3) * 0.08; if (lt != null) mx.update(Math.min(0.05, t - lt)); lt = t; });
   }
+  // 陣取りの見た目: 自分の色の六角形を店の下に、支配した地区には大きな旗
+  setTerritory(S, colorOf) {
+    this.terr = this.terr || new Map(); this.flags = this.flags || new Map();
+    if (!this.terrGeo) { this.terrGeo = new THREE.RingGeometry(0.72, 0.95, 6, 1); this.terrGeo.rotateX(-Math.PI / 2); this.terrGeo.rotateY(Math.PI / 6); this.terrFill = new THREE.CircleGeometry(0.95, 6); this.terrFill.rotateX(-Math.PI / 2); this.terrFill.rotateY(Math.PI / 6); }
+    const want = new Map(S.shops.map(s => [s.lot, s.owner]));
+    for (const [lot, g] of this.terr) if (want.get(lot) !== g.userData.owner) { this.world.remove(g); this.terr.delete(lot); }
+    for (const [lot, owner] of want) {
+      if (this.terr.has(lot)) continue; const l = LOTS[lot], col = new THREE.Color(colorOf(owner));
+      const g = new THREE.Group(); g.position.copy(hexPos(l.q, l.r)).add(new THREE.Vector3(0, 0.07, 0)); g.userData.owner = owner;
+      g.add(new THREE.Mesh(this.terrFill, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.28, depthWrite: false })));
+      g.add(new THREE.Mesh(this.terrGeo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.95, depthWrite: false })));
+      this.world.add(g); this.terr.set(lot, g);
+    }
+    for (const d in DISTRICTS) {
+      const c = S.control ? S.control[d] : null, ex = this.flags.get(d);
+      if (ex && ex.userData.owner !== c) { this.world.remove(ex); this.flags.delete(d); }
+      if (c == null || this.flags.has(d)) continue;
+      const ls = LOTS.filter(l => l.d === d), ctr = ls.reduce((a, l) => a.add(hexPos(l.q, l.r)), new THREE.Vector3()).multiplyScalar(1 / ls.length);
+      const g = new THREE.Group(); g.userData.owner = c; g.position.copy(ctr);
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.2, 8), new THREE.MeshStandardMaterial({ color: 0x8a5a35 })); pole.position.y = 1.6; g.add(pole);
+      const cloth = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.85, 8, 1), new THREE.MeshStandardMaterial({ color: colorOf(c), side: THREE.DoubleSide, roughness: 0.6 })); cloth.position.set(0.72, 2.75, 0); g.add(cloth);
+      const top = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshStandardMaterial({ color: 0xffc53d, metalness: 0.5, roughness: 0.3 })); top.position.y = 3.25; g.add(top);
+      this.anim.push((t) => { if (this.flags.get(d) !== g) return; const a = cloth.geometry.attributes.position; for (let i = 0; i < a.count; i++) { const x = a.getX(i); a.setZ(i, Math.sin(t * 4 + x * 3) * 0.08 * (x + 0.7)); } a.needsUpdate = true; });
+      this.world.add(g); this.flags.set(d, g);
+    }
+  }
+  flagPos(d) { const g = this.flags && this.flags.get(d); return g ? g.position : null; }
   clearPreview() { if (!this.previews) return; for (const [, o] of this.previews) this.world.remove(o); this.previews.clear(); }
   async reset() { this.clearPreview(); for (const [, o] of this.shopObjs) if (o) this.world.remove(o); this.shopObjs.clear(); }
   // 天気の見た目(雨・雪の粒、空の色、光)

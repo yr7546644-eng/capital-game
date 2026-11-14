@@ -399,7 +399,7 @@ export const AI_NAMES = [['ベルナ', 'red', 'cheap'], ['グスタフ', 'yellow
 export const AI_LEVEL = { normal: { name: 'ふつう', desc: 'のんびりした商人たち' }, hard: { name: 'つよい', desc: '12か月先まで試算して、出店の場所と業種を選ぶ' }, oni: { name: '鬼', desc: '毎月、値段・人手・カード・撤退まで一手ずつ未来を試算し、あなたとの差が一番開く手を選ぶ' }, maou: { name: '魔王', desc: '鬼より深く読み、開始資金も +30%。勝てたら本物' } };
 export function newGame({ seed = 1, players = null, months = MONTHS, stage = 'rose', level = 'normal' } = {}) {
   const st = useStage(stage);
-  const S = { v: 10, level, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
+  const S = { v: 10, simple: 1, level, stage: STAGE, seed, rs: (seed * 2654435761) >>> 0 || 7, t: 0, months, players: [], shops: [], nextShop: 1, market: {}, ev: null, evNext: null, evActive: [], crowns: null, over: false };
   const ps = players || [{ name: 'あなた', human: true }, ...AI_NAMES.map(([n, c, k]) => ({ name: n, ai: k }))];
   const mk = Object.keys(MISSIONS).sort(() => 0);
   const deck = mk.slice(); for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(rnd(S) * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
@@ -518,6 +518,7 @@ export function validate(S, pid, a) {
     if (p.cash < ROUTES[a.k].cost[lv - 1]) return 'お金が足りない';
     return null;
   }
+  if (a.type === 'skill') return skillReady(S, pid) ? null : `大宣伝は ${SKILL_DISTRICTS}つの地区に店があると使える(使ったあと${SKILL_CD}か月は休み)`;
   if (a.type === 'propose') {
     const to = S.players[a.to]; if (!to || a.to === pid) return '相手がちがう'; if (!ITEMS[a.item] || isRare(a.item)) return 'その品は契約できない';
     if (!(a.qty >= 5 && a.qty <= 400) || !(a.price > 0) || ![3, 6].includes(a.months) || ![0, 1].includes(a.pay) || !['sell', 'buy'].includes(a.role)) return '条件がちがう';
@@ -611,6 +612,7 @@ function applyAction(S, pid, a, fx, late) {
   if (a.type === 'vote') { S.vote.ballots[pid] = a.bill; }
   if (a.type === 'hire') { const sh = S.shops.find(x => x.id === a.shop), c = p.cands.find(x => x.id === a.cand); crewOf(S, sh).push({ ...c }); sh.staff = sh.crew.length; p.cands = p.cands.filter(x => x !== c); fx.push({ kind: 'hire', pid, shop: sh.id, who: c }); }
   if (a.type === 'fire') { const sh = S.shops.find(x => x.id === a.shop); sh.crew = sh.crew.filter(x => x.id !== a.staffId); sh.staff = sh.crew.length; }
+  if (a.type === 'skill') { p.skillOn = S.t; p.skillT = S.t; fx.push({ kind: 'skill', pid }); }
   if (a.type === 'propose') {
     const to = S.players[a.to], c = { seller: a.role === 'sell' ? pid : a.to, buyer: a.role === 'sell' ? a.to : pid, item: a.item, qty: Math.round(a.qty), price: Math.round(a.price * 100) / 100, months: a.months, pay: a.pay, from: pid };
     if (to.ai) { const ok = aiPactOk(S, a.to, c); if (ok) newPact(S, c); fx.push({ kind: ok ? 'pactYes' : 'pactNo', pid, to: a.to, pact: c }); }
@@ -709,10 +711,22 @@ function monthlyUse(S, pid, res) { return storesOf(S, pid).filter(s => GOODS[s.g
 export const rentOf = (S, d) => DISTRICTS[d].rent * (kindOf(d) === 'plaza' ? (lawOn(S, 'plazaRent') ? 1.25 : 1) * (lawOn(S, 'fair') ? 1.1 : 1) : 1);
 export const prosperK = (S, d) => (S.prosper && S.prosper[d]) || 1;
 function demandOf(S, d, g, noise) { return DISTRICTS[d].demand[g] * 1.25 * prosperK(S, d) * (lawOn(S, 'fair') && kindOf(d) === 'plaza' ? 1.15 : 1) * (lawOn(S, 'wage') ? 1.05 : 1) * weatherMult(S, d, g) * season(S, g, d) * activeMult(S, 'dem', g, d) * activeMult(S, 'dist', d, d) * noise; }
+// ── 陣取り: 地区の支配(縄張り)と、となり合う店の結束
+export const CONTROL_K = 1.15, LINK_K = 0.05, SKILL_K = 1.3, SKILL_CD = 4, SKILL_DISTRICTS = 3;
+export function controlOf(S, d) {
+  const cnt = {}; for (const s of S.shops) if (s.d === d) cnt[s.owner] = (cnt[s.owner] || 0) + 1;
+  const ks = Object.entries(cnt).sort((a, b) => b[1] - a[1]); if (!ks.length || ks[0][1] < 2 || (ks[1] && ks[1][1] === ks[0][1])) return null;
+  return +ks[0][0];
+}
+export const linksOf = (S, s) => (NEIGHBORS[s.lot] || []).filter(l => { const o = shopAt(S, l); return o && o.owner === s.owner && o.id !== s.id; }).length;
+export const districtsOf = (S, pid) => new Set(shopsOf(S, pid).map(s => s.d)).size;
+export const skillReady = (S, pid) => districtsOf(S, pid) >= SKILL_DISTRICTS && (S.players[pid].skillT == null || S.t - S.players[pid].skillT >= SKILL_CD);
+function territoryK(S, s) { let k = 1; if (S.control && S.control[s.d] === s.owner) k *= CONTROL_K; k *= 1 + LINK_K * Math.min(3, linksOf(S, s)); if (S.players[s.owner].skillOn === S.t) k *= SKILL_K; return k; }
+function updateControl(S, fx) { S.control = S.control || {}; for (const d in DISTRICTS) { const c = controlOf(S, d); if (c !== (S.control[d] ?? null)) { fx.push({ kind: 'control', d, pid: c, prev: S.control[d] ?? null }); } S.control[d] = c; } }
 function attraction(S, s, pm) {
   const G = GOODS[s.g], R = routeFx(s);
   const kd = kindOf(s.d), repExp = kd === 'hill' ? 1.7 : 1.2, nob = kd === 'noble' ? 0.55 : 1;
-  return Math.pow(0.35 + s.rep, repExp) * QUALITY[s.qual].k * R.qual * Math.pow(1 / pm, G.elastic * 1.6 * R.elastic * nob) * ADS[s.ads].k * s.boost * streetBonus(S, s) * (1 + 0.15 * (s.home || 0)) * (LOTS[s.lot] && LOTS[s.lot].road ? ROAD_BONUS * (lawOn(S, 'road') ? 1.08 : 1) : 1) * featK(S, s) * crewAtt(s);
+  return territoryK(S, s) * Math.pow(0.35 + s.rep, repExp) * QUALITY[s.qual].k * R.qual * Math.pow(1 / pm, G.elastic * 1.6 * R.elastic * nob) * ADS[s.ads].k * s.boost * streetBonus(S, s) * (1 + 0.15 * (s.home || 0)) * (LOTS[s.lot] && LOTS[s.lot].road ? ROAD_BONUS * (lawOn(S, 'road') ? 1.08 : 1) : 1) * featK(S, s) * crewAtt(s);
 }
 // 目玉商品(レア素材)を並べた店は客寄せが上がる(1個 +8%、最大 +60%)
 function featUnits(S, s) { if (!s.feat || !s.featQty) return 0; const p = S.players[s.owner]; return Math.min(s.featQty, Math.floor(p.inv[s.feat] || 0)); }
@@ -744,6 +758,7 @@ export function step(S, decisions = {}) {
   bookCash(S, bEv, '臨時の税');
   { const b = snapCash(S); for (const f of late) f(); bookCash(S, b, 'その他'); }
   for (const k in ITEMS) { S.mk[k].buyM = S.mk[k].buy; S.mk[k].sellM = S.mk[k].sell; }
+  updateControl(S, fx);
   // 客の取り合い
   const res = {}; S.missed = {};
   for (const d in DISTRICTS) { S.missed[d] = {}; for (const g in GOODS) if (!S.shops.some(s => s.d === d && s.g === g)) S.missed[d][g] = demandOf(S, d, g, 1) * 0.5 + spillOf(S, d, g).add * 0.4; }
@@ -867,7 +882,7 @@ export function step(S, decisions = {}) {
   makeOffers(S);
   for (const c of (S.pactQ || [])) S.players[c.from === c.seller ? c.buyer : c.seller].offers.push({ id: S.nextOffer++, kind: 'pact', pact: c, item: c.item, qty: c.qty, price: c.price, who: S.players[c.from].name });
   S.pactQ = [];
-  pactOffers(S);
+  if (!S.simple) pactOffers(S);
   // 店員: 新人は育ち、気まぐれは月ごとに調子が変わる。求職者が毎月入れかわる
   const trs = Object.keys(TRAITS).filter(k => k !== 'plain');
   for (const sh of S.shops) for (const c of crewOf(S, sh)) { c.months++; const T = TRAITS[c.trait]; if (T.grow) c.skill = Math.min(1.25 / T.cap, (c.skill || 1) + T.grow); c.moodK = T.moody ? 0.7 + rnd(S) * 0.6 : 1; }
@@ -883,7 +898,7 @@ export function step(S, decisions = {}) {
   }
   S.served = {}; for (const sh of S.shops) if (sh.g !== 'work' && sh.last) { (S.served[sh.d] = S.served[sh.d] || {})[sh.g] = (S.served[sh.d][sh.g] || 0) + sh.last.units; }
   // 商会ごとの行動の記録(相手の動きを見るため)
-  S.actlog = (S.actlog || []).concat(fx.filter(f => ['open', 'close', 'card', 'route', 'buyshop', 'buy', 'sell', 'deal', 'hire'].includes(f.kind) && f.pid != null).map(f => { const sh = f.shop != null ? S.shops.find(x => x.id === f.shop) : null; return { t: S.t, pid: f.pid, k: f.kind, card: f.card, res: f.res, qty: f.qty, g: sh ? sh.g : f.g, d: sh ? sh.d : f.d, route: f.k, target: f.target, price: f.price, from: f.from, item: f.offer ? f.offer.item : null }; })).slice(-160);
+  S.actlog = (S.actlog || []).concat(fx.filter(f => ['open', 'close', 'card', 'route', 'buyshop', 'buy', 'sell', 'deal', 'hire', 'skill'].includes(f.kind) && f.pid != null).map(f => { const sh = f.shop != null ? S.shops.find(x => x.id === f.shop) : null; return { t: S.t, pid: f.pid, k: f.kind, card: f.card, res: f.res, qty: f.qty, g: sh ? sh.g : f.g, d: sh ? sh.d : f.d, route: f.k, target: f.target, price: f.price, from: f.from, item: f.offer ? f.offer.item : null }; })).slice(-160);
   S.ledger = fx.filter(f => f.kind === 'buy' || f.kind === 'sell' || f.kind === 'deal' || (f.kind === 'card' && f.card === 'dump') || f.kind === 'open' || f.kind === 'close').map(f => ({ ...f, t: S.t }));
   S.crowns = crownsOf(S);
   if (S.t === S.months - 12) fx.push({ kind: 'grand' });
@@ -907,7 +922,7 @@ export function step(S, decisions = {}) {
     fx.push({ kind: 'law', bill: win, tally });
     S.vote = null;
   }
-  if (S.t % 12 === 5 && S.t < S.months - 3) { const ks = Object.keys(BILLS).filter(k => !lawOn(S, k)); const bills = []; while (bills.length < 3 && ks.length) bills.push(ks.splice(Math.floor(rnd(S) * ks.length), 1)[0]); S.vote = { t: S.t + 1, bills, ballots: {} }; fx.push({ kind: 'voteOpen' }); }
+  if (!S.simple && S.t % 12 === 5 && S.t < S.months - 3) { const ks = Object.keys(BILLS).filter(k => !lawOn(S, k)); const bills = []; while (bills.length < 3 && ks.length) bills.push(ks.splice(Math.floor(rnd(S) * ks.length), 1)[0]); S.vote = { t: S.t + 1, bills, ballots: {} }; fx.push({ kind: 'voteOpen' }); }
   WAGE_ADD = lawOn(S, 'wage') ? 4 : 0;
   // 年末の決算: 店の利益の15%(ギルド税を下げたら10%)。その年の設備投資の半分は差し引ける
   if (S.t % 12 === 11) for (const p of S.players) {
@@ -1469,6 +1484,7 @@ export function aiDecide(S, pid) {
     if (lot && !acts.some(a => a.type === 'open')) acts.push({ type: 'open', lot: lot.id, g: 'work', res: raw, staff: 2 });
   }
   if (p.debt > 0 && cash > 700) acts.push({ type: 'repay', amt: Math.min(p.debt, cash - 600) });
+  if (skillReady(S, pid) && mine.filter(s => s.g !== 'work').length >= 3) acts.push({ type: 'skill' });
   return acts;
 }
 // 店の損益をざっくり見積もる(画面の「🔮」用)

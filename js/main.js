@@ -111,10 +111,11 @@ function dock() {
   const ev = S.evNext && E.evDef(S.evNext.id), p = me(), used = pendCard();
   const n = F.acts.length;
   $('#dock').innerHTML = `
-    <div class="strip">
-      <button class="sc" data-a="weather"><span class="scw">${wx(S.t ? S.w : 'sun').icon}<i>→</i>${wx(me().scout === S.t ? S.wNext : S.wFore).icon}</span></button>
-      ${ev ? `<button class="sc scev" data-a="event"><span class="ei">${ev.icon}</span><span class="sct">${esc(ev.name)}</span></button>` : ''}
-      <button class="sc scbag" data-a="bag">${(() => { const its = Object.keys(E.ITEMS).filter(k => freeStock(k) >= 1).sort((a, b) => freeStock(b) * S.market[b].price - freeStock(a) * S.market[a].price).slice(0, 3); return its.length ? its.map(k => `<span class="bbi">${ico(k)}<b>${fmt(freeStock(k))}</b></span>`).join('') : '<span class="sct">持ち物なし</span>'; })()}</button>
+    <div class="strip ${F.stripOpen ? '' : 'fold'}">
+      <button class="sc scfold" data-a="striptog">${F.stripOpen ? '◀ とじる' : `${wx(S.t ? S.w : 'sun').icon}<span>天気・持ち物</span><i>▶</i>`}</button>
+      <button class="sc sco" data-a="weather"><span class="scw">${wx(S.t ? S.w : 'sun').icon}<i>→</i>${wx(me().scout === S.t ? S.wNext : S.wFore).icon}</span></button>
+      ${ev ? `<button class="sc scev sco" data-a="event"><span class="ei">${ev.icon}</span><span class="sct">${esc(ev.name)}</span></button>` : ''}
+      <button class="sc scbag sco" data-a="bag">${(() => { const its = Object.keys(E.ITEMS).filter(k => freeStock(k) >= 1).sort((a, b) => freeStock(b) * S.market[b].price - freeStock(a) * S.market[a].price).slice(0, 3); return its.length ? its.map(k => `<span class="bbi">${ico(k)}<b>${fmt(freeStock(k))}</b></span>`).join('') : '<span class="sct">持ち物なし</span>'; })()}</button>
       <button class="sc scplan ${F.acts.length ? 'has' : ''}" data-a="plans"><b>${F.acts.length}</b><span>予定</span></button>
       ${(() => { const w = (F.alerts && F.alerts.length ? F.alerts.length : 0) + (freeCash() < nextFixed() ? 1 : 0); return w ? `<button class="sc scwarn" data-a="alerts">⚠️<b>${w}</b></button>` : ''; })()}
       ${S.t >= S.months - 18 ? `<button class="sc" data-a="grand">🏰<b>${E.finalYear(S) ? S.months - S.t : S.months - 12 - S.t}</b></button>` : ''}
@@ -124,7 +125,7 @@ function dock() {
       <button class="abtn build" data-a="build"><span class="ai">🔨</span>建てる</button>
       <button class="abtn" data-a="market"><span class="ai">🛒</span>市場${(p.offers || []).length ? `<span class="badge">${p.offers.length}</span>` : ''}</button>
       <button class="abtn" data-a="books"><span class="ai">📒</span>帳簿</button>
-      <button class="abtn" data-a="townhall"><span class="ai">🏛️</span>町${(S.vote && S.vote.t === S.t && S.vote.ballots[ME] == null) || (S.quests || []).some(q => q.taker == null && !q.done) ? '<span class="badge">!</span>' : ''}</button>
+      <button class="abtn skillb ${E.skillReady(S, ME) ? 'ready' : ''} ${F.acts.some(a => a.type === 'skill') ? 'on' : ''}" data-a="skill"><span class="ai">📣</span>${F.acts.some(a => a.type === 'skill') ? '大宣伝 ✓' : '大宣伝'}<small>${F.acts.some(a => a.type === 'skill') ? '今月 客+30%' : E.skillReady(S, ME) ? '使える!' : E.districtsOf(S, ME) < E.SKILL_DISTRICTS ? `${E.districtsOf(S, ME)}/${E.SKILL_DISTRICTS}地区` : `あと${E.SKILL_CD - (S.t - me().skillT)}か月`}</small></button>
       <button class="abtn go" data-a="next">次の月へ${n ? `<small>決めたこと ${n}</small>` : ''}</button>
     </div>`;
 }
@@ -144,12 +145,20 @@ function applyHint() {
   const el = h === 'build' ? $('#dock [data-a=build]') : h === 'next' ? $('#dock [data-a=next]') : h === 'market' ? $('#dock [data-a=market]') : h === 'card' ? $('#handcol') : h === 'alerts' ? $('#dock [data-a=alerts]') : h === 'rivals' ? $('#rivals') : null;
   if (el) el.classList.add('hint');
 }
+function viewBtn() {
+  let el = $('#viewbtn'); const show = S && !S.over && !F.build && !$('.title');
+  if (!show) { if (el) el.remove(); document.body.classList.remove('clean'); return; }
+  if (!el) { el = document.createElement('button'); el.id = 'viewbtn'; el.dataset.a = 'viewtog'; document.body.appendChild(el); }
+  el.innerHTML = document.body.classList.contains('clean') ? '<b>◉</b>戻す' : '<b>◎</b>街を見る';
+  requestAnimationFrame(() => { const dk = $('#dock'), f = dk && dk.firstElementChild; if (f) el.style.bottom = Math.max(80, innerHeight - f.getBoundingClientRect().top + 8) + 'px'; });
+}
 function handCol() {
   let el = $('#handcol'); const p = S && me();
   if (!S || S.over || F.build || $('.title') || !p) { if (el) el.remove(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'handcol'; document.body.appendChild(el); }
   const used = pendCard();
-  const h = `<div class="hcl">カード<small>月1枚</small></div>` + p.hand.map((c, i) => { const cd = E.cardDef(c); const isUsed = used && used.card === c && used.idx === i; const ct = CARD_TYPE[cd.base] || ['shop', 'お店'];
+  if (!F.handOpen) { const h0 = `<button class="hcfold ${used ? 'used' : ''}" data-a="handtog"><span class="hcst">${p.hand.slice(0, 3).map((c, i) => ico(CARD_ICON[E.cardDef(c).base] || 'ui_books', 'st' + i)).join('')}</span><b>カード</b><small>${used ? '使う予定あり' : `${p.hand.length}枚`}</small></button>`; if (el.dataset.h !== h0) { el.dataset.h = h0; el.innerHTML = h0; } requestAnimationFrame(placeHand); return; }
+  const h = `<button class="hcl" data-a="handtog">カード ✕<small>月1枚</small></button>` + p.hand.map((c, i) => { const cd = E.cardDef(c); const isUsed = used && used.card === c && used.idx === i; const ct = CARD_TYPE[cd.base] || ['shop', 'お店'];
     return `<button class="hc ct-${ct[0]} ${isUsed ? 'sel' : used ? 'used' : ''}" data-a="card" data-i="${i}">${ico(CARD_ICON[cd.base] || 'ui_books')}<b>${cd.name}</b><small>${cd.cost ? fmt(cd.cost) + 'G' : '無料'}</small>${isUsed ? '<span class="hcu">使う</span>' : ''}</button>`; }).join('');
   if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; }
   requestAnimationFrame(placeHand);
@@ -164,7 +173,7 @@ function placeHand() {
   el.style.top = Math.max(topLim, botLim - h) + 'px';
 }
 addEventListener('resize', () => placeHand());
-function render() { hud(); $('#hud').innerHTML = pix($('#hud').innerHTML); cashRoll(); dock(); $('#dock').innerHTML = pix($('#dock').innerHTML); rivalsBar(); handCol(); ticker(); applyHint(); if (F.mp) netBadge(); board.setPeddler(!!(S.peddler && S.peddler.left > 0)); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
+function render() { hud(); $('#hud').innerHTML = pix($('#hud').innerHTML); cashRoll(); dock(); $('#dock').innerHTML = pix($('#dock').innerHTML); rivalsBar(); handCol(); ticker(); applyHint(); try { board.setTerritory(S, (pid) => Number('0x' + E.COLOR_HEX[S.players[pid].color].slice(1))); } catch (e) { } viewBtn(); if (F.mp) netBadge(); board.setPeddler(!!(S.peddler && S.peddler.left > 0)); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
 // 場面に合わせて曲を選ぶ: 大祭の年・雨・町ごとの曲を数か月ごとに入れ替え
 const STAGE_BGM = { rose: ['asa', 'kenso'], marina: ['minato', 'asa'], snow: ['yuki', 'kenso'], capital: ['kenso', 'asa'] };
 function pickBgm() {
@@ -430,7 +439,7 @@ function rivalSheet(s) {
 SHEETS.market = () => {
   const p = me(), tab = F.mtab || 'raw';
   const offers = p.offers || [];
-  const tabs = `<div class="seg tabs6" style="margin-bottom:10px">${[['raw', '🌾 原料'], ['proc', '🏭 加工'], ['rare', '💎 レア'], ['ledger', '📜 帳'], ['pact', `📝 契約${(S.pacts || []).some(c => c.left > 0 && (c.seller === ME || c.buyer === ME)) ? ' <span class="badge g">●</span>' : ''}`], ['deal', `🤝 申し出${offers.length ? ` <span class="badge">${offers.length}</span>` : ''}`]].map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" data-a="mtab" data-v="${k}">${n}</button>`).join('')}</div>`;
+  const tabs = `<div class="seg tabs6" style="margin-bottom:10px">${[['raw', '🌾 原料'], ['proc', '🏭 加工'], ['rare', '💎 レア'], ['deal', `🤝 申し出・依頼${offers.length + (S.quests || []).filter(q => !q.done && (q.taker == null || q.taker === ME)).length ? ` <span class="badge">${offers.length + (S.quests || []).filter(q => !q.done && (q.taker == null || q.taker === ME)).length}</span>` : ''}`]].map(([k, n]) => `<button class="${tab === k ? 'on' : ''}" data-a="mtab" data-v="${k}">${n}</button>`).join('')}</div>`;
   const pendQ = (k) => F.acts.filter(a => (a.type === 'buy' || a.type === 'sell') && a.res === k).reduce((a, x) => a + (x.type === 'buy' ? x.qty : -x.qty), 0);
   // 1品ずつのカード。タップで開いて、数を決めて売り買いする
   const row = (k) => {
@@ -491,6 +500,8 @@ SHEETS.market = () => {
     body = `<div class="box"><div class="lbl">先月のライバルの売り買い</div>${lines.length ? lines.map(x => `<div class="news">${x}</div>`).join('') : '<div class="t3">目立った動きはない</div>'}</div><div class="box"><div class="lbl">ライバルの倉(うわさ)</div>${stock}</div><div class="t3">誰かが原料を買い込んでいたら、来月はその原料が値上がりしやすい。倉にたくさんある相手は、売りに出して値を崩すかも。</div>`;
   }
   if (tab === 'pact') body = pactTab();
+  const qsx = (S.quests || []).filter(q => !q.done && (q.taker == null || q.taker === ME)), mineQx = qsx.find(q => q.taker === ME);
+  const questHtml = tab === 'deal' && qsx.length ? `<div class="lbl">📋 町の依頼(集めて納めると報酬)</div>${qsx.map(q => questCard(q, mineQx)).join('')}<div class="lbl" style="margin-top:8px">🤝 商人の申し出</div>` : '';
   if (tab === 'deal') body = offers.length ? `<div class="offers">${offers.map(o => { if (o.kind === 'pact') return pactOfferRow(o); if (o.kind === 'shopbid') return shopBidRow(o);
       const r = E.ITEMS[o.item], m = S.market[o.item].price, on = F.acts.some(a => a.type === 'deal' && a.id === o.id), k = o.price / m, buyMe = o.kind === 'sell';   // 相手が売る = あなたが買う
       const total = Math.round(o.qty * o.price), good = buyMe ? k < 1 : k > 1, pct = Math.round(Math.abs(1 - k) * 100);
@@ -506,7 +517,7 @@ SHEETS.market = () => {
         ${!buyMe ? `<div class="ostock ${ok || on ? '' : 'ng'}">${ico(o.item)} あなたの${r.name}: 持っている <b>${fmt(p.inv[o.item] || 0)}個</b> · 渡せる <b>${fmt(Math.max(0, avail))}個</b>${ok || on ? '' : `<br>あと <b>${fmt(o.qty - Math.max(0, avail))}個</b> 足りない(市場で買えば渡せる)`}</div>` : ''}
         <button class="btn wide ${on ? 'warm' : buyMe ? 'pri' : 'warm'}" data-a="deal" data-v="${o.id}" ${ok || on ? '' : 'disabled'}>${on ? '✓ 月末に取引する(もう一度押すとやめる)' : buyMe ? `買う  −${fmt(total)}G` : `売る  +${fmt(total)}G`}</button>
       </div>`; }).join('')}</div><div class="t3">申し出は今月だけ。取引は月末に行われる。</div>` : '<div class="box t2">今月は申し出がない。</div>';
-  return head('🛒', '市場', '品物をタップして売り買い') + tabs + body + `<div class="t3" style="margin-top:8px">値段は町の倉の在庫で決まる。在庫が減ると値上がり、増えると値下がり。在庫は生産(季節・天気・出来事)で増え、町の人の消費とみんなの店の仕入れで減る。</div>`;
+  return head('🛒', '市場', '品物をタップして売り買い') + tabs + questHtml + body + `<div class="t3" style="margin-top:8px">値段は町の倉の在庫で決まる。在庫が減ると値上がり、増えると値下がり。在庫は生産(季節・天気・出来事)で増え、町の人の消費とみんなの店の仕入れで減る。</div>`;
 };
 // ── オンライン対戦
 const MPNAME = 'capital-mp-name', MPSAVE = 'capital-mp-v1';
@@ -785,6 +796,7 @@ SHEETS.books = () => {
     <div class="box"><div class="kv"><span class="k">現金</span><span class="num">${fmt(p.cash)}G</span></div><div class="kv"><span class="k">資源の在庫</span><span class="num">${fmt(E.resValue(S, p))}G</span></div><div class="kv"><span class="k">店の価値</span><span class="num">${fmt(mine.reduce((a, s) => a + E.shopValue(S, s), 0))}G</span></div><div class="kv"><span class="k">借金</span><span class="num ${p.debt > 0 ? 'down' : ''}">${fmt(p.debt)}G</span></div></div>
     <button class="btn wide" data-a="manager" style="margin-bottom:10px">🤵 店長と仕入れ係に任せる</button>
     ${missionBox()}
+    <div class="debtx"><b>借金のしくみ</b><ol><li>月末に現金がマイナスになると、銀行が<b>100G単位で自動で貸す</b>(手数料1割: 100G借りると借金は110G)</li><li>借金には毎月 <b>${(E.LOAN_RATE * 100).toFixed(1)}%</b> の利息がかかる</li><li>余ったお金で、ここからいつでも返せる。総資産からは借金が引かれる</li></ol><small>借りないコツ: 来月の支払い(家賃・お給料)ぶんの現金を残しておく</small></div>
     ${p.debt > 0 ? `<button class="btn wide" data-a="repay" ${freeCash() >= Math.min(p.debt, 100) ? '' : 'disabled'}>借金を返す(${fmt(Math.min(p.debt, Math.max(0, Math.floor(freeCash() / 100) * 100)))}G)</button>` : ''}`;
 };
 // カード
@@ -993,6 +1005,11 @@ function advice() {
   if (S.peddler && S.peddler.left > 0) out.push({ pr: 6, ic: 'ui_crate', t: '行商人が来ている', why: `今月だけ ${S.peddler.items.map(k => E.ITEMS[k].name).join('・')} を売り買いできる`, a: 'peddler' });
   if (mine.length && mine.length + pendOpenN < E.MAX_SHOPS && freeCash() > 650 + fixed) out.push({ pr: 4, ic: 'ui_build', t: 'もう1店 建てられる', why: `現金に余裕がある(${fmt(freeCash())}G)。別の業種を並べると商店街ボーナス`, a: 'build' });
   if (!F.acts.some(a => a.type === 'card') && p.hand.length) { const i = p.hand.findIndex(c => (E.cardDef(c).cost || 0) <= Math.max(0, freeCash() - fixed)); if (i >= 0 && mine.length) out.push({ pr: 3, ic: CARD_ICON[E.cardDef(p.hand[i]).base] || 'ui_books', t: `カード「${E.cardDef(p.hand[i]).name}」を使える`, why: esc(E.cardDef(p.hand[i]).text), a: 'card', i }); }
+  if (E.skillReady(S, ME) && !F.acts.some(a => a.type === 'skill')) out.push({ pr: 7, ic: 'c_shout', t: '大宣伝が使える!', why: '今月だけ、あなたの店ぜんぶのお客が+30%。下の「大宣伝」を押そう', a: 'skill' });
+  { const pend = F.acts.filter(a => a.type === 'open').map(a => E.LOTS.find(l => l.id === a.lot)).filter(Boolean);
+    for (const k of Object.keys(E.DISTRICTS)) { if (S.control && S.control[k] === ME) continue; const cnt = {}; for (const s of S.shops) if (s.d === k) cnt[s.owner] = (cnt[s.owner] || 0) + 1; const my = (cnt[ME] || 0) + pend.filter(l => l.d === k).length, top = Math.max(0, ...Object.entries(cnt).filter(([o]) => +o !== ME).map(([, n]) => n));
+      if (my >= 1 && my + 1 > top && mine.length + pendOpenN < E.MAX_SHOPS) { out.push({ pr: 6, ic: 'ui_build', t: `${E.DISTRICTS[k].short}をあと1店で支配できる`, why: '支配した地区はお客+15%。となり同士に建てるとさらに+5%ずつ', a: 'build' }); break; } } }
+  { const nd = E.districtsOf(S, ME); if (nd > 0 && nd < E.SKILL_DISTRICTS && mine.length + pendOpenN < E.MAX_SHOPS) out.push({ pr: 3, ic: 'c_shout', t: `あと${E.SKILL_DISTRICTS - nd}地区で大宣伝が解禁`, why: 'はなれた地区にも店を出すと、店ぜんぶのお客+30%の大宣伝が使える', a: 'build' }); }
   out.push({ pr: 0, ic: 'w_sun', t: '準備ができたら次の月へ', why: '決めたことは月末にいっせいに動く', a: 'next' });
   return out.sort((a, b) => b.pr - a.pr);
 }
@@ -1001,7 +1018,7 @@ function advisorTick() {
   const hide = !S || S.over || !st.all || $('.title') || $('#vs') || $('#tut') || F.sheet || F.busy || F.build;
   if (hide) { if (el) el.style.display = 'none'; return; }
   if (!el) { el = document.createElement('div'); el.id = 'advisor'; document.body.appendChild(el); }
-  const a = advice()[0], h = `<button class="adv ${a.tone || ''}" data-a="advgo" data-k="0"><span class="advh">番頭</span><span class="advface">${ico('o_mage')}</span><span class="advt"><b>${a.t}</b><small>${a.why}</small></span>${ico(a.ic, 'advic')}<span class="advm" data-a="advall">ほか ›</span></button>`;
+  const a = advice()[0], h = `<button class="adv mini ${a.tone || ''}" data-a="advall"><span class="advface">${ico('o_mage')}</span><span class="advt"><b>${a.t}</b></span><span class="advgo">›</span></button>`;
   if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; }
   el.style.display = '';
 }
@@ -1014,6 +1031,7 @@ function advDo(a) {
   if (a.a === 'peddler') { F.mtab = 'rare'; return openSheet('market'); }
   if (a.a === 'card') return H.card({ i: a.i });
   if (a.a === 'next') { closeSheet(); return H.next(); }
+  if (a.a === 'skill') { closeSheet(); return H.skill(); }
 }
 // ── 借金の注意: 使ったあと来月の支払いが足りなくなりそうなら、確認画面を出す
 function debtRisk(cost, extra = 0) { const left = freeCash() - cost, need = nextFixed() + extra; return left < need ? { left, need, short: Math.round(need - left) } : null; }
@@ -1030,6 +1048,21 @@ const guarded = (cost, what, d, fn, extra = 0) => { if (d && d._ok) return false
 // 来月かかるお金(家賃・お給料・宣伝・借金の利息。予定の新しい店も含む)
 function nextFixed() { const base = E.fixedCosts(S, ME); const opens = F.acts.filter(a => a.type === 'open').reduce((a, x) => a + E.DISTRICTS[E.LOTS[x.lot].d].rent + E.WAGE * (x.staff || 2), 0); return base + opens; }
 function buildEnd() { document.body.classList.remove('placing'); F.build = null; board.clearRatings(); board.highlightLot(-1); render(); }
+// 建てる前に: 陣取りがどう変わるか
+function terrFacts(lot) {
+  const L = E.LOTS[lot], pend = F.acts.filter(a => a.type === 'open').map(a => E.LOTS[a.lot]).filter(Boolean), cnt = {};
+  for (const s of S.shops) if (s.d === L.d) cnt[s.owner] = (cnt[s.owner] || 0) + 1;
+  const my = (cnt[ME] || 0) + pend.filter(l => l.d === L.d).length + 1, top = Math.max(0, ...Object.entries(cnt).filter(([o]) => +o !== ME).map(([, n]) => n));
+  const links = E.NEIGHBORS[lot].filter(l => { const o = E.shopAt(S, l); return o && o.owner === ME; }).length;
+  const ds = new Set(E.shopsOf(S, ME).map(s => s.d).concat(pend.map(l => l.d))), newD = !ds.has(L.d), nd = ds.size + (newD ? 1 : 0);
+  let h = '';
+  if (S.control && S.control[L.d] === ME) h += '<div class="up">🚩 あなたの縄張り 客+15%</div>';
+  else if (my >= 2 && my > top) h += '<div class="up tf">🚩 この地区を<b>支配</b>できる! 客+15%</div>';
+  else h += `<div>🚩 支配まで あと<b>${Math.max(2, top + 1) - my + 1}店</b></div>`;
+  if (links) h += `<div class="up">🔗 自分の店ととなり ${links}つ 客+${Math.min(3, links) * 5}%</div>`;
+  if (newD) h += `<div class="${nd >= E.SKILL_DISTRICTS ? 'up tf' : ''}">📣 新しい地区 ${Math.min(nd, E.SKILL_DISTRICTS)}/${E.SKILL_DISTRICTS}${nd >= E.SKILL_DISTRICTS ? ' 大宣伝が解禁!' : ''}</div>`;
+  return h;
+}
 function buildTray() {
   const B = F.build, step = B.step;
   if (step === 'type' || step === 'res') {
@@ -1054,7 +1087,7 @@ function buildTray() {
     const nb = E.NEIGHBORS[B.lot].map(l => E.shopAt(S, l)).filter(Boolean), street = nb.some(o => o.owner === ME && o.g !== B.g), steal = nb.some(o => o.owner !== ME && o.g === B.g);
     return `<div class="btray"><div class="bth"><b>${G.icon} ${G.name} @ ${D.name}</b><button class="bx" data-a="buildcancel">✕</button></div>
       <div class="bconf"><div class="bstat" style="--c:#${R.c.toString(16).padStart(6, '0')}"><span>${R.m}</span><b>${e.profit >= 0 ? '+' : ''}${fmt(e.profit)}G</b><small>月の利益の見込み</small></div>
-      <div class="bfacts"><div>🏷️ 建てるお金 <b>${fmt(e.cost)}G</b></div><div>🏠 家賃 <b>${D.rent}G</b>/月</div>${B.g !== 'work' ? `<div>⚔️ 同じ業種のライバル <b>${comp}店</b></div>` : ''}${L.road ? '<div>🛣️ 大通り沿い 客+12%</div>' : ''}${street ? '<div class="up">🏘️ 商店街ボーナス</div>' : ''}${steal ? '<div class="up">🥊 隣のライバルから客を奪える(安くすれば)</div>' : ''}</div></div>
+      <div class="bfacts"><div>🏷️ 建てるお金 <b>${fmt(e.cost)}G</b></div><div>🏠 家賃 <b>${D.rent}G</b>/月</div>${B.g !== 'work' ? `<div>⚔️ 同じ業種のライバル <b>${comp}店</b></div>` : ''}${L.road ? '<div>🛣️ 大通り沿い 客+12%</div>' : ''}${street ? '<div class="up">🏘️ 商店街ボーナス</div>' : ''}${steal ? '<div class="up">🥊 隣のライバルから客を奪える(安くすれば)</div>' : ''}${terrFacts(B.lot)}</div></div>
       <div class="bleft ${risky ? 'risk' : ''}"><span>建てたあとの現金</span><b>${fmt(left)}G</b><small>毎月の家賃とお給料(この店も入れて) 約 <b>${fmt(monthly)}G</b></small>${risky ? `<div>⚠️ 来月の支払いが足りず、<b>借金</b>になるかも(銀行が1割の手数料つきで貸す)</div>` : ''}</div>
       <button class="btn ${risky ? 'danger' : 'warm'} wide bgo" data-a="buildgo" ${ok ? '' : 'disabled'}>${!ok ? 'お金が足りない' : risky ? `⚠️ それでも建てる  −${fmt(e.cost)}G` : `🔨 ここに建てる!  −${fmt(e.cost)}G`}</button>
       <div class="row" style="gap:8px;margin-top:6px"><button class="btn sm" style="flex:1" data-a="buildother">📍 別の場所</button><button class="btn sm" style="flex:1" data-a="builddetail">🔎 くわしく</button></div></div>`;
@@ -1151,6 +1184,35 @@ async function rivalTour(fx) {
   document.removeEventListener('pointerdown', sk);
   board.home(); await wait(400);
 }
+// ── 陣取り: 大宣伝(スキル)と縄張りの変化を見せる
+const colN = (pid) => Number('0x' + E.COLOR_HEX[S.players[pid].color].slice(1));
+async function skillTour(fx) {
+  for (const f of fx.filter(f => f.kind === 'skill')) {
+    const shops = E.shopsOf(S, f.pid); if (!shops.length) continue;
+    board.home(); await wait(250);
+    FX.flash(f.pid === ME ? 'rgba(255,200,60,.35)' : 'rgba(255,255,255,.22)'); sfx('horn'); haptic(30);
+    shops.forEach((s, i) => setTimeout(() => { board.pillar(s.lot, colN(f.pid)); board.burst(s.lot, 0xffd36e, 22); }, i * 140));
+    await cutIn(f.pid, f.pid === ME ? '大宣伝だ! 町じゅうに名を広めろ!' : '大宣伝の始まりだよ!', `今月は${f.pid === ME ? 'あなた' : esc(S.players[f.pid].name)}の店ぜんぶで お客 <b>+30%</b>`, { ms: 1700 });
+  }
+}
+async function territoryTour(fx) {
+  const ev = fx.filter(f => f.kind === 'control'); if (!ev.length) return;
+  ev.sort((a, b) => ((b.pid === ME || b.prev === ME) ? 1 : 0) - ((a.pid === ME || a.prev === ME) ? 1 : 0));
+  for (const e of ev.slice(0, 3)) {
+    const D = E.DISTRICTS[e.d], sh = S.shops.find(s => s.d === e.d && (e.pid != null ? s.owner === e.pid : true));
+    if (sh) { board.focus(sh.lot); await wait(550); }
+    if (e.pid != null) E.shopsOf(S, e.pid).filter(s => s.d === e.d).forEach((s, i) => setTimeout(() => board.pillar(s.lot, colN(e.pid)), i * 160));
+    if (e.pid === ME) { FX.stamp(`${D.short} 支配!`, '#f5a524'); confetti(); sfx('rankup'); await cutIn(ME, `${D.name}は わたしの縄張りだ!`, `この地区のあなたの店は お客 <b>+15%</b>`, { ms: 1700 }); }
+    else if (e.prev === ME) { FX.flash('rgba(255,77,94,.3)'); FX.shake(); await cutIn(e.pid != null ? e.pid : ME, e.pid != null ? `${D.name}は いただいた!` : `${D.name}の縄張りが なくなった…`, e.pid != null ? 'あなたの縄張りを奪われた。店を増やして取り返そう' : '同じ数の店を持つ相手が出てきた', { bad: true, ms: 1700 }); }
+    else if (e.pid != null) await cutIn(e.pid, `${D.name}は わたしの縄張りだ`, `${esc(S.players[e.pid].name)}の店が ${D.short}で お客 +15%`, { ms: 1300 });
+  }
+  board.home(); await wait(300);
+}
+function skillShow() {
+  const shops = E.shopsOf(S, ME); FX.stamp('大宣伝!', '#f5a524'); sfx('horn'); haptic(25); confetti();
+  shops.forEach((s, i) => setTimeout(() => { board.burst(s.lot, 0xffd36e, 18); board.bounceLot(s.lot); }, i * 120));
+  toast('📣 大宣伝を予約した: 今月、あなたの店ぜんぶのお客が+30%');
+}
 // ── 始まりの演出: 顔ぶれの紹介(VS) → GAME START!
 function showVS(onDone) {
   const st = E.STAGES[S.stage], L = E.AI_LEVEL[S.level] || {};
@@ -1184,10 +1246,10 @@ const QUESTS = [
   { id: 'open', t: '<b>🔨建てる</b>を押すか地図の<b>＋</b>をタップして、店を建てよう', ok: () => E.shopsOf(S, ME).length > 0 || F.acts.some(a => a.type === 'open') },
   { id: 'next', t: '準備ができたら<b>「次の月へ」</b>を押そう', ok: () => S.t >= 1 },
   { id: 'set', t: '自分の店をタップして、<b>値段か店員</b>を変えてみよう', ok: () => F.acts.some(a => a.type === 'set') || qDone('set') },
-  { id: 'card', t: '下の<b>カード</b>を1枚使ってみよう', ok: () => F.acts.some(a => a.type === 'card') || qDone('card') },
+  { id: 'card', t: '左の<b>カード</b>を開いて、1枚使ってみよう', ok: () => F.acts.some(a => a.type === 'card') || qDone('card') },
   { id: 'market', t: '<b>🛒市場</b>で材料の値段を見てみよう', ok: () => F.sheet === 'market' || qDone('market') },
   { id: 'rank', t: '上の<b>ライバルの顔</b>をタップして順位を見よう', ok: () => F.sheet === 'ranking' || qDone('rank') },
-  { id: 'two', t: '<b>2つ目の店</b>を開いて、稼ぎを増やそう', ok: () => E.shopsOf(S, ME).length + F.acts.filter(a => a.type === 'open').length >= 2 },
+  { id: 'two', t: '同じ地区に<b>2つ目の店</b>を建てて、<b>縄張り</b>にしよう(客+15%)', ok: () => E.shopsOf(S, ME).length + F.acts.filter(a => a.type === 'open').length >= 2 },
 ];
 const qState = () => { try { return JSON.parse(localStorage.getItem(QKEY) || '{}'); } catch (e) { return {}; } };
 const qDone = (id) => !!qState()[id];
@@ -1212,8 +1274,7 @@ const TUT = [
   { hero: '⚔️', bg: ['#ff9aa8', '#e8436a'], tag: 'バトル', title: 'ライバルとお客を奪い合う', body: '同じ地区・同じ業種の店どうしで取り合い。', vis: () => `<div class="tv-row"><span class="tv-pill r">真横に安い店 → 客を奪う</span><span class="tv-pill g">別業種を並べる → 商店街ボーナス</span></div>` },
   { hero: '🃏', bg: ['#c9a2ff', '#7c4dff'], tag: 'カード', title: '毎月3枚、1枚だけ使える', body: '呼び込み・値引き・職人・攻撃…ここぞで使おう。', vis: () => `<div class="tv-cards">${[['📣', '呼び込み'], ['🥊', '客引き合戦'], ['🏦', '融資']].map(([i, n], k) => `<span style="--r:${(k - 1) * 9}deg">${i}<small>${n}</small></span>`).join('')}</div>` },
   { hero: '🛒', bg: ['#ffd36e', '#f2a51a'], tag: '市場', title: '材料は安いときに買いだめ', body: '値段は町の倉の在庫で決まる。みんなが買うと値上がり。', vis: () => `<div class="tv-bars">${[60, 45, 35, 50, 72, 90].map((h, i) => `<b style="--h:${h}%;animation-delay:${i * 0.08}s"></b>`).join('')}</div><div class="tv-note">収穫の後は安い・不作の年は高い</div>` },
-  { hero: '🔮', bg: ['#7ad7e8', '#2a9bc4'], tag: '予報', title: '来月を読んで先回り', body: '天気と出来事の予報を見て、人手や仕入れを先に合わせる。', vis: () => `<div class="tv-row">${['☀️ 晴れ', '🌧️ 雨', '⛵ 商船', '🎪 祭り'].map(x => `<span class="tv-pill">${x}</span>`).join('')}</div>` },
-  { hero: '🤝', bg: ['#a5e37a', '#5aa82e'], tag: 'もっと稼ぐ', title: '契約・町の依頼・店の買い取り', body: 'ライバルと毎月の取引を結んだり、町の依頼を受けたり、店を買い取ったり。', vis: () => `<div class="tv-row"><span class="tv-pill">📝 契約</span><span class="tv-pill">🏛️ 依頼・投票</span><span class="tv-pill">🏪 買い取り</span></div>` },
+  { hero: '🚩', bg: ['#a5e37a', '#5aa82e'], tag: '陣取り', title: '地区を支配して縄張りに', body: 'ひとつの地区で<b>いちばん多く(2店以上)</b>店を持つと、その地区はあなたの縄張り。旗が立ち、お客が増える。', vis: () => `<div class="tv-row"><span class="tv-pill g">🚩 支配 客+15%</span><span class="tv-pill g">🔗 となり同士 客+5%ずつ</span><span class="tv-pill">📣 3地区に店 → 大宣伝 客+30%</span></div>` },
   { hero: '🏰', bg: ['#ffb3d9', '#e05aa8'], tag: '最後の年', title: '王都の大祭で一発逆転', body: '最後の月にボーナスが入る。', vis: () => `<div class="tv-bonus"><div>👑<b>地区の覇者</b><small>その地区で一番お客を集めた</small><em>+${E.CROWN_BONUS}G</em></div><div>🤫<b>秘密の目標</b><small>あなただけのお題を達成</small><em>+${E.MISSION_BONUS}G</em></div></div>` },
   { hero: '⏭️', bg: ['#ffb84d', '#ff7a59'], tag: 'さあ!', title: '決めたら「次の月へ」', body: 'みんなの決断が<b>同時に</b>動く。結果を見て、次の作戦を立てよう!', vis: () => `<div class="tv-go">次の月へ</div>` },
 ];
@@ -1531,6 +1592,13 @@ const H = {
   },
   moveopen: (d) => { const lot = +d.v, a = F.acts.find(x => x.type === 'open' && x.lot === lot); if (!a) return; F.acts = F.acts.filter(x => x !== a); board.preview(lot, null); save(); closeSheet(); F.build = { step: 'type', lot: null }; buildPick(a.g, a.res); toast('新しい場所をタップ'); },
   bag: () => openSheet('bag'),
+  striptog: () => { F.stripOpen = !F.stripOpen; sfx('toggle'); render(); },
+  handtog: () => { F.handOpen = !F.handOpen; sfx('card'); handCol(); },
+  viewtog: () => { document.body.classList.toggle('clean'); sfx('toggle'); viewBtn(); if (document.body.classList.contains('clean')) board.home(); },
+  skill: (d) => {
+    if (F.acts.some(a => a.type === 'skill')) { F.acts = F.acts.filter(a => a.type !== 'skill'); sfx('close'); save(); render(); return; }
+    if (!E.skillReady(S, ME)) { const n = E.districtsOf(S, ME); return toast(n < E.SKILL_DISTRICTS ? `大宣伝は ${E.SKILL_DISTRICTS}つの地区に店があると使える(いま${n}地区)` : `大宣伝はあと${E.SKILL_CD - (S.t - me().skillT)}か月休み`); }
+    F.acts.push({ type: 'skill' }); save(); render(); skillShow(); },
   plans: () => openSheet('plans'),
   plancancel: (d) => { const a = F.acts[+d.v]; if (!a) return; F.acts.splice(+d.v, 1); if (a.type === 'open') board.preview(a.lot, null); sfx('close'); save(); render(); },
   rivalp: (d) => { const pid = +d.pid; if (pid === ME) return openSheet('ranking'); openSheet('rivalp', { pid }); },
@@ -1697,11 +1765,13 @@ async function nextMonth() {
   const sales = fx.filter(f => f.kind === 'sales' || f.kind === 'made');
   board.home();
   await wait(500);
+  await skillTour(fx);
   board.playMonth(S, sales); monthFx(fx);
   await wait(1500);
   salesFx(sales);
   for (const f of sales) { const pos = board.screenOf(f.shop); if (pos) { popAt(pos, f.profit, S.players[f.pid].color); if (f.pid === ME && f.profit > 0) setTimeout(() => coinFly(pos, cashPos(), Math.min(8, 2 + Math.round(f.profit / 40))), 500); } }
   await wait(900);
+  await territoryTour(fx);
   await rivalTour(fx);
   const myUp = sales.filter(f => f.pid === ME && f.profit > 0).length; if (myUp) sfx('coins', Math.min(8, 2 + myUp * 2));
   await wait(1100);
@@ -1849,7 +1919,7 @@ function newsOf(fx, pre) {
   for (const f of fx) {
     if (f.kind === 'law') out.unshift(`🗳️ ギルドの投票で「${E.BILLS[f.bill].name}」に決まった(${Object.entries(f.tally).map(([b, n]) => E.BILLS[b].icon + n + '票').join(' ')})`);
     if (f.kind === 'voteOpen') out.unshift('🗳️ 来月、商人ギルドの投票がある。🏛️町役場で議題を見よう');
-    if (f.kind === 'questNew') out.push('📜 町に新しい依頼が出た(🏛️町役場)');
+    if (f.kind === 'questNew') out.push('📜 町に新しい依頼が出た(市場の「申し出・依頼」)');
     if (f.pid !== ME) continue;
     if (f.kind === 'yearTax') out.unshift(`🧾 年末の決算: 利益 ${fmt(f.profit)}G − 設備投資の半分 ${fmt(f.capex / 2)}G に税 ${Math.round(f.rate * 100)}% → <b>${fmt(f.tax)}G</b> 払った`);
     if (f.kind === 'questDone') out.unshift(`📜 依頼をやりとげた! 褒美 ${fmt(f.bonus)}G`);
@@ -1904,7 +1974,7 @@ function updateLabels() {
   for (const el of document.querySelectorAll('.dlabel')) {
     const k = el.dataset.d, D = E.DISTRICTS[k]; if (!D) continue; const c = S.crowns && S.crowns[k];
     const md = D.kind === 'plaza' && E.marketDay({ t: S.t }) ? ' 🛍️' : '';
-    const pk = E.prosperK(S, k); el.innerHTML = `${pk >= 1.06 ? '✨' : pk < 0.96 ? '🍂' : ''}${D.name}${md}${E.finalYear(S) && c ? ` <span style="color:${E.COLOR_HEX[S.players[c.pid].color]}">👑</span>` : ''}<small>家賃${D.rent}</small>`;
+    const pk = E.prosperK(S, k), ctl = S.control ? S.control[k] : null; el.style.setProperty('--cc', ctl != null ? E.COLOR_HEX[S.players[ctl].color] : 'transparent'); el.classList.toggle('ctl', ctl != null); el.innerHTML = `${D.name}${md}${ctl != null ? `<em>${ctl === ME ? 'あなた' : esc(S.players[ctl].name)}の縄張り</em>` : ''}<small>家賃${D.rent}</small>`;
   }
 }
 // ── 地区の名前と自分の店の印(毎フレーム位置を合わせる)
@@ -1981,12 +2051,12 @@ async function boot() {
   tl.innerHTML = `<div class="tl">CAPITAL</div><div class="ts">商会バトル</div><div class="tb">${sv && S.t && !S.over ? `<button class="btn warm" data-a="start">つづきから<br><small>${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name} · ${ym(S.t)}</small></button><button class="btn ghost" data-a="newgame">🗺️ 新しく始める(町を選ぶ)</button>` : `<button class="btn warm" data-a="newgame">はじめる(町を選ぶ)</button>`}${mpLoad() ? `<button class="btn ghost" data-a="mpresume">🔁 オンライン対戦に戻る<br><small>部屋 ${esc(mpLoad().code)}</small></button>` : ''}<button class="btn ghost" data-a="online">🌐 友だちと対戦</button></div>`;
   document.body.appendChild(tl);
   if (S.over) setTimeout(() => openSheet('final'), 600);
-  window.__game = { get S() { return S; }, F, E, board, H, NET, get ME() { return ME; } };
+  window.__game = { get S() { return S; }, F, E, board, H, NET, render, get ME() { return ME; } };
   const q = new URLSearchParams(location.search).get('room'); if (q) { F.joinCode = q.toUpperCase(); setTimeout(() => { $('.title') && $('.title').remove(); unlockAudio(); openSheet('online'); }, 700); }
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114060849';
+const BUILD = '20261114063830';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
