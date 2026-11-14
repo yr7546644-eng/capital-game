@@ -317,12 +317,12 @@ SHEETS.shop = ({ id }) => {
   return head(G.icon, `${G.name}`, `${D.name} · 評判 ${stars(s0.rep)}`) + recipeShop(s0.g, s0) +
     `<div class="box">${pl}</div>${funnelBox(s0)}${sourcesBox(s0)}
     <div class="box"><div class="lbl">値段 <span class="grow"></span><span class="num">${(G.ref * E.PRICE_LV[s.priceLv]).toFixed(1)}G / 1つ</span></div>
-      <div class="seg">${E.PRICE_NAME.map((n, i) => `<button class="${s.priceLv === i ? 'on' : ''}" data-a="setp" data-id="${id}" data-v="${i}">${n}</button>`).join('')}</div>
+      <div class="seg optseg">${E.PRICE_NAME.map((n, i) => { const e2 = s0.last ? E.estimateShop(S, s0, { priceLv: i, staff: s.staff, ads: s.ads }) : null; return `<button class="${s.priceLv === i ? 'on' : ''}" data-a="setp" data-id="${id}" data-v="${i}">${n}${e2 ? `<small class="${cls(e2.profit)}">${sign(Math.round(e2.profit))}</small><small class="oc">客${fmt(e2.units)}</small>` : ''}</button>`; }).join('')}</div>${s0.last ? '<div class="t3">ボタンの下の数字 = その値段にしたときの来月の利益と客数の見込み</div>' : ''}
       <div class="lbl" style="margin-top:12px">店員 <span class="grow"></span><span class="t3">1人 ${E.WAGE}G/月 · 1人で月 ${G.capPer}人さばける</span></div>
-      <div class="stepper"><button data-a="sets" data-id="${id}" data-v="-1">−</button><div class="v num">${s.staff}人</div><button data-a="sets" data-id="${id}" data-v="1">＋</button><div class="t3 grow" style="text-align:right">＋は「ふつう」の人</div></div>
+      <div class="stepper"><button data-a="sets" data-id="${id}" data-v="-1">−</button><div class="v num">${s.staff}人</div><button data-a="sets" data-id="${id}" data-v="1">＋</button><div class="t3 grow" style="text-align:right">${s0.last ? (() => { const dn = s.staff > 1 ? E.estimateShop(S, s0, { priceLv: s.priceLv, staff: s.staff - 1, ads: s.ads }) : null, up = s.staff < 5 ? E.estimateShop(S, s0, { priceLv: s.priceLv, staff: s.staff + 1, ads: s.ads }) : null; return `${dn ? `−1人: <b class="${cls(dn.profit)}">${sign(Math.round(dn.profit))}</b>` : ''}${dn && up ? ' / ' : ''}${up ? `＋1人: <b class="${cls(up.profit)}">${sign(Math.round(up.profit))}</b>` : ''}<br><small>(来月の利益の見込み)</small>`; })() : '＋は「ふつう」の人'}</div></div>
       ${crewList(s0)}
       <div class="lbl" style="margin-top:12px">広告</div>
-      <div class="seg">${E.ADS.map((a, i) => `<button class="${s.ads === i ? 'on' : ''}" data-a="seta" data-id="${id}" data-v="${i}">${a.name}<small>${a.cost ? a.cost + 'G' : '0G'}</small></button>`).join('')}</div>
+      <div class="seg optseg">${E.ADS.map((a, i) => { const e2 = s0.last ? E.estimateShop(S, s0, { priceLv: s.priceLv, staff: s.staff, ads: i }) : null; return `<button class="${s.ads === i ? 'on' : ''}" data-a="seta" data-id="${id}" data-v="${i}">${a.name}<small>${a.cost ? a.cost + 'G' : '0G'}</small>${e2 ? `<small class="${cls(e2.profit)}">利益${sign(Math.round(e2.profit))}</small>` : ''}</button>`; }).join('')}</div>
       ${est ? `<div class="est"><span class="ev">🔮</span><div class="grow"><div class="t3" style="margin:0">この設定だと来月は(ざっくり)</div><div style="font-size:17px">お客 ${fmt(est.units)}人 · 利益 <span class="${cls(est.profit)}">${sign(est.profit)}G</span>${base != null ? ` <span class="t3">(先月 ${sign(base)})</span>` : ''}</div></div></div>` : ''}
     </div>
     ${(() => { const pk = E.RES[G.res].proc, have = me().inv[pk], on = (pendSet(s0.id) && pendSet(s0.id).useProc != null) ? pendSet(s0.id).useProc : s0.useProc; return have > 0 || s0.home > 0 ? `<div class="box"><div class="lbl">🏠 自家製の材料(${E.PROC[pk].icon}${E.PROC[pk].name} 在庫 ${fmt(have)})</div><div class="seg"><button class="${on ? 'on' : ''}" data-a="setproc" data-id="${s0.id}" data-v="1">使う</button><button class="${!on ? 'on' : ''}" data-a="setproc" data-id="${s0.id}" data-v="0">使わない</button></div><div class="t3" style="margin-top:6px">使うと材料費が半分になり、次の月の客寄せが最大 +15%。${s0.home > 0 ? `先月は材料の ${Math.round(s0.home * 100)}% が自家製だった。` : ''}</div></div>` : ''; })()}
@@ -875,6 +875,78 @@ function recipeShop(g, s0) {
   return `<div class="recipe"><div class="rin">${ico(raw)}<b>${E.ITEMS[raw].name}</b><small>${E.ITEMS[pk].name}でもOK</small></div><div class="rarr"><span>お客1人に<br>1個つかう</span><i></i></div><div class="rout">${ico('b_' + g)}<b>${G.name}</b><small>${use != null ? `先月 ${fmt(use)}人に売った` : 'お客に売る'}</small></div></div>
     <div class="rmg note">材料は在庫から先に使い、足りない分は月末にその月の相場で自動で買う</div>`;
 }
+// ── 確認の画面(ゲーム風): 取り返しのつかない操作の前に出す
+function gameModal(o, onOk) {
+  const el = document.createElement('div'); el.className = 'dmodal' + (o.tone ? ' ' + o.tone : '');
+  el.innerHTML = `<div class="dmin">${o.art ? `<div class="dmart">${o.art}</div>` : ''}<div class="dmh"><b>${o.title}</b></div>
+    ${o.rows ? `<div class="dmrows">${o.rows.map(([k, v, c]) => `<div class="${c || ''}"><span>${k}</span><b>${v}</b></div>`).join('')}</div>` : ''}
+    ${o.warn ? `<div class="dmwarn">${o.warn}</div>` : ''}
+    <div class="dmbtns"><button class="btn" data-x="no">${o.no || 'やめる'}</button><button class="btn ${o.okClass || 'danger'}" data-x="ok">${o.ok || 'OK'}</button></div></div>`;
+  document.body.appendChild(el); sfx('notify'); haptic(30);
+  el.addEventListener('click', (e) => { const b = e.target.closest('[data-x]'); if (!b && e.target !== el) return; el.classList.add('out'); setTimeout(() => el.remove(), 220); if (b && b.dataset.x === 'ok') onOk(); else sfx('close'); });
+}
+// ── ライバルの動き(行動の記録)を文章に
+function actText(a) {
+  const G = a.g === 'work' ? '工房' : a.g && E.GOODS[a.g] ? E.GOODS[a.g].name : '店', Dn = a.d && E.DISTRICTS[a.d] ? E.DISTRICTS[a.d].short : '';
+  switch (a.k) {
+    case 'open': return [a.g === 'work' ? 'b_work' : 'b_' + a.g, `${Dn}に<b>${G}</b>を建てた`];
+    case 'close': return ['ui_crate', `${Dn}の${G}を<b>たたんだ</b>`];
+    case 'card': { const c = E.CARDS[a.card]; return [CARD_ICON[a.card] || 'ui_books', `カード「<b>${c ? c.name : a.card}</b>」${a.target === ME ? '<span class="down">をあなたの店に!</span>' : 'を使った'}`]; }
+    case 'route': return ['b_' + (a.g || 'bread'), `${G}を<b>${E.ROUTES[a.route] ? E.ROUTES[a.route].name : ''}</b>で育てる`];
+    case 'buyshop': return ['coin', `${a.from === ME ? '<span class="down">あなたの</span>' : ''}店を<b>${fmt(a.price)}G</b>で買い取った`];
+    case 'buy': return [a.res, `${E.ITEMS[a.res] ? E.ITEMS[a.res].name : ''}を<b>${fmt(a.qty)}個</b>買い込んだ`];
+    case 'sell': return [a.res, `${E.ITEMS[a.res] ? E.ITEMS[a.res].name : ''}を<b>${fmt(a.qty)}個</b>売った`];
+    case 'deal': return ['coin', `商人と${a.item && E.ITEMS[a.item] ? E.ITEMS[a.item].name + 'の' : ''}取引をした`];
+    case 'hire': return ['c_helper', `店員を<b>雇った</b>`];
+  }
+  return ['ui_books', a.k];
+}
+const CARD_ICON = { shout: 'c_shout', sale: 'c_sale', contract: 'c_contract', scout: 'c_scout', poach: 'c_poach', helper: 'c_helper', headhunt: 'c_helper', craft: 'g_tool', remodel: 'ui_build', loan: 'coin', dump: 'ui_crate' };
+SHEETS.rivalp = ({ pid }) => {
+  const p = S.players[pid], rk = E.ranking(S), pos = rk.findIndex(x => x.p.id === pid) + 1, shops = E.shopsOf(S, pid), K = E.AI_KIND[p.ai];
+  const log = (S.actlog || []).filter(a => a.pid === pid).slice(-24).reverse();
+  const byT = {}; for (const a of log) (byT[a.t] = byT[a.t] || []).push(a);
+  return `<div class="rprof" style="--c:${E.COLOR_HEX[p.color]}"><span class="rpf">${avatar(p, 84)}</span><div><div class="rpn">${esc(p.name)} <span class="rpr">${pos}位</span></div><div class="rpk">${p.human ? 'プレイヤー' : K ? K.name : ''}${!p.human && LINES[p.ai] ? ` · 「${LINES[p.ai]}」` : ''}</div><div class="rpm"><span>総資産 <b>${fmt(E.netWorth(S, p))}G</b></span><span>店 <b>${shops.length}</b></span></div></div><button class="x" data-a="close">✕</button></div>
+    <div class="box"><div class="lbl">持っている店</div>${shops.length ? shops.map(s => `<button class="shoprow" style="width:100%;text-align:left" data-a="shop" data-id="${s.id}"><span class="ic">${ico(s.g === 'work' ? 'b_work' : 'b_' + s.g)}</span><div class="grow"><b>${gd(s).name}</b> <span class="t3">${E.DISTRICTS[s.d].short}</span><div class="t3">店員 ${s.staff}人 · ${E.PRICE_NAME[s.priceLv]}</div></div><span class="t3">くわしく ›</span></button>`).join('') : '<div class="t2">まだ店がない</div>'}</div>
+    <div class="box"><div class="lbl">最近の動き</div>${log.length ? Object.keys(byT).sort((a, b) => b - a).map(t => `<div class="tlm">${ym(+t)}</div>${byT[t].map(a => { const [ic, tx] = actText(a); return `<div class="tl">${ico(ic)}<span>${tx}</span></div>`; }).join('')}`).join('') : '<div class="t2">まだ目立った動きはない</div>'}</div>`;
+};
+// ── 今月の作戦(アドバイザー): いま何をすると良いかを、理由つきで
+function advice() {
+  const out = [], p = me(), mine = E.shopsOf(S, ME), stores = mine.filter(s => s.g !== 'work'), pendOpenN = F.acts.filter(a => a.type === 'open').length;
+  const fixed = nextFixed();
+  if (freeCash() < fixed) out.push({ pr: 10, ic: 'coin', t: '来月の支払いが足りない', why: `家賃・お給料 約${fmt(Math.round(fixed))}G に対して現金 ${fmt(freeCash())}G。買い物をひかえるか、品物を売ろう`, a: 'bag', tone: 'bad' });
+  if (!mine.length && !pendOpenN) out.push({ pr: 9, ic: 'ui_build', t: 'まず店を建てよう', why: '店がないと売上は0。地図の ◎ の場所ほど儲かりやすい', a: 'build' });
+  for (const s of stores) { const l = s.last; if (!l) continue; const lost = l.want - l.units;
+    if (lost > Math.max(6, l.want * 0.08)) out.push({ pr: 8, ic: 'b_' + s.g, t: `${gd(s).name}(${E.DISTRICTS[s.d].short})の店員を増やそう`, why: `先月 <b>${fmt(lost)}人</b>のお客を逃した(人手が足りない)`, a: 'shop', id: s.id });
+    else if (l.profit < 0) out.push({ pr: 7, ic: 'b_' + s.g, t: `${gd(s).name}が赤字`, why: `お客 ${fmt(l.units)}人 · 利益 <b class="down">${sign(Math.round(l.profit))}G</b>。値段・店員・広告を見直そう`, a: 'shop', id: s.id, tone: 'bad' }); }
+  const used = new Set(stores.map(s => E.GOODS[s.g].res).concat(mine.filter(s => s.g === 'work').map(s => s.res)));
+  for (const k of used) { const pk = S.market[k].price / E.ITEMS[k].base; if (pk < 0.88) out.push({ pr: 6, ic: k, t: `${E.ITEMS[k].name}が安い`, why: `ふだんより <b>${Math.round((1 - pk) * 100)}%安い</b>。店で使う分を買いだめするチャンス`, a: 'planbuy', v: k }); if (pk > 1.25) out.push({ pr: 5, ic: k, t: `${E.ITEMS[k].name}が高い`, why: `ふだんより ${Math.round((pk - 1) * 100)}%高い。在庫があれば売りどき、なければ値上げを考えよう`, a: 'planbuy', v: k }); }
+  const ev = S.evNext && E.evDef(S.evNext.id); if (ev && ev.dem) for (const s of stores) if ((ev.dem[s.g] || 1) > 1.15) { out.push({ pr: 6, ic: 'b_' + s.g, t: `来月 ${E.GOODS[s.g].name}がよく売れる`, why: `「${ev.name}」で客が増える。店員を増やすか、呼び込みカードを`, a: 'shop', id: s.id }); break; }
+  if (S.peddler && S.peddler.left > 0) out.push({ pr: 6, ic: 'ui_crate', t: '行商人が来ている', why: `今月だけ ${S.peddler.items.map(k => E.ITEMS[k].name).join('・')} を売り買いできる`, a: 'peddler' });
+  if (mine.length && mine.length + pendOpenN < E.MAX_SHOPS && freeCash() > 650 + fixed) out.push({ pr: 4, ic: 'ui_build', t: 'もう1店 建てられる', why: `現金に余裕がある(${fmt(freeCash())}G)。別の業種を並べると商店街ボーナス`, a: 'build' });
+  if (!F.acts.some(a => a.type === 'card') && p.hand.length) { const i = p.hand.findIndex(c => (E.cardDef(c).cost || 0) <= Math.max(0, freeCash() - fixed)); if (i >= 0 && mine.length) out.push({ pr: 3, ic: CARD_ICON[E.cardDef(p.hand[i]).base] || 'ui_books', t: `カード「${E.cardDef(p.hand[i]).name}」を使える`, why: esc(E.cardDef(p.hand[i]).text), a: 'card', i }); }
+  out.push({ pr: 0, ic: 'w_sun', t: '準備ができたら次の月へ', why: '決めたことは月末にいっせいに動く', a: 'next' });
+  return out.sort((a, b) => b.pr - a.pr);
+}
+function advisorTick() {
+  let el = $('#advisor'); const st = qState();
+  const hide = !S || S.over || !st.all || $('.title') || $('#vs') || $('#tut') || F.sheet || F.busy || F.build;
+  if (hide) { if (el) el.style.display = 'none'; return; }
+  if (!el) { el = document.createElement('div'); el.id = 'advisor'; document.body.appendChild(el); }
+  const a = advice()[0], h = `<button class="adv ${a.tone || ''}" data-a="advgo" data-k="0"><span class="advh">今月の作戦</span>${ico(a.ic)}<span class="advt"><b>${a.t}</b><small>${a.why}</small></span><span class="advm" data-a="advall">ほか ›</span></button>`;
+  if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; }
+  el.style.display = '';
+}
+SHEETS.advice = () => head('🧭', '今月の作戦', '番頭からの提案。タップでその画面へ') + `<div class="advlist">${advice().map((a, i) => `<button class="adv big ${a.tone || ''}" data-a="advgo" data-k="${i}">${ico(a.ic)}<span class="advt"><b>${a.t}</b><small>${a.why}</small></span><span class="advgo">›</span></button>`).join('')}</div>`;
+function advDo(a) {
+  if (a.a === 'build') return H.build();
+  if (a.a === 'shop') return H.shop({ id: a.id });
+  if (a.a === 'planbuy') return H.planbuy({ v: a.v });
+  if (a.a === 'bag') return H.bag();
+  if (a.a === 'peddler') { F.mtab = 'rare'; return openSheet('market'); }
+  if (a.a === 'card') return H.card({ i: a.i });
+  if (a.a === 'next') { closeSheet(); return H.next(); }
+}
 // ── 借金の注意: 使ったあと来月の支払いが足りなくなりそうなら、確認画面を出す
 function debtRisk(cost, extra = 0) { const left = freeCash() - cost, need = nextFixed() + extra; return left < need ? { left, need, short: Math.round(need - left) } : null; }
 function debtModal(o, onOk) {
@@ -942,7 +1014,7 @@ function rivalsBar() {
   let el = $('#rivals'); if (!S || $('.title')) { if (el) el.remove(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'rivals'; document.body.appendChild(el); }
   const rk = E.ranking(S);
-  const html = rk.map((x, i) => { const p = x.p, n = E.shopsOf(S, p.id).length; return `<button class="rv ${p.id === ME ? 'me' : ''} ${F.thinking && p.ai ? 'think' : ''}" data-a="ranking" data-pid="${p.id}" style="--c:${E.COLOR_HEX[p.color]}"><span class="rvf">${avatar(p, 38)}</span><span class="rvr">${i + 1}</span><span class="rvn">${p.id === ME ? 'あなた' : esc(p.name)}</span><span class="rvs">🏠${n}</span></button>`; }).join('');
+  const html = rk.map((x, i) => { const p = x.p, n = E.shopsOf(S, p.id).length; return `<button class="rv ${p.id === ME ? 'me' : ''} ${F.thinking && p.ai ? 'think' : ''}" data-a="rivalp" data-pid="${p.id}" style="--c:${E.COLOR_HEX[p.color]}"><span class="rvf">${avatar(p, 38)}</span><span class="rvr">${i + 1}</span><span class="rvn">${p.id === ME ? 'あなた' : esc(p.name)}</span><span class="rvs">🏠${n}</span></button>`; }).join('');
   if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
 }
 function rivalSay(pid, text, ms = 3200) {
@@ -1118,7 +1190,7 @@ SHEETS.ranking = () => {
   const W = 320, H = 140, all = S.players.flatMap(p => p.nw), mx = Math.max(...all, 1), mn = Math.min(0, ...all);
   const lines = S.players.map(p => { const n = p.nw.length; return `<polyline fill="none" stroke="${E.COLOR_HEX[p.color]}" stroke-width="${p.id === ME ? 3 : 2}" points="${p.nw.map((v, i) => `${(i / Math.max(1, S.months) * W).toFixed(1)},${(H - (v - mn) / (mx - mn) * (H - 10) - 5).toFixed(1)}`).join(' ')}"/>`; }).join('');
   return head('🏆', '順位', `純資産(現金+店+在庫−借金)で競う · のこり${S.months - S.t}か月`) +
-    winBox() + `<div class="box">${rk.map((x, i) => `<div class="rk"><span class="pos" style="background:${E.COLOR_HEX[x.p.color]}">${i + 1}</span><div class="nm">${esc(x.p.name)}${x.p.id === ME ? ' <span class="ai-chip">あなた</span>' : `<span class="ai-chip">${x.p.human ? '🙂 プレイヤー' : E.AI_KIND[x.p.ai] ? E.AI_KIND[x.p.ai].name : ''}</span>`}<small>店 ${E.shopsOf(S, x.p.id).length}つ</small>${nwParts(x.p)}</div><div class="num" style="font-size:17px">${fmt(x.nw)}G</div></div>`).join('')}</div>
+    winBox() + `<div class="box">${rk.map((x, i) => `<button class="rk" style="width:100%;text-align:left" data-a="rivalp" data-pid="${x.p.id}"><span class="pos" style="background:${E.COLOR_HEX[x.p.color]}">${i + 1}</span><div class="nm">${esc(x.p.name)}${x.p.id === ME ? ' <span class="ai-chip">あなた</span>' : `<span class="ai-chip">${x.p.human ? '🙂 プレイヤー' : E.AI_KIND[x.p.ai] ? E.AI_KIND[x.p.ai].name : ''}</span>`}<small>店 ${E.shopsOf(S, x.p.id).length}つ</small>${nwParts(x.p)}</div><div class="num" style="font-size:17px">${fmt(x.nw)}G</div><span class="rkgo">›</span></button>`).join('')}</div>
     <div class="box"><div class="lbl">純資産の動き</div><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${lines}</svg></div>
     ${crownBox()}${missionBox()}`;
 };
@@ -1271,7 +1343,7 @@ SHEETS.result = ({ r }) => {
     ${r.auto && r.auto.length ? `<div class="box"><div class="lbl">🤵 店長がしたこと</div>${r.auto.map(t => `<div class="news">${t}</div>`).join('')}</div>` : ''}
     ${mine.length ? `<div class="box">${mine.map(x => `<div class="shoprow"><span class="ic">${x.icon}</span><div class="grow"><div>${x.name} <span class="t3">${x.dist}</span></div><div class="t3">${x.work ? (x.s.last && x.s.last.noRaw ? `<span class="down">原料が買えず、作れなかった(お金不足)</span>` : `${fmt(x.units)}個つくった${x.s.last && x.s.last.bought ? `(原料 ${fmt(x.s.last.bought)}個を自動で仕入れ)` : ''}${x.sold ? ` · ${fmt(x.sold)}個売った` : ''}`) : `お客 ${fmt(x.units)}人${x.lost > 3 ? ` · <span class="down">${fmt(x.lost)}人を逃した</span>` : ''}`}</div></div><div class="num ${cls(x.profit)}">${sign(x.profit)}</div></div>${x.why ? `<div class="why">💬 ${x.why}${!x.work ? funnelBox(x.s, true) + sourcesBox(x.s, true) : ''}</div>` : ''}`).join('')}</div>` : ''}
     ${(() => { const ls = lessonOf(mine); return ls ? `<div class="box" style="background:linear-gradient(135deg,#eef6ff,#fff)"><div class="lbl">📘 今月の学び</div><div class="t2">${ls}</div></div>` : ''; })()}
-    <div class="box"><div class="lbl">順位</div>${r.rank.map((x, i) => `<div class="rk"><span class="pos" style="background:${E.COLOR_HEX[x.color]}">${i + 1}</span><div class="nm">${esc(x.name)}${x.move ? `<span class="rankmove ${x.move > 0 ? 'up' : 'down'}">${x.move > 0 ? '▲' : '▼'}${Math.abs(x.move)}</span>` : ''}${x.pid != null ? nwParts(S.players[x.pid]) : ''}</div><div class="num">${fmt(x.nw)}G</div></div>`).join('')}<div class="t3" style="margin-top:6px">順位は<b>純資産</b>(現金 + 店の価値 + 在庫 − 借金)で決まる。建てたお金は「店の価値」に変わるので、建てた月に順位が大きく下がることはない</div></div>
+    <div class="box"><div class="lbl">順位</div>${r.rank.map((x, i) => `<button class="rk" style="width:100%;text-align:left" data-a="rivalp" data-pid="${x.pid}"><span class="pos" style="background:${E.COLOR_HEX[x.color]}">${i + 1}</span><div class="nm">${esc(x.name)}${x.move ? `<span class="rankmove ${x.move > 0 ? 'up' : 'down'}">${x.move > 0 ? '▲' : '▼'}${Math.abs(x.move)}</span>` : ''}${x.pid != null ? nwParts(S.players[x.pid]) : ''}</div><div class="num">${fmt(x.nw)}G</div><span class="rkgo">›</span></button>`).join('')}<div class="t3" style="margin-top:6px">順位は<b>純資産</b>(現金 + 店の価値 + 在庫 − 借金)で決まる。建てたお金は「店の価値」に変わるので、建てた月に順位が大きく下がることはない</div></div>
     ${r.check && r.check.length ? `<div class="box"><div class="lbl">🎯 答え合わせ</div>${r.check.map(n => `<div class="news">${n}</div>`).join('')}</div>` : ''}
     ${(S.rumors || []).length ? `<div class="box"><div class="lbl">🗣️ 口コミ</div>${S.rumors.slice(0, 3).map(x => `<div class="news">${x.pid === ME ? '⭐ ' : ''}${esc(x.t)}</div>`).join('')}</div>` : ''}
     ${r.news.length ? `<div class="box"><div class="lbl">町の出来事</div>${r.news.map(n => `<div class="news">${n}</div>`).join('')}</div>` : ''}
@@ -1282,7 +1354,7 @@ SHEETS.final = () => {
   const rk = E.ranking(S), pos = rk.findIndex(x => x.p.id === ME) + 1;
   if (!S.recorded) { S.recorded = 1; setRecord(S.stage, pos, rk[pos - 1].nw); save(); }
   return `<div class="hero box"><div style="font-size:54px">${pos === 1 ? '👑' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : '🌱'}</div><div class="t3">${S.months / 12}年の商売が終わった</div><div class="big">${pos}位</div><div class="t2">${pos === 1 ? '町いちばんの商会になった!' : pos === 2 ? 'あと一歩!' : 'くやしい…次こそ'}</div></div>
-    <div class="box">${rk.map((x, i) => `<div class="rk"><span class="pos" style="background:${E.COLOR_HEX[x.p.color]}">${i + 1}</span><div class="nm">${esc(x.p.name)}<small>店 ${E.shopsOf(S, x.p.id).length}</small></div><div class="num" style="font-size:17px">${fmt(x.nw)}G</div></div>`).join('')}</div>
+    <div class="box">${rk.map((x, i) => `<button class="rk" style="width:100%;text-align:left" data-a="rivalp" data-pid="${x.p.id}"><span class="pos" style="background:${E.COLOR_HEX[x.p.color]}">${i + 1}</span><div class="nm">${esc(x.p.name)}<small>店 ${E.shopsOf(S, x.p.id).length}</small></div><div class="num" style="font-size:17px">${fmt(x.nw)}G</div><span class="rkgo">›</span></button>`).join('')}</div>
     <div class="box"><div class="lbl">👑 地区の覇者</div>${Object.entries(E.DISTRICTS).map(([d, D]) => { const c = S.crowns && S.crowns[d]; return `<div class="kv"><span class="k">${D.name}</span><span>${c ? pname(S.players[c.pid]) + ` +${E.CROWN_BONUS}G` : '−'}</span></div>`; }).join('')}</div>
     <div class="box"><div class="lbl">🤫 秘密の目標(公開)</div>${S.players.map(p => `<div class="kv"><span class="k">${pname(p)}</span><span>${E.MISSIONS[p.mission].name} ${p.missionDone ? '<span class="up">✔ +' + E.MISSION_BONUS + 'G</span>' : '<span class="t3">✘</span>'}</span></div>`).join('')}</div>
     <div class="row"><button class="btn wide" data-a="restart2">同じ町でもう一度</button><button class="btn warm wide" data-a="newgame">別の町へ</button></div>`;
@@ -1364,6 +1436,9 @@ const H = {
   },
   moveopen: (d) => { const lot = +d.v, a = F.acts.find(x => x.type === 'open' && x.lot === lot); if (!a) return; F.acts = F.acts.filter(x => x !== a); board.preview(lot, null); save(); closeSheet(); F.build = { step: 'type', lot: null }; buildPick(a.g, a.res); toast('新しい場所をタップ'); },
   bag: () => openSheet('bag'),
+  rivalp: (d) => { const pid = +d.pid; if (pid === ME) return openSheet('ranking'); openSheet('rivalp', { pid }); },
+  advgo: (d) => { const a = advice()[+d.k]; if (a) advDo(a); },
+  advall: () => openSheet('advice'),
   planbuy: (d) => { F.mtab = E.isProc(d.v) ? 'proc' : 'raw'; F.mSel = d.v; F.mT = { mode: 'buy', q: E.isProc(d.v) ? 20 : 50 }; openSheet('market'); },
   bagsell: (d) => { F.mtab = E.isRare(d.v) ? 'rare' : E.isProc(d.v) ? 'proc' : 'raw'; F.mSel = d.v; F.mT = { mode: 'sell', q: Math.floor(me().inv[d.v] || 0) }; openSheet('market'); },
   bagfeat: (d) => { const s = E.storesOf(S, ME).find(x => x.g === E.RARES[d.v].use); if (!s) return toast('使える店がない'); setPending(s.id, { ...(pendSet(s.id) || {}), feat: d.v, featQty: Math.min(10, Math.floor(me().inv[d.v])) }); sfx('card'); toast(`${gd(s).name}の目玉商品にした`); render(); },
@@ -1371,7 +1446,7 @@ const H = {
   setp: (d) => { const s = S.shops.find(x => x.id === +d.id); setPending(s.id, { priceLv: +d.v, staff: shopView(s).staff, ads: shopView(s).ads }); sfx('tap'); render(); },
   sets: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: Math.max(1, Math.min(5, v.staff + +d.v)), ads: v.ads }); sfx('tap'); render(); },
   seta: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: +d.v }); sfx('tap'); render(); },
-  closeshop: (d) => { if (!confirm('この店をたたむ?(月末に売れる)')) return; F.acts = F.acts.filter(a => !(a.type === 'set' && a.shop === +d.id)); F.acts.push({ type: 'close', shop: +d.id }); save(); closeSheet(); render(); toast('月末に店をたたむ'); },
+  closeshop: (d) => { if (!d._ok) { const s = S.shops.find(x => x.id === +d.id), v = Math.round(E.shopValue(S, s) * 0.8), pr = s.last ? Math.round(s.last.profit) : 0; gameModal({ art: ico(s.g === 'work' ? 'b_work' : 'b_' + s.g), title: `${gd(s).name}(${E.DISTRICTS[s.d].short})をたたむ?`, rows: [['店を売って戻るお金', `+${fmt(v)}G`, 'in'], ['先月の利益(なくなる)', `${sign(pr)}G`, pr >= 0 ? 'out' : 'in'], ['店員', `${s.staff}人 はやめる`, '']], warn: 'たたむと元に戻せない。建て直すと、また建てるお金がかかる', ok: 'たたむ', okClass: 'danger' }, () => H.closeshop({ ...d, _ok: 1 })); return; } F.acts = F.acts.filter(a => !(a.type === 'set' && a.shop === +d.id)); F.acts.push({ type: 'close', shop: +d.id }); save(); closeSheet(); render(); toast('月末に店をたたむ'); },
   mtab: (d) => { F.mtab = d.v; renderSheet(); },
   msel: (d) => { F.mSel = F.mSel === d.v ? null : d.v; F.mT = { mode: 'buy', q: E.isRare(d.v) ? 2 : E.isProc(d.v) ? 20 : 50 }; sfx('tap'); renderSheet(); },
   mmode: (d) => { F.mT.mode = d.v; if (d.v === 'sell') { const k = F.mSel, have = me().inv[k] || 0; F.mT.q = Math.min(F.mT.q, Math.floor(have)); } sfx('toggle'); renderSheet(); },
@@ -1725,7 +1800,7 @@ function labels() {
   updateLabels();
   board.onFrame = () => {
     if ((F.coachF = (F.coachF || 0) + 1) % 3 === 0) coachTick();
-    if (F.coachF % 10 === 0) questTick();
+    if (F.coachF % 10 === 0) { questTick(); advisorTick(); }
     // 名札は区画に重ならないよう、地区のいちばん上(画面で)のさらに上に出す。近づいたら小さく薄く
     const rc = board.R.domElement.getBoundingClientRect(), near = board.view.dist < 21;
     wrap.classList.toggle('near', near);
@@ -1794,7 +1869,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114042636';
+const BUILD = '20261114043439';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

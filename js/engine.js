@@ -880,6 +880,8 @@ export function step(S, decisions = {}) {
     (S.prospHist[d] = S.prospHist[d] || []).push(S.prosper[d]); if (S.prospHist[d].length > 12) S.prospHist[d].shift();
   }
   S.served = {}; for (const sh of S.shops) if (sh.g !== 'work' && sh.last) { (S.served[sh.d] = S.served[sh.d] || {})[sh.g] = (S.served[sh.d][sh.g] || 0) + sh.last.units; }
+  // 商会ごとの行動の記録(相手の動きを見るため)
+  S.actlog = (S.actlog || []).concat(fx.filter(f => ['open', 'close', 'card', 'route', 'buyshop', 'buy', 'sell', 'deal', 'hire'].includes(f.kind) && f.pid != null).map(f => { const sh = f.shop != null ? S.shops.find(x => x.id === f.shop) : null; return { t: S.t, pid: f.pid, k: f.kind, card: f.card, res: f.res, qty: f.qty, g: sh ? sh.g : f.g, d: sh ? sh.d : f.d, route: f.k, target: f.target, price: f.price, from: f.from, item: f.offer ? f.offer.item : null }; })).slice(-160);
   S.ledger = fx.filter(f => f.kind === 'buy' || f.kind === 'sell' || f.kind === 'deal' || (f.kind === 'card' && f.card === 'dump') || f.kind === 'open' || f.kind === 'close').map(f => ({ ...f, t: S.t }));
   S.crowns = crownsOf(S);
   if (S.t === S.months - 12) fx.push({ kind: 'grand' });
