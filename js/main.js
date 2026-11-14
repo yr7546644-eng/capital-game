@@ -1700,14 +1700,18 @@ function labels() {
   const centers = {};
   for (const d in E.DISTRICTS) { const ls = E.LOTS.filter(l => l.d === d); centers[d] = [ls.reduce((a, l) => a + l.q, 0) / ls.length, ls.reduce((a, l) => a + l.r, 0) / ls.length]; }
   wrap.innerHTML = Object.keys(centers).map((k) => `<button class="dlabel" data-a="district" data-d="${k}"></button>`).join('');
+  const lotsOf = {}; for (const d in E.DISTRICTS) lotsOf[d] = E.LOTS.filter(l => l.d === d);
   updateLabels();
   board.onFrame = () => {
     if ((F.coachF = (F.coachF || 0) + 1) % 3 === 0) coachTick();
     if (F.coachF % 10 === 0) questTick();
+    // 名札は区画に重ならないよう、地区のいちばん上(画面で)のさらに上に出す。近づいたら小さく薄く
+    const rc = board.R.domElement.getBoundingClientRect(), near = board.view.dist < 21;
+    wrap.classList.toggle('near', near);
     for (const el of wrap.children) {
-      const [q, r] = centers[el.dataset.d]; const v = hexPos(q, r); v.y = 0.1;
-      const p = v.project(board.cam); const rc = board.R.domElement.getBoundingClientRect();
-      el.style.left = (rc.left + (p.x + 1) / 2 * rc.width) + 'px'; el.style.top = (rc.top + (1 - p.y) / 2 * rc.height) + 'px';
+      const ls = lotsOf[el.dataset.d]; let sx = 0, minY = 1e9;
+      for (const l of ls) { const v = hexPos(l.q, l.r); v.y = 0.1; const p = v.project(board.cam); const x = rc.left + (p.x + 1) / 2 * rc.width, y = rc.top + (1 - p.y) / 2 * rc.height; sx += x; if (y < minY) minY = y; }
+      el.style.left = (sx / ls.length) + 'px'; el.style.top = (minY - (near ? 30 : 36)) + 'px';
     }
   };
 }
@@ -1768,7 +1772,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114041021';
+const BUILD = '20261114041427';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

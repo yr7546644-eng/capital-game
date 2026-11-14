@@ -737,3 +737,5 @@ body:has(.title) #ticker{opacity:0;pointer-events:none}
 .pill.cash .num{font-size:26px;font-weight:900;color:#1f2a44}
 .nwsub{font-size:11px;font-weight:800;color:#8a94ab;letter-spacing:.02em}
 @media (max-width:390px){.pill.cash .num{font-size:22px}.nwsub{font-size:10px}}
+#labels.near .dlabel{transform:translate(-50%,-50%) scale(.72);opacity:.55;pointer-events:none}
+.dlabel{transition:opacity .25s,transform .25s}
