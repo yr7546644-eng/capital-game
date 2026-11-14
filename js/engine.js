@@ -561,6 +561,7 @@ function applyAction(S, pid, a, fx, late) {
     if (a.staff != null) setCrewSize(S, s, clamp(a.staff | 0, 1, 5));
     if (a.ads != null) s.ads = clamp(a.ads | 0, 0, 2);
     if (a.autoSell != null) s.autoSell = clamp(+a.autoSell, 0, 1);
+    if (a.autoBuy != null) s.autoBuy = a.autoBuy ? 1 : 0;
     if (a.useProc != null) s.useProc = a.useProc ? 1 : 0;
     if (a.feat !== undefined) { s.feat = a.feat && RARES[a.feat] && RARES[a.feat].use === s.g ? a.feat : null; s.featQty = clamp(a.featQty | 0, 0, 20); }
   }
@@ -709,18 +710,26 @@ export const featPremium = (S, s, k) => Math.min(S.market[k].price, RARES[k].bas
 const capRaw = (s) => crewCapK(s) * GOODS[s.g].capPer * routeFx(s).cap * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1);
 
 // ── 1か月進める。decisions: {pid: [actions]}(人間とAIの決断)。順番は種で公平にまぜる
+// お金の流れ(その月に現金がなぜ増えた・減ったか)を項目ごとに記録する
+const flowAdd = (p, k, v) => { if (!p.flow) p.flow = {}; if (Math.abs(v) >= 0.005) p.flow[k] = (p.flow[k] || 0) + v; };
+const snapCash = (S) => S.players.map(p => p.cash);
+const bookCash = (S, before, label) => S.players.forEach((p, i) => flowAdd(p, typeof label === 'function' ? label(p) : label, p.cash - before[i]));
+const ACT_LABEL = { open: '建設', route: '育て方', buy: '市場で買った', sell: '市場で売った', card: 'カード', deal: '商人との取引', repay: '借金の返済', bridge: 'つなぎ融資(借りた)', factor: '売掛金を前倒し', buyshop: '店の買い取り', close: '店をたたんだ(売った)', quest: '町の依頼', deliver: '町の依頼', propose: '契約' };
 export function step(S, decisions = {}) {
   if (S.over) return { fx: [], errors: [] };
   const fx = [], errors = [], late = [];
   for (const p of S.players) if (p.ai && !decisions[p.id]) decisions[p.id] = aiDecide(S, p.id);
   const order = S.players.map(p => p.id).sort((a, b) => ((a * 7919 + S.t * 104729 + S.seed) % 97) - ((b * 7919 + S.t * 104729 + S.seed) % 97));
-  for (const pid of order) for (const a of (decisions[pid] || [])) { const e = applyAction(S, pid, a, fx, late); if (e) errors.push({ pid, a, e }); }
+  for (const p of S.players) { p.flow = {}; p.cash0 = p.cash; }
+  for (const pid of order) for (const a of (decisions[pid] || [])) { const b = snapCash(S); const e = applyAction(S, pid, a, fx, late); if (e) errors.push({ pid, a, e }); bookCash(S, b, (p) => p.id === pid ? (ACT_LABEL[a.type] || 'その他') : a.type === 'buyshop' ? '店を売った' : 'ライバルとの取引'); }
   // 予告されていた出来事が始まる
+  const bEv = snapCash(S);
   if (S.evNext) { S.ev = S.evNext; const e = evDef(S.ev.id); S.evActive.push({ id: S.ev.id, left: e.len }); if (e.tax) for (const p of S.players) { const tx = Math.round(Math.max(0, p.cash) * e.tax); p.cash -= tx; fx.push({ kind: 'tax', pid: p.id, amt: tx }); } }
   S.evNext = pickEvent(S);
   S.w = S.wNext || 'cloudy'; S.wHist = (S.wHist || []).concat(S.w).slice(-6);
   for (const k in ITEMS) { S.mk[k].shop = 0; }
-  for (const f of late) f();
+  bookCash(S, bEv, '臨時の税');
+  { const b = snapCash(S); for (const f of late) f(); bookCash(S, b, 'その他'); }
   for (const k in ITEMS) { S.mk[k].buyM = S.mk[k].buy; S.mk[k].sellM = S.mk[k].sell; }
   // 客の取り合い
   const res = {}; S.missed = {};
@@ -761,14 +770,16 @@ export function step(S, decisions = {}) {
     s.home = units > 0 ? homeU / Math.max(1, units * QUALITY[s.qual].cost * R.cost) : 0;
     for (const ct of p.contracts) if (need > 0 && ct.res === G.res && ct.stock > 0) { const u = Math.min(need, ct.stock); cogs += u * ct.price; ct.stock -= u; need -= u; }
     if (need > 0 && p.inv[G.res] > 0) { const u = Math.min(need, p.inv[G.res]); const avg = p.invCost[G.res] / p.inv[G.res]; cogs += u * avg; p.inv[G.res] -= u; p.invCost[G.res] -= u * avg; need -= u; }
-    if (need > 0) { const { c, st } = takeCost(S, G.res, need, 0); cogs += c; S.mk[G.res].stock = st; S.mk[G.res].shop += need; setPrice(S, G.res); }
+    let cashCogs = 0;
+    if (need > 0) { const { c, st } = takeCost(S, G.res, need, 0); cogs += c; cashCogs = c; S.mk[G.res].stock = st; S.mk[G.res].shop += need; setPrice(S, G.res); }
     // 目玉商品: 並べた分は特別な品として高く売れる(素材の相場の1.7倍。真珠は貴族街で2.3倍)
     let featRev = 0, featUsed = 0;
     const fu = featUnits(S, s);
     if (fu > 0 && units > 0) { featUsed = fu; const k = s.feat, avg = p.invCost[k] / p.inv[k]; featRev = fu * featPremium(S, s, k); cogs += fu * avg; p.inv[k] -= fu; p.invCost[k] -= fu * avg; }
     const labor = crewWage(s), rent = rentOf(S, s.d) * R.rent, ads = ADS[s.ads].cost;
     const profit = revenue + featRev - cogs - labor - rent - ads;
-    p.cash += profit; p.yProfit = (p.yProfit || 0) + profit;
+    p.cash += revenue + featRev - cashCogs - labor - rent - ads; p.yProfit = (p.yProfit || 0) + profit;
+    flowAdd(p, '店の売上', revenue + featRev); flowAdd(p, '材料の仕入れ', -cashCogs); flowAdd(p, 'お給料', -labor); flowAdd(p, '家賃', -rent); flowAdd(p, '宣伝', -ads);
     if (profit >= 250) p.flags.bigm = 1;
     p.flags.rareRev = (p.flags.rareRev || 0) + featRev;
     const prev = s.last;
@@ -802,18 +813,19 @@ export function step(S, decisions = {}) {
     s.months++; s.boost = 1; s.saleNow = 0; s.promo = 0; s.promoK = 1; s.promoName = null; if (s.helper > 0) s.helper--; if (s.under > 0) s.under--;
     fx.push({ kind: 'sales', pid: s.owner, shop: s.id, units, profit });
   }
-  settlePacts(S, fx);
+  { const b = snapCash(S); settlePacts(S, fx); bookCash(S, b, '契約・売掛金'); }
   for (const p of S.players) {
-    for (const c of p.contracts) { if (c.left > 0) { c.stock += c.qty; p.cash -= c.qty * c.price; c.left--; } }
+    for (const c of p.contracts) { if (c.left > 0) { c.stock += c.qty; p.cash -= c.qty * c.price; flowAdd(p, '先物の約束(材料)', -c.qty * c.price); c.left--; } }
     p.contracts = p.contracts.filter(c => c.left > 0 || c.stock > 0.5);
-    if (p.debt > 0) p.cash -= p.debt * LOAN_RATE;
-    if (p.cash < 0) { const need = Math.ceil(-p.cash / 100) * 100; p.debt += need * 1.1; p.cash += need; p.flags.bailed = 1; fx.push({ kind: 'bailout', pid: p.id, amt: need }); }
+    if (p.debt > 0) { p.cash -= p.debt * LOAN_RATE; flowAdd(p, '借金の利息', -p.debt * LOAN_RATE); }
+    if (p.cash < 0) { const need = Math.ceil(-p.cash / 100) * 100; p.debt += need * 1.1; p.cash += need; flowAdd(p, '救済融資(借りた)', need); p.flags.bailed = 1; fx.push({ kind: 'bailout', pid: p.id, amt: need }); }
     for (const k in p.inv) if (p.inv[k] > 0) {
-      p.cash -= p.inv[k] * ITEMS[k].base * 0.012;   // 保管料
+      p.cash -= p.inv[k] * ITEMS[k].base * 0.012; flowAdd(p, '保管料', -p.inv[k] * ITEMS[k].base * 0.012);   // 保管料
       const dc = ITEMS[k].decay; if (dc) { p.inv[k] *= 1 - dc; p.invCost[k] *= 1 - dc; }   // 傷んで減る
       if (p.inv[k] < 0.5) { p.inv[k] = 0; p.invCost[k] = 0; }
     }
   }
+  const bTail = snapCash(S);
   for (const a of S.evActive) a.left--; S.evActive = S.evActive.filter(a => a.left > 0);
   // 月末: 生産と町の消費で在庫が動き、値段が決まる
   const mo = (S.t) % 12, ev = (kind, k) => { let m = 1; for (const a of S.evActive) { const e = evDef(a.id); if (e && e[kind] && e[kind][k] != null) m *= e[kind][k]; } return m; };
@@ -901,11 +913,13 @@ export function step(S, decisions = {}) {
     if (sh.crew && sh.crew.some(c => c.trait === 'idol')) S.rumors.push({ pid: sh.owner, shop: sh.id, t: `「${nm}の${G.name}の看板娘、感じがいいんだ」`, w: 1 });
   }
   S.rumors = S.rumors.sort((a, b) => b.w - a.w + (rnd(S) - 0.5)).slice(0, 4);
+  S.players.forEach((p, i) => { const tax = (fx.find(f => f.kind === 'yearTax' && f.pid === p.id) || {}).tax || 0; if (tax) flowAdd(p, '年末の税', -tax); flowAdd(p, '町の依頼など', p.cash - bTail[i] + tax); });
   S.t++;
   if (S.t >= S.months) {
     // 大祭の褒美と秘密の目標
     for (const d in S.crowns) { const c = S.crowns[d]; if (c) { const p = S.players[c.pid]; p.cash += CROWN_BONUS; p.flags.crown = 1; fx.push({ kind: 'crown', pid: c.pid, d, amt: CROWN_BONUS }); } }
     for (const p of S.players) if (missionDone(S, p)) { p.cash += MISSION_BONUS; p.missionDone = 1; fx.push({ kind: 'mission', pid: p.id, m: p.mission }); }
+    for (const p of S.players) { const bonus = fx.filter(f => (f.kind === 'crown' || f.kind === 'mission') && f.pid === p.id).reduce((a, f) => a + (f.kind === 'crown' ? f.amt : MISSION_BONUS), 0); if (bonus) flowAdd(p, '大祭のボーナス', bonus); }
     S.over = true;
   }
   const rk = ranking(S);
@@ -917,15 +931,22 @@ export function step(S, decisions = {}) {
 export function workCap(s) { return crewCapK(s) * PROC[RES[s.res].proc].rate * (s.helper > 0 ? 1.3 : 1) * (s.under > 0 ? 0.7 : 1); }
 function workMonth(S, s, fx) {
   const p = S.players[s.owner], raw = s.res, pk = RES[raw].proc, P = PROC[pk];
-  const cap = workCap(s), units = Math.min(cap, p.inv[raw]);
-  const labor = crewWage(s), rent = rentOf(S, s.d);
+  const cap = workCap(s), labor = crewWage(s), rent = rentOf(S, s.d);
+  let bought = 0, buyCost = 0;
+  if (s.autoBuy !== 0 && p.inv[raw] < cap) {
+    let q = Math.floor(cap - p.inv[raw]); const budget = Math.max(0, p.cash - labor - rent);
+    while (q > 0 && takeCost(S, raw, q, 0).c > budget) q = Math.floor(q * 0.7);
+    if (q > 0) { const { c, st } = takeCost(S, raw, q, 0); p.cash -= c; p.inv[raw] += q; p.invCost[raw] += c; S.mk[raw].stock = st; S.mk[raw].shop += q; setPrice(S, raw); bought = q; buyCost = c; flowAdd(p, '材料の仕入れ', -c); }
+  }
+  const units = Math.min(cap, p.inv[raw]);
   let rawCost = 0;
   if (units > 0) { const avg = p.invCost[raw] / p.inv[raw]; rawCost = units * avg; p.inv[raw] -= units; p.invCost[raw] -= rawCost; p.inv[pk] += units; p.invCost[pk] += rawCost + labor + rent; p.flags.made += units; }
-  p.cash -= labor + rent;
+  p.cash -= labor + rent; flowAdd(p, 'お給料', -labor); flowAdd(p, '家賃', -rent);
   let sold = 0, got = 0;
   if (s.autoSell > 0 && p.inv[pk] > 0) { sold = Math.floor(p.inv[pk] * s.autoSell); if (sold > 0) { const r2 = giveGot(S, pk, sold, SPREAD); got = r2.g; const avg = p.invCost[pk] / p.inv[pk]; p.inv[pk] -= sold; p.invCost[pk] -= avg * sold; p.cash += got; S.mk[pk].stock = r2.st; S.mk[pk].sell += sold; setPrice(S, pk); } }
   const value = units * S.market[pk].price * (1 - SPREAD) - rawCost - labor - rent;
-  s.last = { units, want: units, cap, D: 0, revenue: got, cogs: rawCost, labor, rent, ads: 0, profit: value, made: units, sold, got, short: Math.max(0, cap - units) };
+  if (got) flowAdd(p, '加工品を売った', got);
+  s.last = { units, want: units, cap, D: 0, revenue: got, cogs: rawCost, labor, rent, ads: 0, profit: value, made: units, sold, got, bought, buyCost, short: Math.max(0, cap - units), noRaw: units === 0 };
   s.hist.push(value); if (s.hist.length > 24) s.hist.shift();
   s.months++; s.boost = 1; if (s.helper > 0) s.helper--; if (s.under > 0) s.under--;
   fx.push({ kind: 'made', pid: s.owner, shop: s.id, units, profit: value, item: pk });

@@ -281,6 +281,9 @@ function workSheet(s0) {
       <div class="kv" style="margin-top:8px"><span class="k">${R.icon} ${R.name}の在庫</span><span class="num">${fmt(p.inv[raw])}</span></div><div class="kv"><span class="k">${P.icon} ${P.name}の在庫</span><span class="num">${fmt(p.inv[pk])}</span></div></div>
     <div class="box"><div class="lbl">職人 <span class="grow"></span><span class="t3">1人 ${E.WAGE}G/月 · 1人で月 ${P.rate}個</span></div>
       <div class="stepper"><button data-a="sets" data-id="${s0.id}" data-v="-1">−</button><div class="v num">${s.staff}人</div><button data-a="sets" data-id="${s0.id}" data-v="1">＋</button><div class="t3 grow" style="text-align:right">月 ${fmt(cap)}個</div></div>
+      <div class="lbl" style="margin-top:12px">原料(${R.name})の仕入れ</div>
+      <div class="seg">${[[1, '自動で仕入れる'], [0, '自分で買う']].map(([v, n]) => `<button class="${((F.acts.filter(a => a.type === 'set' && a.shop === s0.id && a.autoBuy != null).pop() || s0).autoBuy !== 0 ? 1 : 0) === v ? 'on' : ''}" data-a="setautobuy" data-id="${s0.id}" data-v="${v}">${n}</button>`).join('')}</div>
+      <div class="t3" style="margin-top:4px">自動: 在庫が足りないぶんを、その月の相場で買って作る。安いときに市場でまとめ買いしておくと得</div>
       <div class="lbl" style="margin-top:12px">作ったものを市場で売る</div>
       <div class="seg">${[[0, '売らない'], [0.5, '半分'], [1, '全部']].map(([v, n]) => `<button class="${auto === v ? 'on' : ''}" data-a="setauto" data-id="${s0.id}" data-v="${v}">${n}</button>`).join('')}</div>
       <div class="t3" style="margin-top:6px">売らずに置いておくと、相場が上がったときに売ったり、自分の${Object.values(E.GOODS).find(g => g.res === raw).name}で「自家製」として使える(客寄せ +15%・材料費が半分)。</div>
@@ -947,7 +950,7 @@ SHEETS.ranking = () => {
   const W = 320, H = 140, all = S.players.flatMap(p => p.nw), mx = Math.max(...all, 1), mn = Math.min(0, ...all);
   const lines = S.players.map(p => { const n = p.nw.length; return `<polyline fill="none" stroke="${E.COLOR_HEX[p.color]}" stroke-width="${p.id === ME ? 3 : 2}" points="${p.nw.map((v, i) => `${(i / Math.max(1, S.months) * W).toFixed(1)},${(H - (v - mn) / (mx - mn) * (H - 10) - 5).toFixed(1)}`).join(' ')}"/>`; }).join('');
   return head('🏆', '順位', `純資産(現金+店+在庫−借金)で競う · のこり${S.months - S.t}か月`) +
-    winBox() + `<div class="box">${rk.map((x, i) => `<div class="rk"><span class="pos" style="background:${E.COLOR_HEX[x.p.color]}">${i + 1}</span><div class="nm">${esc(x.p.name)}${x.p.id === ME ? ' <span class="ai-chip">あなた</span>' : `<span class="ai-chip">${x.p.human ? '🙂 プレイヤー' : E.AI_KIND[x.p.ai] ? E.AI_KIND[x.p.ai].name : ''}</span>`}<small>店 ${E.shopsOf(S, x.p.id).length} · 現金 ${fmt(x.p.cash)}G</small></div><div class="num" style="font-size:17px">${fmt(x.nw)}G</div></div>`).join('')}</div>
+    winBox() + `<div class="box">${rk.map((x, i) => `<div class="rk"><span class="pos" style="background:${E.COLOR_HEX[x.p.color]}">${i + 1}</span><div class="nm">${esc(x.p.name)}${x.p.id === ME ? ' <span class="ai-chip">あなた</span>' : `<span class="ai-chip">${x.p.human ? '🙂 プレイヤー' : E.AI_KIND[x.p.ai] ? E.AI_KIND[x.p.ai].name : ''}</span>`}<small>店 ${E.shopsOf(S, x.p.id).length}つ</small>${nwParts(x.p)}</div><div class="num" style="font-size:17px">${fmt(x.nw)}G</div></div>`).join('')}</div>
     <div class="box"><div class="lbl">純資産の動き</div><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${lines}</svg></div>
     ${crownBox()}${missionBox()}`;
 };
@@ -960,15 +963,30 @@ function missionBox() {
   return `<div class="box" style="background:linear-gradient(135deg,#f6f0ff,#fff)"><div class="lbl">🤫 あなたの秘密の目標(+${E.MISSION_BONUS}G)</div><div style="font-size:16px">${M.name} ${done ? '<span class="up">✔ 達成中</span>' : ''}</div><div class="t3">${M.text} · ${E.missionProgress(S, p)}</div><div class="t3" style="margin-top:4px">ライバルにもそれぞれ秘密の目標がある(最後に公開)。</div></div>`;
 }
 // 月の結果
+// お金の流れ: 先月の現金 → 項目ごとの出入り → 今の現金
+const FLOW_ICON = { '建設': '🏗️', '育て方': '🌱', '店の売上': '🏪', '加工品を売った': '🏭', '材料の仕入れ': '📦', 'お給料': '👷', '家賃': '🏠', '宣伝': '📣', '市場で買った': '🛒', '市場で売った': '💰', 'カード': '🃏', '商人との取引': '🤝', 'ライバルとの取引': '🤝', '借金の返済': '💸', '借金の利息': '💸', 'つなぎ融資(借りた)': '🏦', '救済融資(借りた)': '🆘', '売掛金を前倒し': '🧾', '契約・売掛金': '📝', '先物の約束(材料)': '📝', '店の買い取り': '🏪', '店を売った': '🏪', '店をたたんだ(売った)': '🏚️', '保管料': '🗄️', '臨時の税': '📜', '年末の税': '📜', '町の依頼': '📋', '町の依頼など': '📋', '大祭のボーナス': '👑', 'その他': '•' };
+function flowBox() {
+  const p = me(), fl = p.flow || {}, c0 = p.cash0 != null ? p.cash0 : p.cash;
+  const rows = Object.entries(fl).filter(([, v]) => Math.abs(v) >= 0.5).sort((a, b) => b[1] - a[1]);
+  if (!rows.length) return '';
+  const total = p.cash - c0;
+  return `<div class="box flowbox"><div class="lbl">💰 お金の流れ(今月)</div>
+    <div class="fl0"><span>先月末の現金</span><b>${fmt(c0)}G</b></div>
+    ${rows.map(([k, v], i) => `<div class="flr ${v >= 0 ? 'in' : 'out'}" style="animation-delay:${0.1 + i * 0.06}s"><span>${FLOW_ICON[k] || '•'} ${k}</span><b>${v >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(v)))}G</b><i style="width:${Math.min(100, Math.abs(v) / Math.max(1, ...rows.map(x => Math.abs(x[1]))) * 100)}%"></i></div>`).join('')}
+    <div class="fl1"><span>いまの現金</span><b>${fmt(p.cash)}G</b><small class="${cls(total)}">${sign(Math.round(total))}G</small></div>
+    ${fl['建設'] ? `<div class="t3" style="margin-top:6px">🏗️ 建てたお金は消えたわけではなく「店の価値」として純資産に残る</div>` : ''}</div>`;
+}
+const nwParts = (p) => { const shops = E.shopsOf(S, p.id).reduce((a, s) => a + E.shopValue(S, s), 0), inv = E.resValue(S, p); return `<small class="nwp">現金 ${fmt(p.cash)} + 店 ${fmt(shops)}${inv >= 1 ? ` + 在庫 ${fmt(inv)}` : ''}${p.debt > 0 ? ` − 借金 ${fmt(p.debt)}` : ''}</small>`; };
 SHEETS.result = ({ r }) => {
   const mine = r.mine, sum = mine.reduce((a, x) => a + x.profit, 0);
   const tierBox = r.tier1 !== r.tier0 ? `<div class="box tierbox ${r.tier1 > r.tier0 ? 'up' : 'down'}"><div style="font-size:34px">${E.RANKS[r.tier1][2]}</div><div><div class="lbl">${r.tier1 > r.tier0 ? '商会の格が上がった!' : '商会の格が下がった…'}</div><div style="font-size:18px">${E.RANKS[r.tier0][1]} → <b>${E.RANKS[r.tier1][1]}</b></div></div></div>` : '';
-  return tierBox + `<div class="mhead"><div class="mt">${ym(S.t - 1)}の結果 · ${wx(S.w).icon} ${wx(S.w).name}</div><div class="mv num ${cls(sum)}" id="cntup">${sign(0)}G</div><div class="t3">店の利益の合計 · 現金 ${fmt(me().cash)}G</div></div>
+  return tierBox + `<div class="mhead"><div class="mt">${ym(S.t - 1)}の結果 · ${wx(S.w).icon} ${wx(S.w).name}</div><div class="mv num ${cls(sum)}" id="cntup">${sign(0)}G</div><div class="t3">お店の利益(売上 − 材料 − 給料 − 家賃 − 宣伝)</div></div>
+    ${flowBox()}
     ${r.alerts && r.alerts.length ? `<div class="box alertbox"><div class="lbl">⚠️ 判断が必要なこと</div>${r.alerts.map(a => `<button class="news" style="width:100%;text-align:left" data-a="alert" data-k="${a.a || ''}" data-id="${a.id || ''}">${a.t}${a.a ? ' ›' : ''}</button>`).join('')}</div>` : '<div class="box" style="padding:10px 14px"><div class="t2" style="margin:0">✅ 今月は判断が必要なことはない。方針はそのまま引き継がれる</div></div>'}
     ${r.auto && r.auto.length ? `<div class="box"><div class="lbl">🤵 店長がしたこと</div>${r.auto.map(t => `<div class="news">${t}</div>`).join('')}</div>` : ''}
-    ${mine.length ? `<div class="box">${mine.map(x => `<div class="shoprow"><span class="ic">${x.icon}</span><div class="grow"><div>${x.name} <span class="t3">${x.dist}</span></div><div class="t3">${x.work ? `${fmt(x.units)}個つくった${x.sold ? ` · ${fmt(x.sold)}個売った` : ''}` : `お客 ${fmt(x.units)}人${x.lost > 3 ? ` · <span class="down">${fmt(x.lost)}人を逃した</span>` : ''}`}</div></div><div class="num ${cls(x.profit)}">${sign(x.profit)}</div></div>${x.why ? `<div class="why">💬 ${x.why}${!x.work ? funnelBox(x.s, true) + sourcesBox(x.s, true) : ''}</div>` : ''}`).join('')}</div>` : ''}
+    ${mine.length ? `<div class="box">${mine.map(x => `<div class="shoprow"><span class="ic">${x.icon}</span><div class="grow"><div>${x.name} <span class="t3">${x.dist}</span></div><div class="t3">${x.work ? (x.s.last && x.s.last.noRaw ? `<span class="down">原料が買えず、作れなかった(お金不足)</span>` : `${fmt(x.units)}個つくった${x.s.last && x.s.last.bought ? `(原料 ${fmt(x.s.last.bought)}個を自動で仕入れ)` : ''}${x.sold ? ` · ${fmt(x.sold)}個売った` : ''}`) : `お客 ${fmt(x.units)}人${x.lost > 3 ? ` · <span class="down">${fmt(x.lost)}人を逃した</span>` : ''}`}</div></div><div class="num ${cls(x.profit)}">${sign(x.profit)}</div></div>${x.why ? `<div class="why">💬 ${x.why}${!x.work ? funnelBox(x.s, true) + sourcesBox(x.s, true) : ''}</div>` : ''}`).join('')}</div>` : ''}
     ${(() => { const ls = lessonOf(mine); return ls ? `<div class="box" style="background:linear-gradient(135deg,#eef6ff,#fff)"><div class="lbl">📘 今月の学び</div><div class="t2">${ls}</div></div>` : ''; })()}
-    <div class="box"><div class="lbl">順位</div>${r.rank.map((x, i) => `<div class="rk"><span class="pos" style="background:${E.COLOR_HEX[x.color]}">${i + 1}</span><div class="nm">${esc(x.name)}${x.move ? `<span class="rankmove ${x.move > 0 ? 'up' : 'down'}">${x.move > 0 ? '▲' : '▼'}${Math.abs(x.move)}</span>` : ''}</div><div class="num">${fmt(x.nw)}G</div></div>`).join('')}</div>
+    <div class="box"><div class="lbl">順位</div>${r.rank.map((x, i) => `<div class="rk"><span class="pos" style="background:${E.COLOR_HEX[x.color]}">${i + 1}</span><div class="nm">${esc(x.name)}${x.move ? `<span class="rankmove ${x.move > 0 ? 'up' : 'down'}">${x.move > 0 ? '▲' : '▼'}${Math.abs(x.move)}</span>` : ''}${x.pid != null ? nwParts(S.players[x.pid]) : ''}</div><div class="num">${fmt(x.nw)}G</div></div>`).join('')}<div class="t3" style="margin-top:6px">順位は<b>純資産</b>(現金 + 店の価値 + 在庫 − 借金)で決まる。建てたお金は「店の価値」に変わるので、建てた月に順位が大きく下がることはない</div></div>
     ${r.check && r.check.length ? `<div class="box"><div class="lbl">🎯 答え合わせ</div>${r.check.map(n => `<div class="news">${n}</div>`).join('')}</div>` : ''}
     ${(S.rumors || []).length ? `<div class="box"><div class="lbl">🗣️ 口コミ</div>${S.rumors.slice(0, 3).map(x => `<div class="news">${x.pid === ME ? '⭐ ' : ''}${esc(x.t)}</div>`).join('')}</div>` : ''}
     ${r.news.length ? `<div class="box"><div class="lbl">町の出来事</div>${r.news.map(n => `<div class="news">${n}</div>`).join('')}</div>` : ''}
@@ -1038,6 +1056,7 @@ const H = {
   hirelist: (d) => openSheet('hire', { shop: +d.id }),
   hire: (d) => { F.acts.push({ type: 'hire', shop: +d.id, cand: +d.v }); sfx('build'); save(); toast('月末に入る'); openSheet('shop', { id: +d.id }); },
   fire: (d) => { F.acts.push({ type: 'fire', shop: +d.id, staffId: +d.v }); sfx('tap'); save(); render(); },
+  setautobuy: (d) => { const sh = S.shops.find(x => x.id === +d.id); F.acts = F.acts.filter(a => !(a.type === 'set' && a.shop === sh.id && a.autoBuy != null && a.priceLv == null)); F.acts.push({ type: 'set', shop: sh.id, autoBuy: +d.v }); sfx('toggle'); save(); render(); },
   setauto: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, autoSell: +d.v }); sfx('tap'); render(); },
   setproc: (d) => { const s = S.shops.find(x => x.id === +d.id), v = shopView(s); setPending(s.id, { priceLv: v.priceLv, staff: v.staff, ads: v.ads, useProc: +d.v }); sfx('tap'); render(); },
   build: () => buildStart(null),
@@ -1217,7 +1236,7 @@ async function nextMonth() {
   const after = E.ranking(S);
   const r = {
     mine: E.shopsOf(S, ME).filter(s => s.last).map(s => ({ s, why: whyText(s), prev: s.last.prevProfit, work: s.g === 'work', sold: s.last.sold, icon: gd(s).icon, name: gd(s).name, dist: E.DISTRICTS[s.d].short, units: s.last.units, lost: Math.max(0, s.last.want - s.last.units), profit: s.last.profit })),
-    rank: after.map((x, i) => ({ name: x.p.name, color: x.p.color, nw: x.nw, move: before.indexOf(x.p.id) - i })),
+    rank: after.map((x, i) => ({ pid: x.p.id, name: x.p.name, color: x.p.color, nw: x.nw, move: before.indexOf(x.p.id) - i })),
     news: newsOf(fx, pre), tip: tipOf(), check: checkOf(fc), auto: autoDone, alerts: F.alerts,
   };
   r.tier0 = tier0; r.tier1 = E.rankOf(E.netWorth(S, me()));
@@ -1472,7 +1491,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114015416';
+const BUILD = '20261114020053';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
