@@ -70,6 +70,7 @@ function dock() {
   const n = F.acts.length;
   $('#dock').innerHTML = `
     <div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="weather"><span class="ei">${wx(me().scout === S.t ? S.wNext : S.wFore).icon}</span><span><span class="et">天気予報${me().scout === S.t ? '(確実)' : ''}</span><br>${wx(me().scout === S.t ? S.wNext : S.wFore).name}</span></button>${ev ? `<button class="evchip" data-a="event"><span class="ei">${ev.icon}</span><span><span class="et">来月の予報${E.marketDay({ t: S.t }) ? ' · 🛍️市の日' : ''}</span><br>${esc(ev.name)}</span></button>` : ''}${S.t >= S.months - 18 ? `<button class="evchip grand" data-a="grand"><span class="ei">🏰</span><span><span class="et">${E.finalYear(S) ? '大祭の年' : '大祭まで'}</span><br>${E.finalYear(S) ? `のこり${S.months - S.t}か月` : `あと${S.months - 12 - S.t}か月`}</span></button>` : ''}</div>
+    ${F.mp ? `<div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="stamps">💬 スタンプ</button><button class="evchip" data-a="online">🌐 ${humansOf().filter(x => x.cid === NET.cid || NET.online(x.cid)).length}/${humansOf().length}人</button></div>${F.stampOpen ? `<div class="stray">${STAMPS.map(x => `<button class="stb" data-a="stamp" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}` : ''}
     ${F.alerts && F.alerts.length && !S.over ? `<button class="evchip alertchip" data-a="alerts">⚠️ 判断が必要 ${F.alerts.length}件</button>` : ''}
     <div class="hand">${p.hand.map((c, i) => { const cd = E.cardDef(c); const isUsed = used && used.card === c && used.idx === i; return `<button class="card ${F.handT !== S.t ? 'fresh' : ''} ${isUsed ? 'sel' : used ? 'used' : ''}" data-a="card" data-i="${i}">${isUsed ? '<span class="tag">使う</span>' : ''}<div class="ci">${cd.spec ? '🧑‍🍳' : cd.icon}${cd.spec ? `<span class="cspec">${cd.icon}</span>` : ''}</div><div class="cn">${cd.name}</div><div class="cc">${cd.cost ? fmt(cd.cost) + 'G' : '無料'}</div></button>`; }).join('')}</div>
     <div class="actions">
@@ -79,7 +80,7 @@ function dock() {
       <button class="abtn go" data-a="next">次の月へ${n ? `<small>決めたこと ${n}</small>` : ''}</button>
     </div>`;
 }
-function render() { hud(); cashRoll(); dock(); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
+function render() { hud(); cashRoll(); dock(); if (F.mp) netBadge(); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
 // 場面に合わせて曲を選ぶ: 大祭の年・雨・町ごとの曲を数か月ごとに入れ替え
 const STAGE_BGM = { rose: ['asa', 'kenso'], marina: ['minato', 'asa'], snow: ['yuki', 'kenso'], capital: ['kenso', 'asa'] };
 function pickBgm() {
@@ -360,83 +361,174 @@ SHEETS.market = () => {
   return head('🛒', '市場', '値段は町の倉の在庫で決まる。在庫が減ると値上がり、増えると値下がり') + tabs + body + `<div class="t3" style="margin-top:8px">📦 在庫は「生産(季節・天気・出来事)」で増え、「町の人の消費(高いと控える)」と「みんなの店の仕入れ」で減る。プレイヤーが買えば減り、売れば増える。</div>`;
 };
 // ── オンライン対戦
-const MPNAME = 'capital-mp-name';
+const MPNAME = 'capital-mp-name', MPSAVE = 'capital-mp-v1';
 const mpName = () => { try { return localStorage.getItem(MPNAME) || ''; } catch (e) { return ''; } };
+const mpLoad = () => { try { const j = JSON.parse(localStorage.getItem(MPSAVE) || 'null'); return j && j.code ? j : null; } catch (e) { return null; } };
+// ホストは町の状態ごと保存(アプリを閉じても再開できる)。参加者は部屋の番号だけ
+function mpSave() { if (!F.mp) return; try { localStorage.setItem(MPSAVE, JSON.stringify(NET.host ? { role: 'host', code: NET.code, name: NET.name, seats: F.mpSeats, S, t: Date.now() } : { role: 'guest', code: NET.code, name: NET.name, stage: S.stage, mt: S.t, t: Date.now() })); } catch (e) { } }
+const mpClear = () => { try { localStorage.removeItem(MPSAVE); } catch (e) { } };
+const STAMPS = ['👍', '😂', '😱', '🔥', '💰', '🙏', 'よろしく!', 'うまい!', 'やられた…', 'まだまだ!', '次は負けない', '待ってね'];
+const humansOf = () => (F.mpSeats || []).map((x, i) => ({ ...x, i })).filter(x => !x.ai);
 SHEETS.online = () => {
   const head0 = head('🌐', '友だちと対戦', 'ひとりがホストになり、部屋の番号を友だちに送る');
-  if (!NET.on || NET.status !== 'live') return head0 + `<div class="box"><div class="lbl">あなたの名前</div><input id="mpname" class="inp" maxlength="10" value="${esc(mpName() || '')}" placeholder="例: たろう商会"></div>
+  const sv = mpLoad();
+  if (!NET.on || NET.status !== 'live') return head0 + (sv && !F.mp ? `<div class="box"><div class="t2" style="margin-bottom:6px">前の対戦(部屋 <b>${esc(sv.code)}</b>・${sv.role === 'host' ? 'ホスト' : '参加'})</div><button class="btn wide warm" data-a="mpresume">🔁 対戦に戻る</button></div>` : '') + `<div class="box"><div class="lbl">あなたの名前</div><input id="mpname" class="inp" maxlength="10" value="${esc(mpName() || '')}" placeholder="例: たろう商会"></div>
     <div class="box"><button class="btn wide warm" data-a="mpcreate">🏠 部屋を作る(ホスト)</button></div>
-    <div class="box"><div class="lbl">部屋の番号</div><div class="row" style="gap:8px"><input id="mpcode" class="inp" maxlength="5" style="text-transform:uppercase;letter-spacing:.2em;flex:1" value="${esc(F.joinCode || '')}" placeholder="ABCDE"><button class="btn pri" data-a="mpjoin">入る</button></div></div>
+    <div class="box"><div class="lbl">部屋の番号</div><div class="row" style="gap:8px"><input id="mpcode" class="inp" maxlength="5" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em;flex:1" value="${esc(F.joinCode || '')}" placeholder="ABCDE"><button class="btn pri" data-a="mpjoin">入る</button></div></div>
     ${NET.status === 'connecting' ? '<div class="t2">⏳ つないでいます…</div>' : NET.status === 'error' ? '<div class="alertbox">つながらなかった。電波を確認して、もう一度ためしてね</div>' : ''}
-    <div class="t3">最大4人。空いた席はAIの商会が入る。ホストのスマホが月を進める計算をするので、ホストはアプリを閉じないでね。</div>`;
-  const mem = NET.members, url = location.origin + location.pathname + '?room=' + NET.code;
-  let h = head0 + `<div class="box" style="text-align:center"><div class="lbl">部屋の番号</div><div style="font-size:34px;font-weight:800;letter-spacing:.25em">${NET.code}</div><button class="btn sm" data-a="mpshare" style="margin-top:6px">📨 友だちに送る</button></div>`;
-  h += `<div class="box"><div class="lbl">いる人(${mem.length}/4)</div>${mem.map((m, i) => `<div class="t2" style="margin:4px 0">${m.host ? '👑' : '🙂'} ${esc(m.name || '名なし')}${m.cid === NET.cid ? '(あなた)' : ''}${F.mp && NET.ready && NET.seats ? (NET.seats.findIndex(x => x.cid === m.cid) >= 0 && NET.ready[NET.seats.findIndex(x => x.cid === m.cid)] ? ' ✅' : '') : ''}</div>`).join('')}</div>`;
-  if (!F.mp) {
+    <div class="t3">最大4人。空いた席はAIの商会が入り、始まったあとでもAIの席に途中参加できる。ホストのスマホが月を進める計算をする。ホストがアプリを閉じても、あとで「対戦に戻る」で続きから再開できる。</div>`;
+  const mem = NET.members, seats = F.mpSeats || [];
+  let h = head0 + `<div class="box" style="text-align:center"><div class="lbl">部屋の番号</div><div style="font-size:34px;font-weight:800;letter-spacing:.25em">${NET.code}</div><button class="btn sm" data-a="mpshare" style="margin-top:6px">📨 友だちに送る</button>${F.mp && seats.some(x => x.ai && x.open) ? '<div class="t3" style="margin-top:6px">対戦中でも、AIの席に途中参加できる</div>' : ''}</div>`;
+  if (F.mp) {
+    h += `<div class="box"><div class="lbl">席</div>${seats.map((x, i) => { const p = S.players[i], on = x.ai ? null : NET.online(x.cid); return `<div class="row" style="align-items:center;gap:8px;margin:6px 0"><div class="grow t2" style="margin:0">${pname(p)} ${i === ME ? '(あなた)' : ''}${x.ai ? ' <span class="tagg">AI</span>' : on ? ' <span class="tagg g">オンライン</span>' : ' <span class="tagg r">通信なし</span>'}${!x.ai && NET.ready && NET.ready[i] ? ' ✅' : ''}</div>${NET.host && !x.ai && i !== ME ? `<button class="btn sm" data-a="mpai" data-v="${i}">AIに任せる</button>` : ''}${NET.host && x.ai && x.left ? `<span class="t3">戻ったら返す</span>` : ''}</div>`; }).join('')}</div>`;
+  } else {
+    h += `<div class="box"><div class="lbl">いる人(${mem.length}/4)</div>${mem.map(m => `<div class="t2" style="margin:4px 0">${m.host ? '👑' : '🙂'} ${esc(m.name || '名なし')}${m.cid === NET.cid ? '(あなた)' : ''}</div>`).join('')}</div>`;
     if (NET.host) { const st = F.mpStage || 'rose', mo = F.months || 36, lv = F.level || 'hard';
       h += `<div class="box"><div class="lbl">町</div><div class="seg" style="margin-bottom:8px">${Object.entries(E.STAGES).map(([k, v]) => `<button class="${st === k ? 'on' : ''}" data-a="mpset" data-k="mpStage" data-v="${k}">${v.icon}<small>${v.name}</small></button>`).join('')}</div>
-      <div class="lbl">長さ</div><div class="seg" style="margin-bottom:8px">${[24, 36, 60].map(v => `<button class="${mo === v ? 'on' : ''}" data-a="mpset" data-k="months" data-v="${v}">${v / 12}年</button>`).join('')}</div>
+      <div class="lbl">長さ</div><div class="seg" style="margin-bottom:8px">${[12, 24, 36, 60].map(v => `<button class="${mo === v ? 'on' : ''}" data-a="mpset" data-k="months" data-v="${v}">${v / 12}年</button>`).join('')}</div>
       <div class="lbl">AIの強さ(空いた席)</div><div class="seg">${Object.entries(E.AI_LEVEL).map(([k, L]) => `<button class="${lv === k ? 'on' : ''}" data-a="mpset" data-k="level" data-v="${k}">${L.name}</button>`).join('')}</div></div>
-      <button class="btn wide warm" data-a="mpstart">この顔ぶれで始める</button>`; }
+      <button class="btn wide warm" data-a="mpstart">この顔ぶれで始める(${Math.min(4, mem.length)}人${mem.length < 4 ? ` + AI ${4 - mem.length}` : ''})</button>`; }
     else h += `<div class="box t2">⏳ ホストが始めるのを待っています…</div>`;
   }
   h += `<button class="btn wide" data-a="mpleave" style="margin-top:10px">部屋を出る</button>`;
   return h;
 };
 async function mpConnect(code, host) {
-  const nm = (($('#mpname') && $('#mpname').value) || mpName() || 'ゲスト').trim().slice(0, 10); try { localStorage.setItem(MPNAME, nm); } catch (e) { }
+  const nm = (($('#mpname') && $('#mpname').value) || mpName() || 'ゲスト').trim().slice(0, 10) || 'ゲスト'; try { localStorage.setItem(MPNAME, nm); } catch (e) { }
   NET.status = 'connecting'; renderSheet();
   const ok = await joinRoom(code, nm, host);
-  if (!ok) { NET.on = false; NET.status = 'error'; renderSheet(); return; }
-  sfx('notify'); renderSheet();
+  if (!ok) { NET.on = false; NET.status = 'error'; renderSheet(); return false; }
+  sfx('notify'); renderSheet(); return true;
 }
-NET.on_('members', () => { if (F.sheet === 'online') renderSheet(); });
-NET.on_('status', () => { if (F.sheet === 'online') renderSheet(); if (NET.status === 'error' && F.mp) toast('通信が切れた。部屋のようすから入り直してね'); });
-// ホスト: 途中から入った人・入り直した人に、いまの町を送る
-NET.on_('hello', (m) => { if (!F.mp) return; let seat = F.mpSeats.findIndex(x => x.cid === m.cid); if (seat < 0) { seat = F.mpSeats.findIndex(x => x.ai && x.open); } if (seat >= 0) netSend({ k: 'state', to: m.cid, S, seats: F.mpSeats, fx: [], errors: [], t: S.t }); });
-NET.on_('syncReq', (m) => { if (F.mp) netSend({ k: 'state', to: m.cid, S, seats: F.mpSeats, fx: [], errors: [], t: S.t }); });
+// 通信の状態を画面の上に小さく出す(ホストがいない・つなぎ直し中)
+function netBadge() {
+  let el = $('#mpnet'); let msg = '';
+  if (F.mp) {
+    if (NET.status !== 'live') msg = '📡 つなぎ直しています…';
+    else if (!NET.host && !NET.hostOnline()) msg = '👑 ホストの通信が切れています。戻るのを待っています…';
+  }
+  if (!msg) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'mpnet'; document.body.appendChild(el); }
+  el.textContent = msg;
+}
+NET.on_('members', (mem) => {
+  if (F.sheet === 'online') renderSheet(); netBadge(); updateWait();
+  if (F.mp) { const prev = F.mpSeen || new Set(), now = new Set(mem.map(m => m.cid)); for (const x of humansOf()) { if (x.cid === NET.cid) continue; if (prev.size && prev.has(x.cid) && !now.has(x.cid)) toast(`📡 ${x.name}の通信が切れた`); if (prev.size && !prev.has(x.cid) && now.has(x.cid)) toast(`🙌 ${x.name}がもどってきた`); } F.mpSeen = now; }
+});
+NET.on_('status', () => { if (F.sheet === 'online') renderSheet(); netBadge(); });
+// つなぎ直したら、参加者は町の状態を確かめ直す。ホストは全員にいまの町を配り直す
+NET.on_('live', ({ again }) => { netBadge(); if (NET.host) { if (F.mp && again) netSend({ k: 'state', S, seats: F.mpSeats, fx: [], errors: [], t: S.t, re: 1 }); return; } if (F.mp) netSend({ k: 'sync', cid: NET.cid, t: S.t }); else netSend({ k: 'hello', cid: NET.cid, name: NET.name }); });
+// ホスト: 入ってきた人に席と町を渡す。前にいた人には同じ席、新しい人にはAIの空き席
+NET.on_('hello', (m) => {
+  if (!F.mp) return;
+  let seat = F.mpSeats.findIndex(x => x.cid === m.cid);
+  if (seat < 0) seat = F.mpSeats.findIndex(x => x.ai && x.left === m.cid);   // AIに任せていた席を返す
+  if (seat < 0 && !S.over) seat = F.mpSeats.findIndex(x => x.ai && x.open && !x.left);
+  if (seat >= 0 && F.mpSeats[seat].ai) { mpSeatHuman(seat, m.cid, m.name); toast(`🙌 ${m.name}が${S.players[seat].name}の席に入った`); netSend({ k: 'state', S, seats: F.mpSeats, fx: [], errors: [], t: S.t, re: 1 }); mpSave(); render(); return; }
+  netSend({ k: 'state', to: m.cid, S, seats: F.mpSeats, fx: [], errors: [], t: S.t, re: 1 });
+});
+NET.on_('syncReq', (m) => { if (F.mp) netSend({ k: 'state', to: m.cid, S, seats: F.mpSeats, fx: [], errors: [], t: S.t, re: 1 }); });
+NET.on_('bye', (m) => { if (!F.mp) return; const i = F.mpSeats.findIndex(x => x.cid === m.cid); if (i >= 0) { toast(`👋 ${F.mpSeats[i].name}が抜けた。AIが引き継ぐ`); mpSeatAI(i); netSend({ k: 'state', S, seats: F.mpSeats, fx: [], errors: [], t: S.t, re: 1 }); mpSave(); if (F.mpChk) F.mpChk(); render(); } });
+// 席の持ち主を入れかえる
+const AIP_LV = { hard: E.AIP_LEARNED, oni: E.AIP_DEEP, maou: E.AIP_MAOU };
+function mpSeatAI(i) { const x = F.mpSeats[i], p = S.players[i]; F.mpSeats[i] = { ai: 'balanced', name: p.name, open: 1, left: x.cid }; p.ai = 'balanced'; p.human = false; p.smart = S.level !== 'normal'; p.aip = AIP_LV[S.level]; delete NET.ready[i]; }
+function mpSeatHuman(i, cid, name) { const p = S.players[i]; F.mpSeats[i] = { cid, name }; p.ai = null; p.human = true; p.smart = false; p.aip = undefined; if (name) p.name = name; }
 // 参加者: 始まり・入り直し
-async function mpAdopt(m) {
-  if (NET.mySeat < 0) { toast('この対戦はもう始まっていて、席が空いていない'); return; }
-  F.mp = true; F.mpSeats = m.seats; ME = NET.mySeat; S = m.S; F.acts = []; E.useStage(S.stage);
-  closeSheet(); $('.title') && $('.title').remove(); $('#loading').classList.remove('off');
-  await board.build(S.stage); await board.sync(S, ME); labels(); render(); board.home(); board.setWeather(S.t ? S.w : 'sun'); board.setProsperity(avgProsper());
-  setTimeout(() => $('#loading').classList.add('off'), 200);
-  toast(`🌐 ${E.STAGES[S.stage].name}で対戦開始! あなたは ${S.players[ME].name}`);
+async function mpAdopt(m, quiet) {
+  if (NET.mySeat < 0) { if (!F.mp) toast('この対戦は満席で、空いた席がない'); return; }
+  const same = F.mp && S && S.stage === m.S.stage && F.mpBuilt;
+  if (same && m.S.t !== S.t) F.acts = [];   // 月が進んでいたら、前の月の予定は捨てる
+  F.mp = true; F.mpSeats = m.seats; ME = NET.mySeat; S = m.S; E.useStage(S.stage);
+  if (!same) {
+    F.acts = []; closeSheet(); $('.title') && $('.title').remove(); $('#loading').classList.remove('off');
+    await board.build(S.stage); F.mpBuilt = true;
+    setTimeout(() => $('#loading').classList.add('off'), 200);
+  }
+  await board.sync(S, ME); labels(); render(); if (!same) board.home(); board.setWeather(S.t ? S.w : 'sun'); board.setProsperity(avgProsper());
+  mpSave(); netBadge();
+  if (!quiet) toast(same ? '🔄 町の状態をそろえた' : `🌐 ${E.STAGES[S.stage].name}で対戦! あなたは ${S.players[ME].name}`);
 }
 NET.on_('start', (m) => { mpAdopt(m); });
-NET.on_('state', (m) => { if (F.mpWait) { F.mpWait(m); return; } if (!F.mp || m.t !== S.t) mpAdopt(m); });
+NET.on_('state', (m) => {
+  if (F.mpWait) { F.mpWait(m); return; }
+  if (!F.mp || m.t !== S.t || m.re) mpAdopt(m, F.mp && m.t === S.t);
+});
 NET.on_('ready', () => { updateWait(); if (F.sheet === 'online') renderSheet(); });
+// ホストが「まだの人」をつつく
+NET.on_('poke', (m) => { if (!F.mp || S.t !== m.t) return; if (F.mpWaiting && F.mpResend) { F.mpResend(); return; } if ((m.need || []).includes(ME) && F.pokedT !== S.t) { F.pokedT = S.t; sfx('notify'); haptic(30); toast(`⏳ みんながあなたの決断を待っている`); } });
+NET.on_('closed', () => { if (!F.mp) return; toast('ホストが部屋を閉じた'); });
+NET.on_('stamp', (m) => showStamp(m.name, m.s, m.color));
+function showStamp(name, s, color) {
+  const d = document.createElement('div'); d.className = 'stamp'; d.innerHTML = `<span class="sn" style="background:${color || '#3a7bd5'}">${esc(name)}</span><span class="ss">${esc(s)}</span>`;
+  d.style.left = (12 + Math.random() * 40) + 'vw'; document.body.appendChild(d); setTimeout(() => d.remove(), 3200); sfx('pop');
+}
 function updateWait() {
   let w = $('#mpwait'); if (!F.mpWaiting) { if (w) w.remove(); return; }
   if (!w) { w = document.createElement('div'); w.id = 'mpwait'; document.body.appendChild(w); }
-  const humans = (F.mpSeats || []).map((x, i) => ({ ...x, i })).filter(x => !x.ai), r = NET.ready || {};
-  w.innerHTML = `<div>⏳ みんなの決断を待っています(${humans.filter(x => r[x.i]).length}/${humans.length})</div><div class="t3">${humans.map(x => `${r[x.i] ? '✅' : '💭'} ${esc(x.name)}`).join(' · ')}</div>${NET.host && F.mpWaitSince && Date.now() - F.mpWaitSince > 30000 ? '<button class="btn sm" data-a="mpskip">待たずに進める</button>' : ''}`;
+  const humans = humansOf(), r = NET.ready || {}, waitS = Math.floor((Date.now() - (F.mpWaitSince || Date.now())) / 1000);
+  const offline = humans.filter(x => !r[x.i] && x.cid !== NET.cid && !NET.online(x.cid));
+  w.innerHTML = `<div>⏳ みんなの決断を待っています(${humans.filter(x => r[x.i]).length}/${humans.length})</div><div class="t3">${humans.map(x => `${r[x.i] ? '✅' : NET.online(x.cid) || x.cid === NET.cid ? '💭' : '📡'} ${esc(x.name)}`).join(' · ')}</div>${NET.host && (offline.length || waitS > 45) ? `<div class="row" style="gap:6px;justify-content:center;margin-top:6px"><button class="btn sm" data-a="mpskip">待たずに進める</button>${offline.length ? `<button class="btn sm" data-a="mpaiall">通信なしの人をAIに</button>` : ''}</div>` : ''}<div class="row" style="gap:4px;justify-content:center;margin-top:6px">${STAMPS.slice(0, 6).map(s => `<button class="stb" data-a="stamp" data-v="${esc(s)}">${s}</button>`).join('')}</div>`;
 }
 // 1か月すすめる(オンライン)。ホストが計算して全員に配る
 async function mpStep(acts) {
-  if (NET.status !== 'live') { toast('通信が切れている。メニュー→部屋のようす'); return null; }
+  if (NET.status !== 'live') { toast('通信がつながっていない。つなぎ直しています…'); return null; }
   F.mpWaiting = true; F.mpWaitSince = Date.now();
   const tick = setInterval(updateWait, 1000);
   try {
     if (NET.host) {
-      NET.ready[ME] = { acts, policy: me().policy || null }; netSend({ k: 'ready', ready: Object.fromEntries(Object.keys(NET.ready).map(k => [k, 1])) }); updateWait();
-      await new Promise((res) => { F.mpGo = res; const chk = () => { const need = F.mpSeats.map((x, i) => i).filter(i => !F.mpSeats[i].ai); if (need.every(i => NET.ready[i])) res(); }; F.mpChk = chk; chk(); });
+      NET.ready[ME] = { acts, policy: me().policy || null, t: S.t }; netSend({ k: 'ready', ready: readyMap() }); updateWait();
+      let poke = 0;
+      await new Promise((res) => {
+        F.mpGo = res;
+        const chk = () => { if (humansOf().every(x => NET.ready[x.i] && NET.ready[x.i].t === S.t)) res(); };
+        F.mpChk = chk; chk();
+        poke = setInterval(() => { const need = humansOf().filter(x => !(NET.ready[x.i] && NET.ready[x.i].t === S.t)).map(x => x.i); netSend({ k: 'poke', t: S.t, need }); }, 6000);
+      });
+      clearInterval(poke);
       const dec = {};
-      for (const [seat, m] of Object.entries(NET.ready)) { if (+seat !== ME && m.t !== S.t) continue; dec[seat] = m.acts || []; if (m.policy) S.players[seat].policy = m.policy; }
-      for (const [i, x] of F.mpSeats.entries()) if (!x.ai && !dec[i]) dec[i] = [];
+      for (const x of humansOf()) { const m = NET.ready[x.i]; dec[x.i] = m && m.t === S.t ? m.acts || [] : []; if (m && m.policy) S.players[x.i].policy = m.policy; }
       const think = await aiThink();
       const r = E.step(S, { ...think, ...dec });
-      NET.ready = {}; netSend({ k: 'state', S, seats: F.mpSeats, fx: r.fx, errors: r.errors, t: S.t }); netSend({ k: 'ready', ready: {} });
+      NET.ready = {};
+      await netSend({ k: 'state', S, seats: F.mpSeats, fx: r.fx, errors: r.errors, t: S.t }); netSend({ k: 'ready', ready: {} });
+      mpSave();
       return r;
     } else {
-      const t0 = S.t;
-      const m = await new Promise((res) => { F.mpWait = (m) => { if (m.t > t0) res(m); }; netSend({ k: 'acts', seat: ME, t: t0, acts, policy: me().policy || null }); });
-      S = m.S; return { fx: m.fx || [], errors: m.errors || [] };
+      const t0 = S.t, msg = { k: 'acts', seat: ME, cid: NET.cid, t: t0, acts, policy: me().policy || null };
+      F.mpResend = () => netSend(msg);
+      const m = await new Promise((res) => {
+        F.mpWait = (m) => { if (m.t > t0) res(m); else if (m.t === t0) { F.mpSeats = m.seats; netSend(msg); } };   // ホストが入り直した → もう一度送る
+        netSend(msg);
+      });
+      S = m.S; F.mpSeats = m.seats; mpSave(); return { fx: m.fx || [], errors: m.errors || [] };
     }
-  } finally { clearInterval(tick); F.mpWaiting = false; F.mpWait = null; F.mpGo = null; F.mpChk = null; updateWait(); }
+  } finally { clearInterval(tick); F.mpWaiting = false; F.mpWait = null; F.mpGo = null; F.mpChk = null; F.mpResend = null; updateWait(); }
 }
-NET.on_('acts', (m) => { netSend({ k: 'ready', ready: Object.fromEntries(Object.keys(NET.ready).map(k => [k, 1])) }); updateWait(); if (F.mpChk) F.mpChk(); });
+const readyMap = () => Object.fromEntries(Object.entries(NET.ready).filter(([, m]) => m.t === S.t).map(([k]) => [k, 1]));
+NET.on_('acts', (m) => {
+  if (!F.mp || m.t !== S.t) return; const i = F.mpSeats.findIndex(x => x.cid === m.cid); if (i < 0) return;
+  NET.ready[i] = m; netSend({ k: 'ready', ready: readyMap() }); updateWait(); if (F.mpChk) F.mpChk();
+});
+async function mpResume() {
+  const sv = mpLoad(); if (!sv) return;
+  try { localStorage.setItem(MPNAME, sv.name); } catch (e) { }
+  if (sv.role === 'host') {
+    if (!sv.S || sv.S.v !== 10) { mpClear(); return toast('前の対戦のデータが古い'); }
+    $('.title') && $('.title').remove(); $('#loading').classList.remove('off');
+    S = sv.S; F.mpSeats = sv.seats; F.mp = true; ME = 0; F.acts = []; E.useStage(S.stage);
+    await board.build(S.stage); F.mpBuilt = true; await board.sync(S, ME); labels(); render(); board.home(); board.setWeather(S.t ? S.w : 'sun'); board.setProsperity(avgProsper());
+    setTimeout(() => $('#loading').classList.add('off'), 200);
+    NET.lastLive = 0;
+    const ok = await joinRoom(sv.code, sv.name, true);
+    if (!ok) { toast('つながらなかった。電波のいい所でもう一度'); netBadge(); return; }
+    netSend({ k: 'state', S, seats: F.mpSeats, fx: [], errors: [], t: S.t, re: 1 });
+    closeSheet(); toast(`🔁 部屋 ${sv.code} を再開した`);
+  } else {
+    openSheet('online'); const ok = await joinRoom(sv.code, sv.name, false);
+    if (!ok) { NET.status = 'error'; renderSheet(); return; }
+    renderSheet(); toast('ホストからの返事を待っています…');
+  }
+}
 // 契約: いま結んでいる契約・売掛金と買掛金・来月の資金繰り・新しい契約の申し込み
 const pactLine = (c) => { const r = E.ITEMS[c.item], sell = c.seller === ME, who = S.players[sell ? c.buyer : c.seller]; return `<b>${esc(who.name)}</b>${sell ? 'に' : 'から'} ${r.icon}${r.name} 毎月<b>${fmt(c.qty)}</b>個 · 1個 <b>${c.price.toFixed(2)}G</b> · ${c.pay ? '<span class="tagg y">翌月払い</span>' : '<span class="tagg">その月払い</span>'}`; };
 function shopBidRow(o) {
@@ -510,12 +602,14 @@ SHEETS.event = () => {
     <div class="t3">予報を見て、先に動いた人が勝つ。たとえば不作の前に材料を買っておく、祭りの前に店員を増やす。</div>`;
 };
 // 順位
+// 勝ち方(遊び方と順位の画面に出す)
+const winBox = () => `<div class="box winbox"><div class="t1">🏆 勝ち方</div><div class="t2" style="margin:4px 0 0">最後の月が終わったとき、<b>純資産</b>がいちばん多い商会が勝ち。<br><b>純資産</b> = 現金 + 在庫(いまの相場) + 店の価値 − 借金<br><span class="t3">店の価値 = 建てたお金の半分ほど + 育て方にかけたお金の半分 + <b>最近6か月の平均利益×6</b>。儲かっている店ほど高い。</span><br>最後に上乗せ: <b>👑 地区の覇者</b>(最終月に地区で一番お客を集めた) +${E.CROWN_BONUS}G ずつ · <b>🤫 秘密の目標</b>達成 +${E.MISSION_BONUS}G</div></div>`;
 SHEETS.ranking = () => {
   const rk = E.ranking(S);
   const W = 320, H = 140, all = S.players.flatMap(p => p.nw), mx = Math.max(...all, 1), mn = Math.min(0, ...all);
   const lines = S.players.map(p => { const n = p.nw.length; return `<polyline fill="none" stroke="${E.COLOR_HEX[p.color]}" stroke-width="${p.id === ME ? 3 : 2}" points="${p.nw.map((v, i) => `${(i / Math.max(1, S.months) * W).toFixed(1)},${(H - (v - mn) / (mx - mn) * (H - 10) - 5).toFixed(1)}`).join(' ')}"/>`; }).join('');
   return head('🏆', '順位', `純資産(現金+店+在庫−借金)で競う · のこり${S.months - S.t}か月`) +
-    `<div class="box">${rk.map((x, i) => `<div class="rk"><span class="pos" style="background:${E.COLOR_HEX[x.p.color]}">${i + 1}</span><div class="nm">${esc(x.p.name)}${x.p.id === ME ? ' <span class="ai-chip">あなた</span>' : `<span class="ai-chip">${E.AI_KIND[x.p.ai] ? E.AI_KIND[x.p.ai].name : ''}</span>`}<small>店 ${E.shopsOf(S, x.p.id).length} · 現金 ${fmt(x.p.cash)}G</small></div><div class="num" style="font-size:17px">${fmt(x.nw)}G</div></div>`).join('')}</div>
+    winBox() + `<div class="box">${rk.map((x, i) => `<div class="rk"><span class="pos" style="background:${E.COLOR_HEX[x.p.color]}">${i + 1}</span><div class="nm">${esc(x.p.name)}${x.p.id === ME ? ' <span class="ai-chip">あなた</span>' : `<span class="ai-chip">${x.p.human ? '🙂 プレイヤー' : E.AI_KIND[x.p.ai] ? E.AI_KIND[x.p.ai].name : ''}</span>`}<small>店 ${E.shopsOf(S, x.p.id).length} · 現金 ${fmt(x.p.cash)}G</small></div><div class="num" style="font-size:17px">${fmt(x.nw)}G</div></div>`).join('')}</div>
     <div class="box"><div class="lbl">純資産の動き</div><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${lines}</svg></div>
     ${crownBox()}${missionBox()}`;
 };
@@ -560,7 +654,7 @@ SHEETS.weather = () => {
 };
 SHEETS.grand = () => head('🏰', E.GRAND.name, E.finalYear(S) ? `のこり${S.months - S.t}か月` : `始まるまで あと${S.months - 12 - S.t}か月`) + `<div class="box"><div class="t2">${E.GRAND.text}</div></div>` + crownBox();
 SHEETS.menu = () => head('⚙️', 'メニュー', `${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name}`) + (() => { const a = audioPref(), sw = (k, l) => `<button class="sw ${a[k] ? 'on' : ''}" data-a="aud" data-v="${k}"><span>${l}</span><i></i></button>`; return `<div class="box"><div class="t1" style="margin-bottom:6px">🎵 音と手ざわり</div>${sw('bgm', 'BGM')}${sw('sfx', '効果音')}${sw('haptic', 'タップで振動')}<div class="row" style="gap:8px;margin-top:8px;align-items:center"><div class="t2" style="flex:1">♪ ${esc(bgm.name || '—')}${F.bgmLock ? '' : '<small>(場面で自動)</small>'}</div><button class="btn sm" data-a="nexttrack">曲を変える</button>${F.bgmLock ? '<button class="btn sm" data-a="autobgm">自動に戻す</button>' : ''}</div></div>`; })() + `<div class="box">${F.mp ? `<div class="t2" style="margin-bottom:8px">🌐 オンライン対戦中 · 部屋 <b>${esc(NET.code || '')}</b>${NET.host ? '(ホスト)' : ''}</div><button class="btn wide" data-a="online" style="margin-bottom:8px">部屋のようす</button>` : `<button class="btn wide" data-a="online" style="margin-bottom:8px">🌐 友だちと対戦</button>`}<button class="btn wide" data-a="howto" style="margin-bottom:8px">遊び方</button><button class="btn wide" data-a="stagesel" style="margin-bottom:8px">🗺️ 別の町(ステージ)で遊ぶ</button><button class="btn wide" data-a="credits" style="margin-bottom:8px">クレジット</button><button class="btn wide" data-a="restart">最初からやり直す</button></div>`;
-SHEETS.howto = () => head('📖', '遊び方', '5年で町いちばんの商会に') + `<div class="box t2">
+SHEETS.howto = () => head('📖', '遊び方', '最後の月に、町いちばんの商会に') + winBox() + `<div class="box t2">
   ① 町の<b>「+」</b>をタップして店を開く(4つまで)。同じ地区・同じ業種の店どうしでお客を取り合う。<br>
   ② 店をタップして<b>値段・店員・広告</b>を決める。🔮で来月の利益の見積もりが出る。<br>
   ③ <b>カード</b>は毎月3枚配られ、1枚使える。<br>
@@ -615,22 +709,33 @@ const H = {
   online: () => { $('.title') && $('.title').remove(); unlockAudio(); openSheet('online'); },
   mpcreate: () => mpConnect(newCode(), true),
   mpjoin: () => { const c = ($('#mpcode').value || '').trim().toUpperCase(); if (c.length < 4) return toast('部屋の番号を入れてね'); F.joinCode = c; mpConnect(c, false); },
+  mpresume: () => { $('.title') && $('.title').remove(); unlockAudio(); mpResume(); },
   mpshare: async () => { const url = location.origin + location.pathname + '?room=' + NET.code, txt = `CAPITAL 商会バトルで勝負! 部屋の番号 ${NET.code}`; try { if (navigator.share) await navigator.share({ title: 'CAPITAL 商会バトル', text: txt, url }); else { await navigator.clipboard.writeText(txt + ' ' + url); toast('リンクをコピーした'); } } catch (e) { } },
   mpset: (d) => { F[d.k] = d.k === 'months' ? +d.v : d.v; sfx('tap'); renderSheet(); },
   mpstart: async () => {
     const mem = NET.members.slice(0, 4), lv = F.level || 'hard', seats = mem.map(m => ({ cid: m.cid, name: m.name || 'ゲスト' }));
-    for (let i = seats.length; i < 4; i++) { const [n, c, k] = E.AI_NAMES[i - 1] || E.AI_NAMES[0]; seats.push({ ai: k, name: n, open: 1 }); }
     // ホストは必ず席0
     const hi = seats.findIndex(x => x.cid === NET.cid); if (hi > 0) { const [h0] = seats.splice(hi, 1); seats.unshift(h0); }
+    for (let i = seats.length; i < 4; i++) { const [n, c, k] = E.AI_NAMES[i - 1] || E.AI_NAMES[0]; seats.push({ ai: k, name: n, open: 1 }); }
     const players = seats.map(x => x.ai ? { name: x.name, ai: x.ai } : { name: x.name, human: true });
     S = E.newGame({ seed: Math.floor(Math.random() * 1e9), stage: F.mpStage || 'rose', months: F.months || 36, level: lv, players });
-    F.mp = true; F.mpSeats = seats; ME = 0; F.acts = []; NET.seats = seats; NET.mySeat = 0;
-    netSend({ k: 'start', S, seats, t: 0 });
-    closeSheet(); $('#loading').classList.remove('off'); await board.build(S.stage); await board.sync(S, ME); labels(); render(); board.home(); board.setWeather('sun'); setTimeout(() => $('#loading').classList.add('off'), 200);
+    F.mp = true; F.mpSeats = seats; ME = 0; F.acts = []; NET.seats = seats; NET.mySeat = 0; NET.ready = {};
+    netSend({ k: 'start', S, seats, t: 0 }); mpSave();
+    closeSheet(); $('#loading').classList.remove('off'); await board.build(S.stage); F.mpBuilt = true; await board.sync(S, ME); labels(); render(); board.home(); board.setWeather('sun'); setTimeout(() => $('#loading').classList.add('off'), 200);
     toast('🌐 対戦開始!');
   },
-  mpleave: async () => { if (F.mp && !confirm('部屋を出る?(この対戦から抜ける)')) return; await leaveRoom(); const was = F.mp; F.mp = false; ME = 0; closeSheet(); if (was) { const sv = loadSave(); if (sv) { S = sv.S; F.acts = sv.acts || []; E.useStage(S.stage); } else S = E.newGame({ seed: 1, stage: 'rose' }); await board.build(S.stage); await board.sync(S, ME); labels(); render(); } toast('部屋を出た'); },
+  mpleave: async () => {
+    if (F.mp && !confirm(NET.host ? '部屋を閉じる?(みんなの対戦も止まる。あとで「対戦に戻る」で再開もできる)' : '部屋を出る?(あなたの席はAIが引き継ぐ)')) return;
+    if (F.mp) { if (NET.host) netSend({ k: 'closed' }); else { netSend({ k: 'bye', cid: NET.cid }); mpClear(); } }
+    await leaveRoom(); const was = F.mp; F.mp = false; F.mpBuilt = false; ME = 0; closeSheet(); netBadge();
+    if (was) { const sv = loadSave(); if (sv) { S = sv.S; F.acts = sv.acts || []; E.useStage(S.stage); } else S = E.newGame({ seed: 1, stage: 'rose' }); await board.build(S.stage); await board.sync(S, ME); labels(); render(); }
+    toast(was ? '部屋を出た' : '部屋を出た');
+  },
   mpskip: () => { if (F.mpGo) F.mpGo(); },
+  mpai: (d) => { const i = +d.v; if (!confirm(`${S.players[i].name}の席をAIに任せる?(戻ってきたら返す)`)) return; mpSeatAI(i); netSend({ k: 'state', S, seats: F.mpSeats, fx: [], errors: [], t: S.t, re: 1 }); mpSave(); if (F.mpChk) F.mpChk(); renderSheet(); render(); },
+  mpaiall: () => { for (const x of humansOf()) if (x.cid !== NET.cid && !NET.online(x.cid) && !(NET.ready[x.i] && NET.ready[x.i].t === S.t)) mpSeatAI(x.i); netSend({ k: 'state', S, seats: F.mpSeats, fx: [], errors: [], t: S.t, re: 1 }); mpSave(); if (F.mpChk) F.mpChk(); },
+  stamps: () => { F.stampOpen = !F.stampOpen; render(); },
+  stamp: (d) => { const p = me(); netSend({ k: 'stamp', s: d.v, name: p.name, color: E.COLOR_HEX[p.color] }); showStamp(p.name, d.v, E.COLOR_HEX[p.color]); F.stampOpen = false; haptic(12); render(); },
   pf: (d) => { const f = F.pf; f[d.k] = ['to', 'months', 'pay', 'pk'].includes(d.k) ? +d.v : d.v; if (d.k === 'item') f.qty = E.isProc(d.v) ? 20 : 60; sfx('tap'); renderSheet(); },
   pfq: (d) => { const f = F.pf, st = E.isProc(f.item) ? 5 : 20; f.qty = Math.max(5, Math.min(400, f.qty + st * +d.v)); sfx('tap'); renderSheet(); },
   propose: () => { const f = F.pf; F.acts.push({ type: 'propose', to: f.to, role: f.role, item: f.item, qty: f.qty, price: Math.round(S.market[f.item].price * f.pk * 100) / 100, months: f.months, pay: f.pay }); sfx('card'); save(); toast('月末に返事が来る'); render(); },
@@ -977,7 +1082,7 @@ async function boot() {
   labels(); render(); board.setWeather(S.t ? S.w : 'sun'); board.setProsperity(avgProsper()); bar.style.width = '100%';
   setTimeout(() => { $('#loading').classList.add('off'); }, 250);
   const tl = document.createElement('div'); tl.className = 'title';
-  tl.innerHTML = `<div class="tl">CAPITAL</div><div class="ts">商会バトル</div><div class="tb">${sv && S.t && !S.over ? `<button class="btn warm" data-a="start">つづきから<br><small>${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name} · ${ym(S.t)}</small></button><button class="btn ghost" data-a="newgame">🗺️ 新しく始める(町を選ぶ)</button>` : `<button class="btn warm" data-a="newgame">はじめる(町を選ぶ)</button>`}<button class="btn ghost" data-a="online">🌐 友だちと対戦</button></div>`;
+  tl.innerHTML = `<div class="tl">CAPITAL</div><div class="ts">商会バトル</div><div class="tb">${sv && S.t && !S.over ? `<button class="btn warm" data-a="start">つづきから<br><small>${E.STAGES[S.stage].icon} ${E.STAGES[S.stage].name} · ${ym(S.t)}</small></button><button class="btn ghost" data-a="newgame">🗺️ 新しく始める(町を選ぶ)</button>` : `<button class="btn warm" data-a="newgame">はじめる(町を選ぶ)</button>`}${mpLoad() ? `<button class="btn ghost" data-a="mpresume">🔁 オンライン対戦に戻る<br><small>部屋 ${esc(mpLoad().code)}</small></button>` : ''}<button class="btn ghost" data-a="online">🌐 友だちと対戦</button></div>`;
   document.body.appendChild(tl);
   if (S.over) setTimeout(() => openSheet('final'), 600);
   window.__game = { get S() { return S; }, F, E, board, H, NET, get ME() { return ME; } };

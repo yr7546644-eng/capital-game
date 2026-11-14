@@ -252,3 +252,11 @@ body:has(.title) #dock,body:has(.title) #labels{opacity:0;pointer-events:none;tr
 .pill.bump{animation:bump .5s cubic-bezier(.34,1.8,.5,1)}.pill.dip{animation:dip .45s ease-out}
 @keyframes bump{30%{transform:scale(1.12)}100%{transform:scale(1)}}
 @keyframes dip{25%{transform:translateY(3px) scale(.97)}100%{transform:none}}
+#mpnet{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 62px);transform:translateX(-50%);z-index:41;background:#fff3dc;color:#b45309;border-radius:999px;padding:6px 14px;font-size:12.5px;box-shadow:0 6px 18px rgba(20,40,90,.18);white-space:nowrap;max-width:calc(100vw - 24px);overflow:hidden;text-overflow:ellipsis}
+.stamp{position:fixed;bottom:42vh;z-index:45;display:flex;flex-direction:column;align-items:flex-start;gap:2px;pointer-events:none;animation:stampin 3.2s cubic-bezier(.22,1.25,.36,1) forwards}
+.stamp .sn{color:#fff;font-size:11px;padding:2px 8px;border-radius:999px}
+.stamp .ss{background:#fff;border-radius:18px 18px 18px 4px;padding:8px 14px;font-size:22px;font-weight:800;box-shadow:0 8px 24px rgba(20,40,90,.25)}
+@keyframes stampin{0%{transform:translateY(30px) scale(.6);opacity:0}12%{transform:none;opacity:1}80%{transform:translateY(-30px);opacity:1}100%{transform:translateY(-60px);opacity:0}}
+.stray{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:16px;padding:8px;box-shadow:0 6px 18px rgba(20,40,90,.16)}
+.stb{background:#eef1f8;border-radius:12px;padding:6px 10px;font-size:15px}
+.winbox{background:linear-gradient(135deg,#fff8e6,#fff)}
