@@ -444,3 +444,81 @@ body.shk #stage,body.shk #hud,body.shk #dock{animation:shk .42s cubic-bezier(.36
 .flr i{position:absolute;left:0;top:0;bottom:0;z-index:0;opacity:.14;border-radius:10px}.flr span,.flr b{position:relative;z-index:1}
 .flr.in b{color:#16a34a}.flr.in i{background:#16a34a}.flr.out b{color:#e5484d}.flr.out i{background:#e5484d}
 .nwp{display:block;font-size:10.5px;color:var(--ink3);font-weight:500;margin-top:1px}
+/* ════ 立体のUI(ぷっくりしたボタン・厚みのあるパネル・3Dの絵) ════ */
+img.em3{width:1.45em;height:1.45em;vertical-align:-.38em;object-fit:contain;filter:drop-shadow(0 2px 2px rgba(20,30,60,.28));margin:0 .05em}
+.ri img.em3,.mri img.em3,.bcard .bi img.em3,.ic img.em3,.gi img.em3,.ci img.em3{width:1.25em;height:1.25em;vertical-align:middle}
+.coin3{width:30px!important;height:30px!important;margin-right:6px;vertical-align:middle}
+/* ボタン: 下に厚み、上に光。押すと沈む */
+.btn{background:linear-gradient(180deg,#ffffff,#e6ebf6);border:1px solid #fff;border-bottom:4px solid #c3cce0;box-shadow:inset 0 2px 0 rgba(255,255,255,.9),0 4px 10px rgba(20,40,90,.14);font-weight:800;text-shadow:0 1px 0 rgba(255,255,255,.6)}
+.btn.pri{background:linear-gradient(180deg,#6fa3ff,#3c74e6);border-color:#8fb8ff;border-bottom-color:#2350b0;color:#fff;text-shadow:0 1px 0 rgba(0,0,0,.2);box-shadow:inset 0 2px 0 rgba(255,255,255,.45),0 6px 14px rgba(58,123,213,.38)}
+.btn.warm{background:linear-gradient(180deg,#ffc35c,#ff7d4d);border-color:#ffd59a;border-bottom-color:#d4542a;color:#fff;text-shadow:0 1px 0 rgba(0,0,0,.22);box-shadow:inset 0 2px 0 rgba(255,255,255,.45),0 6px 16px rgba(255,122,89,.42)}
+.btn:disabled{filter:grayscale(.6)}
+.btn.prs,.abtn.prs,.card.prs,.bcard.prs,.chip.prs,.stb.prs{transform:translateY(3px) scale(.97)!important;border-bottom-width:1px!important;margin-bottom:3px}
+/* ドックのボタン */
+.abtn{background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(232,238,250,.95));border:1px solid #fff;border-bottom:4px solid #c3cce0;box-shadow:inset 0 2px 0 #fff,0 6px 14px rgba(20,40,90,.18);font-weight:800}
+.abtn .ai{font-size:22px;line-height:1}.abtn .ai img.em3{width:34px;height:34px;vertical-align:middle}
+.abtn.build{background:linear-gradient(180deg,#7fb6ff,#3f78ea);border-color:#a9cdff;border-bottom-color:#2350b0}
+.abtn.go{background:linear-gradient(180deg,#ffc35c,#ff7a4a);border:1px solid #ffd59a;border-bottom:5px solid #cf4f25;color:#fff;text-shadow:0 2px 0 rgba(160,50,10,.35);font-size:17px}
+/* 手札のカード */
+.card{background:linear-gradient(170deg,#fff 0%,#f3f6ff 55%,#e3eafb 100%);border:2px solid #fff;border-bottom:5px solid #c9d3ea;box-shadow:inset 0 2px 0 #fff,0 8px 18px rgba(20,40,90,.2)}
+.card .ci{filter:drop-shadow(0 4px 4px rgba(20,30,60,.25))}
+/* パネル */
+.box{border:1px solid rgba(255,255,255,.95);box-shadow:0 2px 0 #e1e6f2,0 8px 22px rgba(20,40,90,.08)}
+.pill{background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(234,240,252,.9));border:1px solid #fff;border-bottom:3px solid rgba(180,192,220,.9);box-shadow:inset 0 2px 0 #fff,0 6px 16px rgba(20,40,90,.16)}
+.pill .num{text-shadow:0 2px 0 rgba(255,255,255,.9),0 3px 6px rgba(20,40,90,.15)}
+.seg{background:#e6ebf6;box-shadow:inset 0 2px 4px rgba(20,40,90,.12)}
+.seg button.on{background:linear-gradient(180deg,#fff,#f1f4fb);border-bottom:3px solid #cfd7ea;box-shadow:0 3px 8px rgba(20,40,90,.14)}
+.chip{background:linear-gradient(180deg,#fff,#eaeff9);border-bottom:3px solid #cfd7ea;box-shadow:0 2px 6px rgba(20,40,90,.1);font-weight:700}
+.chip.on{background:linear-gradient(180deg,#6fa3ff,#3c74e6);border-bottom-color:#2350b0;color:#fff}
+.bcard{border-bottom:5px solid #c9d3ea;background:linear-gradient(170deg,#fff,#eef3ff 60%,#e1e9fb)}
+.bcard .bi img.em3{width:64px;height:64px}
+.mri img.em3{width:40px;height:40px}
+.stepper button,.mqb{background:linear-gradient(180deg,#fff,#e9eef8);border-bottom:4px solid #c3cce0;box-shadow:0 3px 8px rgba(20,40,90,.12)}
+.evchip{border:1px solid #fff;border-bottom:3px solid rgba(180,192,220,.9)}
+/* 結果: 大きな3つの数字 */
+.stat3{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.stat3 .st{position:relative;border-radius:18px;padding:10px 12px 10px;display:flex;flex-direction:column;border:1px solid #fff;border-bottom:4px solid rgba(0,0,0,.08);box-shadow:inset 0 2px 0 rgba(255,255,255,.8),0 8px 18px rgba(20,40,90,.1);overflow:hidden}
+.stat3 .st-p{grid-column:1/-1;align-items:center;background:linear-gradient(180deg,#fff,#f2f6ff)}
+.stat3 .st-p b{font-size:44px;line-height:1.05;font-weight:900;text-shadow:0 3px 0 rgba(0,0,0,.06)}
+.stat3 .st-c{background:linear-gradient(160deg,#fff7dc,#ffe7a6)}.stat3 .st-n{background:linear-gradient(160deg,#e6f0ff,#c9dcff)}
+.stat3 .st span{font-size:12.5px;font-weight:800;color:#5a647e}
+.stat3 .st-c b,.stat3 .st-n b{font-size:26px;font-weight:900;color:#1f2a44;line-height:1.15}
+.stat3 .st small{font-size:12px;font-weight:800;color:var(--ink2)}
+.stat3 .st img.em3{position:absolute;right:6px;top:6px;width:44px;height:44px;opacity:.95}
+/* 純資産の内訳: 色つきの札 */
+.nwp{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.nwp i{font-style:normal;font-size:12px;font-weight:800;padding:2px 8px;border-radius:999px;border-bottom:2px solid rgba(0,0,0,.08)}
+.nwp i.c{background:#fff1c2;color:#8a5a00}.nwp i.s{background:#dbe8ff;color:#2350b0}.nwp i.v{background:#dff6e8;color:#137a43}.nwp i.d{background:#ffe0e4;color:#c21d3b}
+.rk .num{font-size:17px;font-weight:900}
+/* ════ 色: 画面ごとのテーマ色・見出し・カードの種類 ════ */
+#sheet{--acc:#3c74e6;--acc2:#e8f0ff}
+#sheet.k-market{--acc:#16a34a;--acc2:#e3f8ec}#sheet.k-shop,#sheet.k-lot{--acc:#3c74e6;--acc2:#e6efff}#sheet.k-books{--acc:#7c4dff;--acc2:#efe8ff}
+#sheet.k-townhall,#sheet.k-district{--acc:#0f9fb0;--acc2:#e0f7fa}#sheet.k-result,#sheet.k-final{--acc:#ff7a4a;--acc2:#fff0e8}#sheet.k-ranking{--acc:#e0a100;--acc2:#fff6d6}
+#sheet.k-card{--acc:#7c4dff;--acc2:#efe8ff}#sheet.k-menu,#sheet.k-rules{--acc:#5a647e;--acc2:#eef1f8}#sheet.k-online{--acc:#e05aa8;--acc2:#ffe9f4}
+#sheet .sh{border-bottom:4px solid var(--acc);background:linear-gradient(180deg,var(--acc2),#f6f8fd)}
+#sheet .sh .si{background:linear-gradient(180deg,#fff,var(--acc2));border:2px solid #fff;border-bottom:4px solid color-mix(in srgb,var(--acc) 45%,#fff);font-size:28px}
+#sheet .sh h3{color:color-mix(in srgb,var(--acc) 70%,#1f2340)}
+#sheet .lbl{display:inline-flex;align-items:center;gap:4px;background:var(--acc2);color:color-mix(in srgb,var(--acc) 80%,#1f2340);border-left:4px solid var(--acc);border-radius:8px;padding:3px 10px;font-weight:800;font-size:12.5px;margin-bottom:6px}
+#sheet .box{border-top:3px solid color-mix(in srgb,var(--acc) 35%,#fff)}
+#sheet .seg button.on{color:var(--acc)}
+/* 手札: 種類で色(攻撃=赤 / お店=青 / お金・情報=金) */
+.card .ctag{position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:900;color:#fff;padding:2px 9px;border-radius:999px;border-bottom:2px solid rgba(0,0,0,.18);white-space:nowrap}
+.card.ct-atk{background:linear-gradient(170deg,#fff 0%,#ffeef0 55%,#ffd6dc 100%);border-bottom-color:#f0a3ad}.card.ct-atk .ctag{background:#e5484d}.card.ct-atk .cn{color:#c21d3b}
+.card.ct-shop{background:linear-gradient(170deg,#fff 0%,#eef4ff 55%,#d8e6ff 100%);border-bottom-color:#a9c2f0}.card.ct-shop .ctag{background:#3c74e6}.card.ct-shop .cn{color:#2350b0}
+.card.ct-money{background:linear-gradient(170deg,#fff 0%,#fff7e0 55%,#ffe9a8 100%);border-bottom-color:#eccb72}.card.ct-money .ctag{background:#e0a100}.card.ct-money .cn{color:#8a5a00}
+.card .cn{font-weight:900}.card .cc{font-weight:800}
+.card .tag{top:auto;bottom:-10px}
+/* 次に押すボタン: 光って、指マークが跳ねる */
+.hint{position:relative;animation:hintb 1.2s ease-in-out infinite;z-index:2}
+.hint::after{content:'👆';position:absolute;left:50%;top:-30px;transform:translateX(-50%);font-size:24px;filter:drop-shadow(0 3px 3px rgba(0,0,0,.35));animation:hintf .8s ease-in-out infinite;pointer-events:none}
+@keyframes hintb{0%,100%{box-shadow:0 0 0 0 rgba(255,200,60,.0),0 6px 14px rgba(20,40,90,.18)}50%{box-shadow:0 0 0 6px rgba(255,200,60,.55),0 0 26px 6px rgba(255,200,60,.55)}}
+@keyframes hintf{50%{transform:translate(-50%,6px)}}
+.hand.hint{border-radius:18px}.hand.hint::after{top:-34px}
+#rivals.hint{animation:none}#rivals.hint .rv:first-child .rvf{animation:hintb 1.2s ease-in-out infinite}#rivals.hint::after{left:-26px;top:10px;transform:rotate(90deg);animation:none}
+/* ドックの色分け */
+.abtn[data-a=market]{background:linear-gradient(180deg,#e9fbef,#c8f0d6);border-bottom-color:#8fd5a8;color:#137a43}
+.abtn[data-a=books]{background:linear-gradient(180deg,#f3edff,#ddd0ff);border-bottom-color:#b9a3f0;color:#5b34c9}
+.abtn[data-a=townhall]{background:linear-gradient(180deg,#e3fafc,#bfeef3);border-bottom-color:#86d3dc;color:#0b7c8a}
+.abtn.build{color:#fff;text-shadow:0 1px 0 rgba(0,0,0,.25)}
+/* 予報のチップ */
+.evchip{background:linear-gradient(180deg,#fff,#eef3fc)}
