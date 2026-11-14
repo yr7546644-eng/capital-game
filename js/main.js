@@ -1382,7 +1382,7 @@ SHEETS.rules = () => head('📜', 'ルールくわしく', '最後の月に、�
   ⑪ <b>🏛️町</b>: 依頼・ギルドの投票・年末の税。ライバルの店を<b>買い取る</b>こともできる。<br>
   ⑫ <b>🌐友だちと対戦</b>: メニュー→部屋を作って番号を送るだけ。空いた席にはAIが入る。<br>
   ⑬「次の月へ」で、決めたことが全部いっしょに実行される。最後の月の純資産で勝負! 地図は2本指で回転・拡大、シートは下にスワイプで閉じる。</div>`;
-SHEETS.credits = () => head('🎨', 'クレジット', '') + `<div class="box t2">3D モデル: KayKit — Kay Lousberg(CC0)<br>Quaternius(CC0)<br>3D 表示: three.js(MIT)<br>フォント: M PLUS Rounded 1c(SIL OFL)<br>アイコン: game-icons.net — Lorc, Delapouite ほか(CC BY 3.0)<br>音楽・効果音: ゲーム内でその場で合成(オリジナル)<br>オンライン対戦: Supabase Realtime</div>`;
+SHEETS.credits = () => head('🎨', 'クレジット', '') + `<div class="box t2">3D モデル: KayKit — Kay Lousberg(CC0)<br>Quaternius(CC0)<br>3D 表示: three.js(MIT)<br>フォント: M PLUS Rounded 1c(SIL OFL)<br>音楽・効果音: ゲーム内でその場で合成(オリジナル)<br>オンライン対戦: Supabase Realtime</div>`;
 
 // ── 操作
 const H = {
@@ -1869,7 +1869,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114043439';
+const BUILD = '20261114044520';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
