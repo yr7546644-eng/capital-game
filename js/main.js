@@ -447,10 +447,22 @@ SHEETS.market = () => {
     body = `<div class="box"><div class="lbl">先月のライバルの売り買い</div>${lines.length ? lines.map(x => `<div class="news">${x}</div>`).join('') : '<div class="t3">目立った動きはない</div>'}</div><div class="box"><div class="lbl">ライバルの倉(うわさ)</div>${stock}</div><div class="t3">誰かが原料を買い込んでいたら、来月はその原料が値上がりしやすい。倉にたくさんある相手は、売りに出して値を崩すかも。</div>`;
   }
   if (tab === 'pact') body = pactTab();
-  if (tab === 'deal') body = offers.length ? `<div class="box">${offers.map(o => { if (o.kind === 'pact') return pactOfferRow(o); if (o.kind === 'shopbid') return shopBidRow(o); const r = E.ITEMS[o.item], m = S.market[o.item].price, on = F.acts.some(a => a.type === 'deal' && a.id === o.id), k = o.price / m; const ok = o.kind === 'buy' ? p.inv[o.item] >= o.qty : freeCash() >= o.qty * o.price || on;
-      return `<div class="res"><span class="ri">${r.icon}</span><div class="grow"><div style="font-size:14px">${esc(o.who)}${o.rival != null ? ' <span class="tagg r">前金つき</span>' : ''}${E.isRare(o.item) ? ' <span class="tagg y">レア</span>' : ''}</div>${o.rival != null ? `<div class="t3">納めると、${esc(S.players[o.rival].name)}の${E.GOODS[E.RARES[o.item].use].name}が目玉商品で強くなる</div>` : ''}<div class="t2" style="margin:0">${o.kind === 'buy' ? `あなたの<b>${r.name}</b>を <b>${fmt(o.qty)}</b>個、1個 <b>${o.price.toFixed(2)}G</b> で買いたい` : `<b>${r.name}</b>を <b>${fmt(o.qty)}</b>個、1個 <b>${o.price.toFixed(2)}G</b> で売りたい`}</div><div class="t3">相場 ${m.toFixed(2)}G の <b class="${(o.kind === 'buy') === (k > 1) ? 'up' : 'down'}">${Math.round(k * 100)}%</b> · 合計 ${fmt(o.qty * o.price)}G${o.kind === 'buy' && !ok ? ` · <span class="down">在庫 ${fmt(p.inv[o.item])} では足りない</span>` : ''}</div></div>
-        <button class="btn sm ${on ? 'warm' : 'pri'}" data-a="deal" data-v="${o.id}" ${ok || on ? '' : 'disabled'}>${on ? '受ける ✓' : '受ける'}</button></div>`; }).join('')}</div><div class="t3">申し出は今月だけ。「次の月へ」で決まる。相場より高く買ってくれる相手には売り、安く売ってくれる相手からは買うのが基本。でも相場が動く前に…?</div>` : '<div class="box t2">今月は申し出がない。</div>';
-  return head('🛒', '市場', '値段は町の倉の在庫で決まる。在庫が減ると値上がり、増えると値下がり') + tabs + body + `<div class="t3" style="margin-top:8px">📦 在庫は「生産(季節・天気・出来事)」で増え、「町の人の消費(高いと控える)」と「みんなの店の仕入れ」で減る。プレイヤーが買えば減り、売れば増える。</div>`;
+  if (tab === 'deal') body = offers.length ? `<div class="offers">${offers.map(o => { if (o.kind === 'pact') return pactOfferRow(o); if (o.kind === 'shopbid') return shopBidRow(o);
+      const r = E.ITEMS[o.item], m = S.market[o.item].price, on = F.acts.some(a => a.type === 'deal' && a.id === o.id), k = o.price / m, buyMe = o.kind === 'sell';   // 相手が売る = あなたが買う
+      const total = Math.round(o.qty * o.price), good = buyMe ? k < 1 : k > 1, pct = Math.round(Math.abs(1 - k) * 100);
+      const ok = buyMe ? freeCash() >= total || on : (p.inv[o.item] || 0) >= o.qty;
+      return `<div class="offer ${buyMe ? 'ob' : 'os'} ${on ? 'on' : ''}">
+        <div class="oh"><span class="okind">${buyMe ? 'あなたが買える' : 'あなたが売れる'}</span><span class="odeal ${good ? 'good' : 'bad'}">${good ? 'お得' : '損'} ${pct}%${buyMe ? (k < 1 ? '安い' : '高い') : (k > 1 ? '高く売れる' : '安い')}</span></div>
+        <div class="oflow2">
+          <div class="orow"><span class="olbl">お金</span><b class="${buyMe ? 'me' : ''}">${buyMe ? 'あなた' : esc(o.who)}</b><div class="oarrow"><span>${ico('coin')} ${fmt(total)}G</span><i></i></div><b class="${buyMe ? '' : 'me'}">${buyMe ? esc(o.who) : 'あなた'}</b></div>
+          <div class="orow"><span class="olbl">品物</span><b class="${buyMe ? '' : 'me'}">${buyMe ? esc(o.who) : 'あなた'}</b><div class="oarrow g"><span>${ico(o.item)} ${r.name} ${fmt(o.qty)}個</span><i></i></div><b class="${buyMe ? 'me' : ''}">${buyMe ? 'あなた' : esc(o.who)}</b></div>
+        </div>
+        <div class="oitem"><small>1個 ${o.price.toFixed(2)}G(いまの相場 ${m.toFixed(2)}G)</small></div>
+        ${o.rival != null ? `<div class="t3">前金つき: 納めると${esc(S.players[o.rival].name)}の店が目玉商品で強くなる</div>` : ''}
+        ${!buyMe && !ok ? `<div class="down t2">在庫 ${fmt(p.inv[o.item] || 0)}個 では足りない</div>` : ''}
+        <button class="btn wide ${on ? 'warm' : buyMe ? 'pri' : 'warm'}" data-a="deal" data-v="${o.id}" ${ok || on ? '' : 'disabled'}>${on ? '✓ 月末に取引する(もう一度押すとやめる)' : buyMe ? `買う  −${fmt(total)}G` : `売る  +${fmt(total)}G`}</button>
+      </div>`; }).join('')}</div><div class="t3">申し出は今月だけ。取引は月末に行われる。</div>` : '<div class="box t2">今月は申し出がない。</div>';
+  return head('🛒', '市場', '品物をタップして売り買い') + tabs + body + `<div class="t3" style="margin-top:8px">値段は町の倉の在庫で決まる。在庫が減ると値上がり、増えると値下がり。在庫は生産(季節・天気・出来事)で増え、町の人の消費とみんなの店の仕入れで減る。</div>`;
 };
 // ── オンライン対戦
 const MPNAME = 'capital-mp-name', MPSAVE = 'capital-mp-v1';
@@ -1659,7 +1671,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114030325';
+const BUILD = '20261114030905';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
