@@ -625,3 +625,22 @@ body:has(.title) #rivals,body:has(.title) #quest{opacity:0;pointer-events:none}
 .olbl{font-size:11px;font-weight:900;color:var(--ink2)}
 .oarrow span{display:flex;align-items:center;gap:3px;font-size:13px;white-space:nowrap}.oarrow span img.em3{width:22px;height:22px}
 .oarrow.g i{background:linear-gradient(90deg,#9be7c4,#1f9d55);background-size:200% 100%}.oarrow.g i::after{border-left-color:#1f9d55}
+/* ════ 文字を大きく・濃く(ゲームとして読みやすく) ════ */
+.t1{font-size:17px;font-weight:900}
+.t2{font-size:15.5px;color:#2b3550;font-weight:700;line-height:1.6}
+.t3{font-size:13.5px;color:#4a5570;font-weight:700;line-height:1.55}
+.lbl{font-size:14px}
+.kv{font-size:16px}.kv .k{color:#3a4560}
+#sheet .sh h3{font-size:22px}#sheet .sh h3 small{font-size:13.5px;color:#4a5570}
+.mrn b{font-size:18px}.mrn small{font-size:13px;color:#3a4560}.mrp b{font-size:19px}.mtag{font-size:12px}
+.mfacts span{font-size:12.5px;color:#3a4560;font-weight:800}.mfacts b{font-size:19px}.mfacts small{font-size:12.5px;color:#3a4560;font-weight:700}
+.msum{font-size:16px}.msum b{font-size:22px}.msum small{font-size:13px;color:#3a4560}
+.card .cn{font-size:14px}.card .cc{font-size:12.5px;color:#3a4560}
+.evchip{font-size:14px}.evchip .et{font-size:12px;color:#3a4560}
+.abtn{font-size:14.5px}
+.news{font-size:15px}
+.flr{font-size:15.5px}.lgr{font-size:16px}
+.bfacts{font-size:14px}.bleft span{font-size:13.5px}.bleft small{font-size:13px}
+.offer .oitem small,.orow b{font-size:13.5px}
+details.tipd summary{font-size:13.5px}
+.rk .nm{font-size:16px}

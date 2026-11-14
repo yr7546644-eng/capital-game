@@ -422,7 +422,7 @@ SHEETS.market = () => {
       <div class="mfacts">
         <div><span>💴 いまの相場</span><b>${m.price.toFixed(2)}G</b><small>ふだんは ${r.base.toFixed(2)}G → <i class="mtag ${tag[1]}">${tag[0]}</i></small></div>
         <div><span>🛒 買うと 1個</span><b>${(m.price * (1 + E.SPREAD)).toFixed(2)}G</b><small>💰 売ると 1個 ${(m.price * (1 - E.SPREAD)).toFixed(2)}G(差は手数料${Math.round(E.SPREAD * 100)}%)</small></div>
-        <div><span>🏚️ 町の倉</span><b style="color:${stockWord[1]}">${stockWord[0]}</b><small><span class="stockbar"><i style="width:${Math.min(100, lv / 2 * 100)}%;background:${stockWord[1]}"></i><b style="left:50%"></b></span>倉が少ないほど値段が上がる</small></div>
+        <div><span>🏚️ 町にある量</span><b style="color:${stockWord[1]}">${stockWord[0]}</b><small><span class="stockbar"><i style="width:${Math.min(100, lv / 2 * 100)}%;background:${stockWord[1]}"></i><b style="left:50%"></b></span>少ない → 値上がり / 多い → 値下がり</small></div>
         ${mk ? `<div class="wide"><small>${trendW}(先月 作られた ${fmt(mk.prod)} / 使われた ${fmt(mk.need + (mk.shop || 0))})</small></div>` : ''}
         <div><span>📦 あなたの在庫</span><b>${fmt(have)}個</b><small>${have > 0 ? `平均 ${avg.toFixed(2)}Gで仕入れ · いま売ると <span class="${cls(gain)}">${sign(gain)}G</span>` : 'なし'}</small></div>
         <div><span>🏪 あなたの店が使う</span><b>${use ? `月 ${fmt(use)}個` : '—'}</b><small>${r.decay ? `🥀 毎月 ${Math.round(r.decay * 100)}% 傷んで減る` : '🧊 傷まない'} · 保管料あり</small></div>
@@ -1671,7 +1671,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114030905';
+const BUILD = '20261114031257';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
