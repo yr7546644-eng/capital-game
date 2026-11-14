@@ -350,6 +350,11 @@ SHEETS.shop = ({ id }) => {
     <div class="box"><div class="lbl">値段 <span class="grow"></span><span class="num">${(G.ref * E.PRICE_LV[s.priceLv]).toFixed(1)}G / 1つ</span></div>
       <div class="seg optseg">${E.PRICE_NAME.map((n, i) => { const e2 = s0.last ? E.estimateShop(S, s0, { priceLv: i, staff: s.staff, ads: s.ads }) : null; return `<button class="${s.priceLv === i ? 'on' : ''}" data-a="setp" data-id="${id}" data-v="${i}">${n}${e2 ? `<small class="${cls(e2.profit)}">${sign(Math.round(e2.profit))}</small><small class="oc">客${fmt(e2.units)}</small>` : ''}</button>`; }).join('')}</div>${s0.last ? '<div class="t3">ボタンの下の数字 = その値段にしたときの来月の利益と客数の見込み</div>' : ''}
       <div class="lbl" style="margin-top:12px">店員 <span class="grow"></span><span class="t3">1人 ${E.WAGE}G/月 · 1人で月 ${G.capPer}人さばける</span></div>
+      ${(() => { const l = s0.last, per = Math.round(E.GOODS[s0.g].capPer); if (!l) return `<div class="staffex"><b>店員1人で、月に約${per}人のお客をさばける</b><small>お客が多いのに店員が少ないと、お客を逃す</small></div>`;
+        const lost = Math.max(0, Math.round(l.want - l.units)), cap = Math.round(l.cap), want = Math.round(l.want), mx = Math.max(cap, want, 1);
+        return `<div class="staffex"><div class="sxr"><span>来たお客</span><i style="width:${want / mx * 100}%" class="w"></i><b>${fmt(want)}人</b></div><div class="sxr"><span>さばける数</span><i style="width:${cap / mx * 100}%" class="c"></i><b>${fmt(cap)}人</b></div>
+          <div class="sxm ${lost > 0 ? 'bad' : 'ok'}">${lost > 0 ? `人手が足りず <b>${fmt(lost)}人</b> を逃した → <b>＋</b>で増やすと売上が増える` : `人手は足りている → 増やしてもお給料(1人 ${E.WAGE}G)が増えるだけ`}</div>
+          <small>＋ = ふつうの人を1人雇う(月末に入る・月 ${E.WAGE}G・さばける数 +${per}人) / − = 1人やめてもらう</small></div>`; })()}
       <div class="stepper"><button data-a="sets" data-id="${id}" data-v="-1">−</button><div class="v num">${s.staff}人</div><button data-a="sets" data-id="${id}" data-v="1">＋</button><div class="t3 grow" style="text-align:right">${s0.last ? (() => { const dn = s.staff > 1 ? E.estimateShop(S, s0, { priceLv: s.priceLv, staff: s.staff - 1, ads: s.ads }) : null, up = s.staff < 5 ? E.estimateShop(S, s0, { priceLv: s.priceLv, staff: s.staff + 1, ads: s.ads }) : null; return `${dn ? `−1人: <b class="${cls(dn.profit)}">${sign(Math.round(dn.profit))}</b>` : ''}${dn && up ? ' / ' : ''}${up ? `＋1人: <b class="${cls(up.profit)}">${sign(Math.round(up.profit))}</b>` : ''}<br><small>(来月の利益の見込み)</small>`; })() : '＋は「ふつう」の人'}</div></div>
       ${crewList(s0)}
       <div class="lbl" style="margin-top:12px">広告</div>
@@ -1962,7 +1967,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114054233';
+const BUILD = '20261114055736';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

@@ -110,8 +110,8 @@ function newLook(S, name) {
   return { b: Math.floor(rnd(S) * 4), h, hat: h === 4 ? -1 : hats[Math.floor(rnd(S) * hats.length)], tint: TINTS[Math.floor(rnd(S) * TINTS.length)], cape: rnd(S) < 0.25 ? 1 : 0 };
 }
 function usedNames(S) { const u = new Set(); for (const sh of S.shops || []) for (const c of sh.crew || []) u.add(c.name); for (const p of S.players || []) for (const c of p.cands || []) u.add(c.name); return u; }
-function newStaff(S, trait) { const tr = trait || 'plain'; const id = (S.nextStaff = (S.nextStaff || 1) + 1); const used = usedNames(S); const free = STAFF_NAMES.filter(n => !used.has(n)); const name = free.length ? free[Math.floor(rnd(S) * free.length)] : STAFF_NAMES[id % STAFF_NAMES.length] + (2 + Math.floor(id / STAFF_NAMES.length)); return { id, name, look: newLook(S, name), face: FACES[Math.floor(rnd(S) * FACES.length)], trait: tr, wage: TRAITS[tr].wage, skill: 1, months: 0 }; }
-function crewOf(S, s) { if (!s.crew) { s.crew = []; for (let i = 0; i < s.staff; i++) s.crew.push(newStaff(S, 'plain')); } return s.crew; }
+function newStaff(S, trait, extra) { const tr = trait || 'plain'; const id = (S.nextStaff = (S.nextStaff || 1) + 1); const used = usedNames(S); for (const c of extra || []) used.add(c.name); const free = STAFF_NAMES.filter(n => !used.has(n)); const name = free.length ? free[Math.floor(rnd(S) * free.length)] : STAFF_NAMES[id % STAFF_NAMES.length] + (2 + Math.floor(id / STAFF_NAMES.length)); return { id, name, look: newLook(S, name), face: FACES[Math.floor(rnd(S) * FACES.length)], trait: tr, wage: TRAITS[tr].wage, skill: 1, months: 0 }; }
+function crewOf(S, s) { if (!s.crew) { s.crew = []; for (let i = 0; i < s.staff; i++) s.crew.push(newStaff(S, 'plain', s.crew)); } return s.crew; }
 export const crewCapK = (s) => (s.crew ? s.crew.reduce((a, c) => a + TRAITS[c.trait].cap * (c.skill || 1) * (c.moodK || 1), 0) : s.staff);
 let WAGE_ADD = 0;
 export const crewWage = (s) => (s.crew ? s.crew.reduce((a, c) => a + c.wage + WAGE_ADD, 0) : s.staff * (WAGE + WAGE_ADD));
@@ -119,7 +119,7 @@ export const crewAtt = (s) => (s.crew ? s.crew.reduce((a, c) => a * (TRAITS[c.tr
 export const crewCost = (s) => (s.crew ? s.crew.reduce((a, c) => a * (TRAITS[c.trait].cost || 1), 1) : 1);
 export const crewRep = (s) => (s.crew ? Math.max(1, ...s.crew.map(c => TRAITS[c.trait].rep || 1)) : 1);
 // 店員の数を合わせる(足すときは ふつうの人、減らすときは いちばん割に合わない人から)
-function setCrewSize(S, s, n) { const c = crewOf(S, s); while (c.length < n) c.push(newStaff(S, 'plain')); while (c.length > n) { let wi = 0, wv = 1e9; c.forEach((x, i) => { const v = TRAITS[x.trait].cap * (x.skill || 1) * 30 / x.wage + ((TRAITS[x.trait].att || 1) - 1) * 10; if (v < wv) { wv = v; wi = i; } }); c.splice(wi, 1); } s.staff = c.length; }
+function setCrewSize(S, s, n) { const c = crewOf(S, s); while (c.length < n) c.push(newStaff(S, 'plain', c)); while (c.length > n) { let wi = 0, wv = 1e9; c.forEach((x, i) => { const v = TRAITS[x.trait].cap * (x.skill || 1) * 30 / x.wage + ((TRAITS[x.trait].att || 1) - 1) * 10; if (v < wv) { wv = v; wi = i; } }); c.splice(wi, 1); } s.staff = c.length; }
 export const LOAN_RATE = 0.015;
 export let MAX_SHOPS = 5;
 export const CROWN_BONUS = 400;
