@@ -742,3 +742,6 @@ body:has(.title) #ticker{opacity:0;pointer-events:none}
 .plan3d{display:flex;align-items:center;gap:12px;background:linear-gradient(160deg,#fff3dc,#ffe2b0);border:2px solid #fff;border-bottom:5px solid #e8c27a;border-radius:20px;padding:10px 14px;margin-bottom:10px}
 .plan3d img.em3{width:78px;height:78px}.plan3d b{display:block;font-size:20px;font-weight:900}.plan3d span{font-size:14px;font-weight:800;color:#8a5a00}
 #sheet.k-planned{--acc:#e07b1a;--acc2:#fff1d6}
+.ewarr{font-weight:900;color:#4a5570;margin:0 2px}
+.evchip[data-a=weather]{gap:4px;padding:6px 10px}.evchip[data-a=weather] .et{white-space:nowrap;font-size:11px}.evchip[data-a=weather]>span{white-space:nowrap}
+.evchip[data-a=weather] .ei img.em3{width:30px;height:30px}

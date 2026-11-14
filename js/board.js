@@ -277,7 +277,7 @@ export class Board {
     let i = 0;
     for (const [d, hs] of Object.entries(this.distHex)) {
       if (hs.length < 3) continue;
-      for (let n = 0; n < per + (DISTRICTS[d] && DISTRICTS[d].kind === 'plaza' ? 2 : 0); n++, i++) {
+      for (let n = 0; n < per + (DISTRICTS[d] && DISTRICTS[d].kind === 'plaza' ? 4 : 0); n++, i++) {
         const proto = this.charProto[i % 4]; if (!proto) continue;
         const pts = []; for (let k = 0; k < 4; k++) pts.push(hs[(i * 7 + k * 13) % hs.length].clone().add(new THREE.Vector3(((i + k) % 3 - 1) * 0.3, 0, ((i * k) % 3 - 1) * 0.3)));
         const o = SkeletonUtils.clone(proto.scene); o.scale.setScalar(0.17); this.world.add(o);
@@ -441,6 +441,7 @@ export class Board {
     this.sun.intensity = { sun: 1.7, cloudy: 1.0, rain: 0.7, storm: 0.45, heat: 2.1, snow: 1.0 }[w] || 1.4;
     this.sun.color.setHex(w === 'heat' ? 0xffd2a0 : 0xfff4e2);
     const show = w === 'rain' || w === 'storm' || w === 'snow';
+    this.precip.material.size = w === 'snow' ? 0.45 : 0.16; this.precip.material.opacity = w === 'snow' ? 0.95 : 0.75; this.precip.material.color.setHex(w === 'snow' ? 0xffffff : 0xcfe3ff);
     this.precip.visible = show;
     this.precip.material.size = w === 'snow' ? 0.2 : 0.13; this.precip.material.color.setHex(w === 'snow' ? 0xffffff : 0xb8d4ff);
     this.precipSpeed = w === 'snow' ? 1.6 : w === 'storm' ? 16 : 11;
@@ -479,8 +480,8 @@ export class Board {
   }
   // 町の景気: いいと人通りが増えて広場に旗飾り、悪いと人が減る
   setProsperity(k) {
-    const tf = k > 1.05 ? 6 : k > 0.98 ? 5 : 3; if (tf !== this.folkN) { this.folkN = tf; this.spawnFolk(tf); }
-    const per = k > 1.06 ? 4 : k > 1.0 ? 3 : k > 0.95 ? 2 : 1;
+    const tf = k > 1.05 ? 10 : k > 0.98 ? 8 : 6; if (tf !== this.folkN) { this.folkN = tf; this.spawnFolk(tf); }
+    const per = k > 1.06 ? 6 : k > 1.0 ? 5 : k > 0.95 ? 4 : 3;
     if (per !== this.trafficPer) { this.trafficPer = per; this.spawnTraffic(per); }
     const want = k > 1.05;
     if (want && !this.bunting) {

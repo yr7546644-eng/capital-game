@@ -102,7 +102,7 @@ function dock() {
   const ev = S.evNext && E.evDef(S.evNext.id), p = me(), used = pendCard();
   const n = F.acts.length;
   $('#dock').innerHTML = `
-    <div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="weather"><span class="ei">${wx(me().scout === S.t ? S.wNext : S.wFore).icon}</span><span><span class="et">天気予報${me().scout === S.t ? '(確実)' : ''}</span><br>${wx(me().scout === S.t ? S.wNext : S.wFore).name}</span></button>${ev ? `<button class="evchip" data-a="event"><span class="ei">${ev.icon}</span><span><span class="et">来月の予報${E.marketDay({ t: S.t }) ? ' · 🛍️市の日' : ''}</span><br>${esc(ev.name)}</span></button>` : ''}${S.t >= S.months - 18 ? `<button class="evchip grand" data-a="grand"><span class="ei">🏰</span><span><span class="et">${E.finalYear(S) ? '大祭の年' : '大祭まで'}</span><br>${E.finalYear(S) ? `のこり${S.months - S.t}か月` : `あと${S.months - 12 - S.t}か月`}</span></button>` : ''}</div>
+    <div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="weather"><span class="ei">${wx(S.t ? S.w : 'sun').icon}</span><span><span class="et">いまの天気</span><br>${wx(S.t ? S.w : 'sun').name}</span><span class="ewarr">→</span><span class="ei">${wx(me().scout === S.t ? S.wNext : S.wFore).icon}</span><span><span class="et">来月${me().scout === S.t ? '(確実)' : '(予報)'}</span><br>${wx(me().scout === S.t ? S.wNext : S.wFore).name}</span></button>${ev ? `<button class="evchip" data-a="event"><span class="ei">${ev.icon}</span><span><span class="et">来月の予報${E.marketDay({ t: S.t }) ? ' · 🛍️市の日' : ''}</span><br>${esc(ev.name)}</span></button>` : ''}${S.t >= S.months - 18 ? `<button class="evchip grand" data-a="grand"><span class="ei">🏰</span><span><span class="et">${E.finalYear(S) ? '大祭の年' : '大祭まで'}</span><br>${E.finalYear(S) ? `のこり${S.months - S.t}か月` : `あと${S.months - 12 - S.t}か月`}</span></button>` : ''}</div>
     ${F.mp ? `<div class="row" style="justify-content:center;gap:6px"><button class="evchip" data-a="stamps">💬 スタンプ</button><button class="evchip" data-a="online">🌐 ${humansOf().filter(x => x.cid === NET.cid || NET.online(x.cid)).length}/${humansOf().length}人</button></div>${F.stampOpen ? `<div class="stray">${STAMPS.map(x => `<button class="stb" data-a="stamp" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}` : ''}
     ${(() => { const p = me(), its = Object.keys(E.ITEMS).filter(k => (p.inv[k] || 0) >= 1).sort((a, b) => p.inv[b] * S.market[b].price - p.inv[a] * S.market[a].price).slice(0, 4); return `<button class="bagbar" data-a="bag"><span class="bbl">持ち物</span>${its.length ? its.map(k => `<span class="bbi">${ico(k)}<b>${fmt(p.inv[k])}</b></span>`).join('') : '<span class="bbe">なし</span>'}<span class="bbs">${ico('b_bread')}<b>${E.shopsOf(S, ME).length}</b></span></button>`; })()}
     ${!S.over && freeCash() < nextFixed() ? `<button class="evchip cashwarn" data-a="books">⚠️ 来月の支払い 約${fmt(Math.round(nextFixed()))}G に現金が足りない</button>` : ''}
@@ -1794,7 +1794,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114042009';
+const BUILD = '20261114042636';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
