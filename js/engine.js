@@ -495,7 +495,7 @@ function peddlerMonth(S, fx) {
   const P = S.peddler = S.peddler || { left: 0, items: [], next: S.t + 3 };
   if (P.left > 0) P.left--;
   if (P.left <= 0 && S.t + 1 >= P.next && S.t + 1 < S.months) {
-    const ks = Object.keys(RARES).sort(() => rnd(S) - 0.5); P.items = ks.slice(0, 2 + (rnd(S) < 0.4 ? 1 : 0)); P.left = 1; P.next = S.t + 1 + 4 + Math.floor(rnd(S) * 4);
+    const ks = Object.keys(RARES).sort(() => rnd(S) - 0.5); P.items = ks.slice(0, 2 + (rnd(S) < 0.4 ? 1 : 0)); P.left = 1; P.stock = Object.fromEntries(P.items.map(k => [k, 3 + Math.floor(rnd(S) * 4)])); P.next = S.t + 1 + 4 + Math.floor(rnd(S) * 4);
     fx.push({ kind: 'peddler', items: P.items });
   }
 }
@@ -528,6 +528,7 @@ export function validate(S, pid, a) {
   if (a.type === 'bridge') { if (!(a.amt >= 100 && a.amt <= BRIDGE_MAX)) return '金額がちがう'; if ((S.recv || []).some(x => x.from === pid && x.bridge)) return 'つなぎ融資は返してから'; return null; }
   if (a.type === 'deal') { const o = p.offers.find(x => x.id === a.id); if (!o) return 'その取引はもう終わった'; if (o.kind === 'pact') return null; if (o.kind === 'shopbid') { const t = S.shops.find(x => x.id === o.shop && x.owner === pid), rv = S.players[o.rival]; if (!t) return 'その店はもうない'; if (rv.cash < o.price || shopsOf(S, rv.id).length >= MAX_SHOPS) return '相手の都合で取引が流れた'; return null; } if (o.kind === 'buy' && (p.inv[o.item] || 0) < o.qty) return `${ITEMS[o.item].name}が足りない`; if (o.kind === 'sell' && p.cash < o.qty * o.price) return 'お金が足りない'; return null; }
   if ((a.type === 'buy' || a.type === 'sell') && RARES[a.res] && !peddlerHas(S, a.res)) return 'レア素材は行商人が来ているときだけ売り買いできる';
+  if (a.type === 'buy' && RARES[a.res] && a.qty > ((S.peddler && S.peddler.stock || {})[a.res] || 0)) return `行商人の${ITEMS[a.res].name}は残り${(S.peddler && S.peddler.stock || {})[a.res] || 0}個しかない`;
   if (a.type === 'buy') { if (!ITEMS[a.res] || !(a.qty > 0)) return '数がちがう'; if (p.cash < quote(S, a.res, a.qty)) return 'お金が足りない'; return null; }
   if (a.type === 'sell') { if (!(a.qty > 0) || (p.inv[a.res] || 0) < a.qty) return '在庫が足りない'; return null; }
   if (a.type === 'card') {
@@ -585,6 +586,7 @@ function applyAction(S, pid, a, fx, late) {
     const s = S.shops.find(x => x.id === a.shop); p.cash += Math.round(shopValue(S, s) * 0.8); S.shops = S.shops.filter(x => x !== s); fx.push({ kind: 'close', pid, shop: s.id, g: s.g, d: s.d });
   }
   if (a.type === 'buy') {
+    if (RARES[a.res] && S.peddler && S.peddler.stock) S.peddler.stock[a.res] = Math.max(0, (S.peddler.stock[a.res] || 0) - a.qty);
     const { c, st } = takeCost(S, a.res, a.qty, SPREAD); p.cash -= c; p.inv[a.res] += a.qty; p.invCost[a.res] += c;
     S.mk[a.res].stock = st; S.mk[a.res].buy += a.qty; setPrice(S, a.res);
     fx.push({ kind: 'buy', pid, res: a.res, qty: a.qty });
