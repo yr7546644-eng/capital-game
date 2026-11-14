@@ -80,7 +80,7 @@ function dock() {
       <button class="abtn go" data-a="next">次の月へ${n ? `<small>決めたこと ${n}</small>` : ''}</button>
     </div>`;
 }
-function render() { hud(); cashRoll(); dock(); if (F.mp) netBadge(); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
+function render() { hud(); cashRoll(); dock(); rivalsBar(); if (F.mp) netBadge(); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
 // 場面に合わせて曲を選ぶ: 大祭の年・雨・町ごとの曲を数か月ごとに入れ替え
 const STAGE_BGM = { rose: ['asa', 'kenso'], marina: ['minato', 'asa'], snow: ['yuki', 'kenso'], capital: ['kenso', 'asa'] };
 function pickBgm() {
@@ -446,7 +446,7 @@ async function mpAdopt(m, quiet) {
   }
   await board.sync(S, ME); labels(); render(); if (!same) board.home(); board.setWeather(S.t ? S.w : 'sun'); board.setProsperity(avgProsper());
   mpSave(); netBadge();
-  if (!quiet) toast(same ? '🔄 町の状態をそろえた' : `🌐 ${E.STAGES[S.stage].name}で対戦! あなたは ${S.players[ME].name}`);
+  if (!quiet) { if (same) toast('🔄 町の状態をそろえた'); else if (S.t === 0) showVS(() => {}); else toast(`🌐 ${E.STAGES[S.stage].name}で対戦! あなたは ${S.players[ME].name}`); }
 }
 NET.on_('start', (m) => { mpAdopt(m); });
 NET.on_('state', (m) => {
@@ -602,6 +602,98 @@ SHEETS.event = () => {
     <div class="t3">予報を見て、先に動いた人が勝つ。たとえば不作の前に材料を買っておく、祭りの前に店員を増やす。</div>`;
 };
 // 順位
+// ── 商会の顔ぶれ(ライバルが見えるように)
+const LOOK_BY_NAME = { 'ベルナ': { b: 3, h: 3, hat: -1, tint: 0xff9a9a, cape: 0 }, 'グスタフ': { b: 1, h: 2, hat: 2, tint: 0xffd77a, cape: 1 }, 'ミレイユ': { b: 2, h: 1, hat: 1, tint: 0xa6e6a0, cape: 0 } };
+const LOOK_HUMAN = [{ b: 0, h: 0, hat: -1, tint: 0x9ac2ff, cape: 1 }, { b: 3, h: 3, hat: 1, tint: 0xc9a6ff, cape: 0 }, { b: 1, h: 4, hat: -1, tint: 0xffb27a, cape: 1 }, { b: 2, h: 1, hat: -1, tint: 0x8fe0e0, cape: 0 }];
+const LINES = { cheap: '安さこそ正義! 町じゅうのお客をいただくよ', luxury: '本物の品は、高くても売れるのだ', hoarder: '材料を押さえた者が、町を制するのよ', balanced: 'こつこつ堅実に、いちばんを取る' };
+const playerLook = (p) => p.human ? LOOK_HUMAN[p.id % 4] : LOOK_BY_NAME[p.name] || LOOK_HUMAN[(p.id + 1) % 4];
+const avatar = (p, sz = 40) => { const u = board && board.portrait ? board.portrait(playerLook(p)) : ''; return u ? `<img src="${u}" width="${sz}" height="${sz}" alt="">` : `<span style="font-size:${sz * 0.6}px">${p.human ? '🙂' : '🧑‍💼'}</span>`; };
+// 画面上のライバルの列(順位つき)。考え中は💭、動いたら吹き出し
+function rivalsBar() {
+  let el = $('#rivals'); if (!S || $('.title')) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'rivals'; document.body.appendChild(el); }
+  const rk = E.ranking(S);
+  const html = rk.map((x, i) => { const p = x.p, n = E.shopsOf(S, p.id).length; return `<button class="rv ${p.id === ME ? 'me' : ''} ${F.thinking && p.ai ? 'think' : ''}" data-a="ranking" data-pid="${p.id}" style="--c:${E.COLOR_HEX[p.color]}"><span class="rvf">${avatar(p, 38)}</span><span class="rvr">${i + 1}</span><span class="rvn">${p.id === ME ? 'あなた' : esc(p.name)}</span><span class="rvs">🏠${n}</span></button>`; }).join('');
+  if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
+}
+function rivalSay(pid, text, ms = 3200) {
+  const b = document.querySelector(`#rivals .rv[data-pid="${pid}"]`); if (!b) return;
+  const r = b.getBoundingClientRect(), d = document.createElement('div'); d.className = 'rsay';
+  d.innerHTML = text; d.style.top = (r.top + 2) + 'px'; d.style.right = (innerWidth - r.left + 8) + 'px';
+  document.body.appendChild(d); b.classList.add('talk'); setTimeout(() => { d.classList.add('out'); b.classList.remove('talk'); setTimeout(() => d.remove(), 300); }, ms);
+}
+// ライバルの今月の動きを、ひとことにする
+function rivalLines(fx) {
+  const out = {};
+  const put = (pid, pr, t) => { if (pid === ME || !S.players[pid] || S.players[pid].human) return; if (!out[pid] || out[pid].pr < pr) out[pid] = { pr, t }; };
+  for (const f of fx) {
+    const sh = f.shop != null ? S.shops.find(x => x.id === f.shop) : null;
+    if (f.kind === 'open' && sh) put(f.pid, 3, `${E.DISTRICTS[sh.d].short}に<b>${gd(sh).icon}${gd(sh).name}</b>を出したよ!`);
+    if (f.kind === 'buyshop') put(f.pid, 5, `${f.from === ME ? 'あなたの' : ''}店を<b>${fmt(f.price)}G</b>で買い取った!`);
+    if (f.kind === 'card' && f.target === ME) put(f.pid, 6, `あなたの店に<b>${E.CARDS[f.card] ? E.CARDS[f.card].name : '攻撃'}</b>を仕掛けた!`);
+    else if (f.kind === 'card' && E.CARDS[f.card]) put(f.pid, 1, `「${E.CARDS[f.card].name}」を使った`);
+    if (f.kind === 'route' && sh) put(f.pid, 2, `${gd(sh).name}を${E.ROUTES[f.k].icon}${E.ROUTES[f.k].name}で育てる`);
+    if (f.kind === 'close') put(f.pid, 4, `店をひとつ、たたんだ…`);
+    if (f.kind === 'pactYes' && (f.to === ME || f.pid === ME)) put(f.pid === ME ? f.to : f.pid, 4, `契約成立。よろしく頼むよ`);
+  }
+  // 何もしなかったライバルは、順位で一言
+  const rk = E.ranking(S).map(x => x.p.id);
+  for (const p of S.players) if (p.ai && !out[p.id] && Math.random() < 0.5) put(p.id, 0, rk[0] === p.id ? 'ふふ、この調子でいくわ' : rk.indexOf(p.id) > rk.indexOf(ME) ? '次は抜かしてみせる…!' : 'まだまだ、これから');
+  return out;
+}
+// ── 始まりの演出: 顔ぶれの紹介(VS) → GAME START!
+function showVS(onDone) {
+  const st = E.STAGES[S.stage], L = E.AI_LEVEL[S.level] || {};
+  const el = document.createElement('div'); el.id = 'vs';
+  const me0 = S.players[ME], rivals = S.players.filter(p => p.id !== ME);
+  el.innerHTML = `<div class="vsin"><div class="vst">${st.icon} ${st.name}</div><div class="vss">${S.months / 12}年の商売バトル · ライバル: <b>${L.name || ''}</b></div>
+    <div class="vsme" style="--c:${E.COLOR_HEX[me0.color]}"><span class="vf">${avatar(me0, 84)}</span><div><b>${me0.human && ME === 0 && !F.mp ? 'あなた' : esc(me0.name)}</b><small>所持金 ${fmt(me0.cash)}G からスタート</small></div></div>
+    <div class="vsx">VS</div>
+    <div class="vsr">${rivals.map((p, i) => `<div class="vsc" style="--c:${E.COLOR_HEX[p.color]};animation-delay:${0.25 + i * 0.15}s"><span class="vf">${avatar(p, 64)}</span><b>${esc(p.name)}</b><small>${p.human ? '🙂 プレイヤー' : (E.AI_KIND[p.ai] || {}).name || ''}</small><q>${p.human ? 'よろしく!' : LINES[p.ai] || ''}</q></div>`).join('')}</div>
+    <button class="btn warm vsgo" data-a="vsgo">⚔️ 勝負開始!</button></div>`;
+  document.body.appendChild(el); sfx('whoosh'); F.vsDone = onDone;
+}
+function gameStart() {
+  const el = $('#vs'); if (el) { el.classList.add('out'); setTimeout(() => el.remove(), 350); }
+  const b = document.createElement('div'); b.className = 'gstart'; b.innerHTML = `<div>GAME START!</div><small>${ym(S.t)} · 1位をめざせ</small>`; document.body.appendChild(b);
+  sfx('rankup'); bgm.jingle(true); haptic(40); confetti(); setTimeout(() => b.remove(), 2000);
+  board.view.dist = 44; board.home();
+  rivalsBar();
+  setTimeout(() => { const f = F.vsDone; F.vsDone = null; if (f) f(); }, 1300);
+}
+// 月の始まりの見出し
+function monthBanner() {
+  const b = document.createElement('div'); b.className = 'mbanner';
+  const mo = S.t % 12, se = mo < 2 || mo === 11 ? '❄️ 冬' : mo < 5 ? '🌸 春' : mo < 8 ? '☀️ 夏' : '🍂 秋';
+  b.innerHTML = `<small>${Math.floor(S.t / 12) + 1}年目 · ${se}</small><div>${mo + 1}月</div><em>作戦タイム</em>`;
+  document.body.appendChild(b); setTimeout(() => b.remove(), 1700);
+}
+// ── やること(はじめの目標)。1つずつ出して、できたら「クリア!」
+const QKEY = 'capital-quests-v1';
+const QUESTS = [
+  { id: 'open', t: '地図の白い<b>＋</b>をタップして、店を開こう', ok: () => E.shopsOf(S, ME).length > 0 || F.acts.some(a => a.type === 'open') },
+  { id: 'next', t: '準備ができたら<b>「次の月へ」</b>を押そう', ok: () => S.t >= 1 },
+  { id: 'set', t: '自分の店をタップして、<b>値段か店員</b>を変えてみよう', ok: () => F.acts.some(a => a.type === 'set') || qDone('set') },
+  { id: 'card', t: '下の<b>カード</b>を1枚使ってみよう', ok: () => F.acts.some(a => a.type === 'card') || qDone('card') },
+  { id: 'market', t: '<b>🛒市場</b>で材料の値段を見てみよう', ok: () => F.sheet === 'market' || qDone('market') },
+  { id: 'rank', t: '上の<b>ライバルの顔</b>をタップして順位を見よう', ok: () => F.sheet === 'ranking' || qDone('rank') },
+  { id: 'two', t: '<b>2つ目の店</b>を開いて、稼ぎを増やそう', ok: () => E.shopsOf(S, ME).length + F.acts.filter(a => a.type === 'open').length >= 2 },
+];
+const qState = () => { try { return JSON.parse(localStorage.getItem(QKEY) || '{}'); } catch (e) { return {}; } };
+const qDone = (id) => !!qState()[id];
+function questTick() {
+  if (!S || F.mp && false) return;
+  let el = $('#quest'); const st = qState();
+  if (st.all || S.over || $('.title') || $('#vs') || $('#tut')) { if (el) el.remove(); return; }
+  for (const q of QUESTS) if (!st[q.id] && q.ok()) { st[q.id] = 1; try { localStorage.setItem(QKEY, JSON.stringify(st)); } catch (e) { } questClear(); }
+  const cur = QUESTS.find(q => !st[q.id]);
+  if (!cur) { st.all = 1; try { localStorage.setItem(QKEY, JSON.stringify(st)); } catch (e) { } toast('🎉 基本はバッチリ! あとは1位をめざそう'); if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'quest'; document.body.appendChild(el); }
+  const n = QUESTS.filter(q => st[q.id]).length, html = `<div class="qh">🎯 やること <span>${n + 1}/${QUESTS.length}</span></div><div class="qt">${cur.t}</div>`;
+  if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; el.classList.remove('qin'); void el.offsetWidth; el.classList.add('qin'); }
+  el.style.display = F.sheet || F.busy ? 'none' : '';
+}
+function questClear() { const d = document.createElement('div'); d.className = 'qclear'; d.textContent = '✔ クリア!'; document.body.appendChild(d); sfx('kaching'); haptic(20); setTimeout(() => d.remove(), 1300); }
 // ── チュートリアル(めくって読む、ゲーム風の遊び方)
 const TUT = [
   { hero: '🏆', bg: ['#ffcf5c', '#ff8a5c'], tag: 'ゴール', title: '町いちばんの商会になれ!', body: '最後の月に<b>純資産</b>がいちばん多い人の勝ち。', vis: () => `<div class="tv-eq"><span>💰<small>現金</small></span><i>+</i><span>📦<small>在庫</small></span><i>+</i><span>🏠<small>店の価値</small></span><i>−</i><span>💸<small>借金</small></span></div><div class="tv-note">儲かり続けている店ほど、価値が高い</div>` },
@@ -642,7 +734,7 @@ function coachTick() {
   let el = $('#coach');
   const done = (() => { try { return localStorage.getItem(COACH) === '1'; } catch (e) { return true; } })();
   let step = null;
-  if (!done && S && !S.over && !F.mp && !F.sheet && !$('#tut') && !$('.title') && !F.busy && S.t === 0) step = F.acts.some(a => a.type === 'open') ? 'next' : E.shopsOf(S, ME).length ? null : 'open';
+  if (!done && S && !S.over && !F.mp && !F.sheet && !$('#tut') && !$('#vs') && !$('.title') && !F.busy && S.t === 0) step = F.acts.some(a => a.type === 'open') ? 'next' : E.shopsOf(S, ME).length ? null : 'open';
   if (!done && S && S.t >= 1) { try { localStorage.setItem(COACH, '1'); } catch (e) { } }
   document.body.classList.toggle('coaching', step === 'open');
   if (!step) { if (el) el.remove(); return; }
@@ -734,13 +826,14 @@ SHEETS.credits = () => head('🎨', 'クレジット', '') + `<div class="box t2
 
 // ── 操作
 const H = {
-  close: () => { const was = F.sheet; closeSheet(); sfx('close'); if (was === 'stages') endPreview(); if (was === 'result' && S.over) setTimeout(() => openSheet('final'), 350); if (was === 'result') afterResult(); },
+  close: () => { const was = F.sheet; closeSheet(); sfx('close'); if (was === 'result' && !S.over) setTimeout(monthBanner, 150); if (was === 'stages') endPreview(); if (was === 'result' && S.over) setTimeout(() => openSheet('final'), 350); if (was === 'result') afterResult(); },
   menu: () => openSheet('menu'),
   aud: (d) => { const k = d.v, v = !audioPref()[k]; setAudioPref(k, v); if (k === 'haptic' && v) haptic(20); sfx('toggle'); renderSheet(); },
   nexttrack: () => { const ks = ['asa', 'kenso', 'minato', 'yuki', 'ame', 'ouji', 'matsuri'], i = ks.indexOf(bgm.want); F.bgmLock = 1; bgm.play(ks[(i + 1) % ks.length]); if (!audioPref().bgm) setAudioPref('bgm', true); sfx('toggle'); setTimeout(renderSheet, 2600); toast('曲を替える…'); },
   autobgm: () => { F.bgmLock = 0; pickBgm(); sfx('toggle'); setTimeout(renderSheet, 2600); }, howto: () => showTut(0), rules: () => { $('#tut') && $('#tut').remove(); openSheet('rules'); },
   tutgo: (d) => { const n = F.tutI + +d.v; if (n < 0 || n >= TUT.length) return; F.tutI = n; sfx('card'); haptic(8); renderTut(+d.v); },
-  tutclose: () => { const el = $('#tut'); if (el) { el.classList.add('out'); setTimeout(() => el.remove(), 260); } sfx('open'); }, credits: () => openSheet('credits'),
+  vsgo: () => gameStart(),
+  tutclose: () => { try { localStorage.setItem('capital-tut-seen', '1'); } catch (e) { } const el = $('#tut'); if (el) { el.classList.add('out'); setTimeout(() => el.remove(), 260); } sfx('open'); }, credits: () => openSheet('credits'),
   ranking: () => openSheet('ranking'), market: () => openSheet('market'), books: () => openSheet('books'), event: () => openSheet('event'),
   card: (d) => openSheet('card', { i: +d.i }),
   cardgo: (d) => {
@@ -785,7 +878,7 @@ const H = {
     F.mp = true; F.mpSeats = seats; ME = 0; F.acts = []; NET.seats = seats; NET.mySeat = 0; NET.ready = {};
     netSend({ k: 'start', S, seats, t: 0 }); mpSave();
     closeSheet(); $('#loading').classList.remove('off'); await board.build(S.stage); F.mpBuilt = true; await board.sync(S, ME); labels(); render(); board.home(); board.setWeather('sun'); setTimeout(() => $('#loading').classList.add('off'), 200);
-    toast('🌐 対戦開始!');
+    showVS(() => {});
   },
   mpleave: async () => {
     if (F.mp && !confirm(NET.host ? '部屋を閉じる?(みんなの対戦も止まる。あとで「対戦に戻る」で再開もできる)' : '部屋を出る?(あなたの席はAIが引き継ぐ)')) return;
@@ -834,7 +927,7 @@ const H = {
   restart2: () => { closeSheet(); startNew(S.stage); },
   restart: () => { if (F.mp) return toast('オンライン対戦中は、部屋を出てから'); if (confirm('最初からやり直す?(同じ町)')) { closeSheet(); startNew(S.stage); } },
   stagesel: () => { if (F.mp) return toast('オンライン対戦中は、部屋を出てから'); if (!S.t || S.over || confirm('今のゲームをやめて、別の町で始める?')) openSheet('stages'); },
-  start: () => { $('.title') && $('.title').remove(); unlockAudio(); sfx('open'); if (!S.t && !F.acts.length) setTimeout(() => showTut(0), 400); },
+  start: () => { $('.title') && $('.title').remove(); unlockAudio(); sfx('open'); if (!S.t && !F.acts.length && !E.shopsOf(S, ME).length) setTimeout(() => showVS(() => { if (!tutSeen()) showTut(0); }), 300); else { rivalsBar(); setTimeout(monthBanner, 300); } },
 };
 // ── 手ざわり: 押した瞬間に沈む・波紋・小さな振動と音
 const PRESSABLE = 'button, [data-a]:not(#sheetbg), .card';
@@ -884,10 +977,11 @@ async function nextMonth() {
   const shopsBefore = S.shops.map(s => ({ id: s.id, d: s.d, g: s.g, owner: s.owner, lot: s.lot }));
   let fx, errors;
   if (F.mp) { const r = await mpStep(acts); if (!r) { F.busy = false; render(); return; } ({ fx, errors } = r); }
-  else { const think = await aiThink(); ({ fx, errors } = E.step(S, { ...think, [ME]: acts })); }
+  else { F.thinking = 1; rivalsBar(); const think = await aiThink(); F.thinking = 0; ({ fx, errors } = E.step(S, { ...think, [ME]: acts })); }
   F.alerts = alertsOf(fx, shopsBefore, autoDone);
   F.acts = []; save();
   for (const er of errors.filter(x => x.pid === ME)) toast(er.e);
+  if (fx.some(f => f.kind === 'open' && f.pid === ME && f.moved != null)) setTimeout(() => toast('🏃 その土地は先に取られた! となりの空き地に建てた'), 900);
   sfx('whoosh');
   board.clearPreview();
   await board.sync(S, ME);
@@ -901,6 +995,7 @@ async function nextMonth() {
   board.playMonth(S, sales);
   await wait(1500);
   for (const f of sales) { const pos = board.screenOf(f.shop); if (pos) popAt(pos, f.profit, S.players[f.pid].color); }
+  { const ls = rivalLines(fx); Object.entries(ls).forEach(([pid, v], k) => setTimeout(() => rivalSay(+pid, v.t), k * 450)); }
   const myUp = sales.filter(f => f.pid === ME && f.profit > 0).length; if (myUp) sfx('coins', Math.min(8, 2 + myUp * 2));
   await wait(1300);
   // 結果
@@ -911,6 +1006,7 @@ async function nextMonth() {
     news: newsOf(fx, pre), tip: tipOf(), check: checkOf(fc), auto: autoDone, alerts: F.alerts,
   };
   r.tier0 = tier0; r.tier1 = E.rankOf(E.netWorth(S, me()));
+  document.querySelectorAll('.rsay').forEach(d => d.classList.add('out'));
   openSheet('result', { r }); bgm.jingle(r.mine.reduce((a, x) => a + x.profit, 0) >= 0);
   if (r.tier1 > r.tier0) { sfx('rankup'); confetti(); } else if (r.tier1 < r.tier0) sfx('whoosh');
   countUp($('#cntup'), r.mine.reduce((a, x) => a + x.profit, 0));
@@ -1098,6 +1194,7 @@ function labels() {
   updateLabels();
   board.onFrame = () => {
     if ((F.coachF = (F.coachF || 0) + 1) % 3 === 0) coachTick();
+    if (F.coachF % 10 === 0) questTick();
     for (const el of wrap.children) {
       const [q, r] = centers[el.dataset.d]; const v = hexPos(q, r); v.y = 0.1;
       const p = v.project(board.cam); const rc = board.R.domElement.getBoundingClientRect();
@@ -1115,8 +1212,9 @@ async function startNew(stage) {
   await board.build(stage); await board.sync(S, ME);
   labels(); render(); board.home(); board.setWeather('sun');
   setTimeout(() => $('#loading').classList.add('off'), 200);
-  setTimeout(() => showTut(0), 500);
+  setTimeout(() => showVS(() => { if (!tutSeen()) showTut(0); }), 450);
 }
+const tutSeen = () => { try { return localStorage.getItem('capital-tut-seen') === '1'; } catch (e) { return true; } };
 SHEETS.stages = () => {
   const rec = records(), pv = F.pv || null;
   const mo = F.months || 60;

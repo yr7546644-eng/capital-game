@@ -326,3 +326,50 @@ body:has(.title) #dock,body:has(.title) #labels{opacity:0;pointer-events:none;tr
 #coach.cgo{transform:none;align-items:flex-end}
 #coach.cgo .cfinger.down{margin-right:var(--fx,20px)}
 body.coaching .dlabel{opacity:.3}
+/* ── ライバルの列(右上) */
+#rivals{position:fixed;right:8px;top:calc(var(--safet) + 68px);z-index:9;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.rv{pointer-events:auto;position:relative;width:54px;display:flex;flex-direction:column;align-items:center;gap:0}
+.rvf{width:44px;height:44px;border-radius:50%;background:#fff;border:3px solid var(--c);overflow:hidden;display:grid;place-items:center;box-shadow:0 4px 12px rgba(20,40,90,.22)}
+.rvf img{width:52px;height:52px;object-fit:cover;margin-top:4px}
+.rv.me .rvf{box-shadow:0 0 0 3px #fff,0 4px 14px rgba(20,40,90,.3)}
+.rvr{position:absolute;left:0;top:-2px;width:18px;height:18px;border-radius:50%;background:var(--c);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;border:2px solid #fff}
+.rvn{font-size:9.5px;font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);margin-top:-2px;max-width:58px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.rvs{position:absolute;right:-2px;top:24px;font-size:9px;background:#fff;border-radius:999px;padding:0 4px;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.rv.think .rvf{animation:thinkb 1s ease-in-out infinite}
+.rv.think::after{content:'💭';position:absolute;left:-14px;top:-8px;font-size:18px;animation:thinkp 1s ease-in-out infinite}
+@keyframes thinkb{50%{transform:translateY(-3px)}}@keyframes thinkp{50%{transform:scale(1.2) translateY(-2px)}}
+.rv.talk .rvf{animation:talkb .35s ease-in-out 4}
+@keyframes talkb{50%{transform:scale(1.12)}}
+.rsay{position:fixed;z-index:46;max-width:min(62vw,240px);background:#fff;border-radius:16px 4px 16px 16px;padding:8px 12px;font-size:12.5px;line-height:1.45;box-shadow:0 8px 24px rgba(20,40,90,.28);animation:rsayin .4s cubic-bezier(.34,1.6,.5,1)}
+.rsay.out{animation:rsayout .3s ease-in forwards}
+@keyframes rsayin{from{transform:translateX(20px) scale(.6);opacity:0}}@keyframes rsayout{to{transform:translateX(20px);opacity:0}}
+/* ── VS */
+#vs{position:fixed;inset:0;z-index:58;background:radial-gradient(circle at 50% 40%,rgba(60,80,160,.75),rgba(10,15,40,.92));display:grid;place-items:center;padding:16px;animation:tfade .3s}
+#vs.out{animation:tfade .35s reverse forwards}
+.vsin{width:100%;max-width:400px;text-align:center;color:#fff}
+.vst{font-size:26px;font-weight:800;animation:tpop .5s cubic-bezier(.34,1.6,.5,1)}
+.vss{font-size:13px;opacity:.85;margin:2px 0 14px}
+.vsme{display:flex;align-items:center;gap:12px;justify-content:center;animation:tfromL .5s cubic-bezier(.22,1.2,.36,1)}
+.vsme b{font-size:20px;display:block;text-align:left}.vsme small{font-size:12px;opacity:.8}
+.vf{display:grid;place-items:center;border-radius:50%;background:#fff;border:4px solid var(--c);overflow:hidden;box-shadow:0 0 24px color-mix(in srgb,var(--c) 70%,transparent)}
+.vf img{object-fit:cover;margin-top:6px}
+.vsx{font-size:54px;font-weight:900;font-style:italic;letter-spacing:.05em;margin:6px 0;background:linear-gradient(180deg,#fff3b0,#ffb84d);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 10px rgba(255,140,60,.6));animation:vsx .7s cubic-bezier(.34,1.8,.5,1) .15s backwards}
+@keyframes vsx{from{transform:scale(3) rotate(-15deg);opacity:0}}
+.vsr{display:flex;gap:8px}
+.vsc{flex:1;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:18px;padding:10px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;animation:tfromR .5s cubic-bezier(.22,1.2,.36,1) backwards}
+.vsc b{font-size:15px}.vsc small{font-size:10.5px;opacity:.8}.vsc q{font-size:10.5px;line-height:1.4;opacity:.95;margin-top:4px;quotes:'「' '」'}
+.vsgo{margin-top:18px;width:100%;font-size:18px;padding:16px;animation:tbeat 1.2s ease-in-out infinite}
+.gstart{position:fixed;inset:0;z-index:59;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.gstart div{font-size:46px;font-weight:900;font-style:italic;color:#fff;-webkit-text-stroke:2px #ff7a59;text-shadow:0 6px 0 #ff7a59,0 10px 30px rgba(255,122,89,.6);animation:gs 2s cubic-bezier(.34,1.6,.5,1) forwards}
+.gstart small{color:#fff;font-weight:800;text-shadow:0 2px 6px rgba(0,0,0,.4);animation:gs 2s cubic-bezier(.34,1.6,.5,1) .1s forwards;opacity:0}
+@keyframes gs{0%{transform:scale(.2);opacity:0}20%{transform:scale(1.1);opacity:1}30%{transform:scale(1)}80%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.3)}}
+/* ── 月の見出し */
+.mbanner{position:fixed;left:0;right:0;top:34%;z-index:44;pointer-events:none;text-align:center;color:#fff;background:linear-gradient(90deg,transparent,rgba(30,50,110,.75) 20%,rgba(30,50,110,.75) 80%,transparent);padding:10px 0;animation:mb 1.7s cubic-bezier(.22,1,.36,1) forwards}
+.mbanner div{font-size:44px;font-weight:900;line-height:1.1}.mbanner small{font-size:12px;opacity:.85}.mbanner em{display:block;font-style:normal;font-size:13px;font-weight:800;color:#ffd36e;letter-spacing:.2em}
+@keyframes mb{0%{transform:translateX(-100%)}18%{transform:none}82%{transform:none;opacity:1}100%{transform:translateX(100%);opacity:0}}
+/* ── やること */
+#quest{position:fixed;left:12px;top:calc(var(--safet) + 68px);z-index:9;max-width:calc(100vw - 100px);width:230px;background:rgba(255,255,255,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:16px;padding:8px 12px;box-shadow:0 6px 20px rgba(20,40,90,.2);border-left:5px solid #ffb84d;pointer-events:none}
+#quest.qin{animation:tfromL .45s cubic-bezier(.22,1.2,.36,1)}
+#quest .qh{font-size:11px;font-weight:800;color:#e07b1a;display:flex;justify-content:space-between}#quest .qh span{color:var(--ink3)}
+#quest .qt{font-size:13.5px;line-height:1.45;margin-top:2px}
+.qclear{position:fixed;left:24px;top:calc(var(--safet) + 74px);z-index:47;font-size:22px;font-weight:900;color:#16a34a;background:#fff;border-radius:14px;padding:6px 14px;box-shadow:0 8px 24px rgba(22,163,74,.35);pointer-events:none;animation:gs 1.3s cubic-bezier(.34,1.6,.5,1) forwards}

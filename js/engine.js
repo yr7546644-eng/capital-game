@@ -541,13 +541,19 @@ export function validate(S, pid, a) {
 export function quote(S, res, qty) { return takeCost(S, res, qty, SPREAD).c; }
 export function sellQuote(S, res, qty) { return giveGot(S, res, qty, SPREAD).g; }
 function applyAction(S, pid, a, fx, late) {
+  // 同じ月にほかの商会が先にその土地に建てたら、同じ地区のいちばん近い空き地に建てる
+  if (a.type === 'open' && LOTS[a.lot] && !lotFree(S, a.lot)) {
+    const L0 = LOTS[a.lot], dist = (l) => (Math.abs(l.q - L0.q) + Math.abs(l.r - L0.r) + Math.abs(l.q + l.r - L0.q - L0.r)) / 2;
+    const alt = LOTS.filter(l => l.d === L0.d && lotFree(S, l.id)).sort((x, y) => dist(x) - dist(y) || x.id - y.id)[0];
+    if (alt) a = { ...a, lot: alt.id, moved: a.lot };
+  }
   const err = validate(S, pid, a); if (err) return err;
   const p = S.players[pid];
   if (a.type === 'open') {
     const lot = LOTS[a.lot], cost = openCost(lot.d, a.g);
     p.cash -= cost; p.yCapex = (p.yCapex || 0) + cost;
     const s = { id: S.nextShop++, owner: pid, lot: a.lot, d: lot.d, g: a.g, res: a.g === 'work' ? a.res : null, autoSell: a.g === 'work' ? 1 : 0, useProc: 1, home: 0, feat: null, featQty: 0, priceLv: a.priceLv ?? 2, staff: a.staff ?? 2, ads: 0, qual: 0, rep: 0.5, months: 0, hist: [], boost: 1, helper: 0, saleNow: 0, under: 0, last: null, openedT: S.t, route: null };
-    crewOf(S, s); S.shops.push(s); fx.push({ kind: 'open', pid, shop: s.id });
+    crewOf(S, s); S.shops.push(s); fx.push({ kind: 'open', pid, shop: s.id, moved: a.moved });
   }
   if (a.type === 'set') {
     const s = S.shops.find(x => x.id === a.shop);
