@@ -92,7 +92,7 @@ function hud() {
   const pc = pendCost();
   $('#hud').innerHTML = `
     <button class="pill month" data-a="menu"><svg class="ring" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="none" stroke="#e3e8f5" stroke-width="4"/><circle cx="15" cy="15" r="12" fill="none" stroke="#3a7bd5" stroke-width="4" stroke-linecap="round" stroke-dasharray="${C * prog} ${C}" transform="rotate(-90 15 15)"/></svg><span><div class="m1">${S.over ? '終わり' : `${Math.floor(S.t / 12) + 1}年目 ${S.t % 12 + 1}月`}</div><div class="m2">${S.over ? '最終結果' : `ターン <b>${S.t + 1}</b><small>/${S.months}</small>`}</div></span></button>
-    <div class="pill cash">${ico('coin', 'coin3')}<span class="num" id="cashv">${fmt(freeCash())}</span>${pc ? `<span class="pend">${pc > 0 ? '使う予定' : '入る予定'} ${fmt(Math.abs(pc))}</span>` : ''}</div>
+    <div class="pill cash">${ico('coin', 'coin3')}<span class="num" id="cashv">${fmt(freeCash())}</span></div>
     <button class="pill rank" data-a="ranking"><b class="num">${pos}</b>位 <span class="rt">${E.RANKS[E.rankOf(E.netWorth(S, p))][2]}</span></button>`;
 }
 // ── 下のドック
@@ -314,7 +314,7 @@ SHEETS.shop = ({ id }) => {
   }
   const est = E.estimateShop(S, s0, { priceLv: s.priceLv, staff: s.staff, ads: s.ads });
   const base = l ? l.profit : null;
-  return head(G.icon, `${G.name}`, `${D.name} · 評判 ${stars(s0.rep)}`) +
+  return head(G.icon, `${G.name}`, `${D.name} · 評判 ${stars(s0.rep)}`) + recipeShop(s0.g, s0) +
     `<div class="box">${pl}</div>${funnelBox(s0)}${sourcesBox(s0)}
     <div class="box"><div class="lbl">値段 <span class="grow"></span><span class="num">${(G.ref * E.PRICE_LV[s.priceLv]).toFixed(1)}G / 1つ</span></div>
       <div class="seg">${E.PRICE_NAME.map((n, i) => `<button class="${s.priceLv === i ? 'on' : ''}" data-a="setp" data-id="${id}" data-v="${i}">${n}</button>`).join('')}</div>
@@ -336,7 +336,7 @@ function workSheet(s0) {
   const pend = pendSet(s0.id), auto = pend && pend.autoSell != null ? pend.autoSell : s0.autoSell;
   const cap = s.staff * P.rate, mBuy = S.market[raw].price * (1 + E.SPREAD), mSell = S.market[pk].price * (1 - E.SPREAD), margin = mSell - mBuy;
   const est = cap * margin - s.staff * E.WAGE - E.DISTRICTS[s0.d].rent;
-  return head('🏭', `工房 ${R.icon}→${P.icon}`, `${E.DISTRICTS[s0.d].name} · ${R.name}を${P.name}にする`) +
+  return head('🏭', `工房`, `${E.DISTRICTS[s0.d].name} · ${R.name}を${P.name}にする`) + recipeWork(raw, s.staff) +
     `<div class="box">${l ? `<div class="row"><div class="grow"><div class="lbl">先月つくった</div><div class="big num">${fmt(l.made)}<span class="t3">/${fmt(l.cap)}個</span></div></div><div style="text-align:right"><div class="lbl" style="justify-content:flex-end">売った</div><div class="num" style="font-size:18px">${fmt(l.sold)}個 · ${fmt(l.got)}G</div></div></div>${l.short > 5 ? `<div class="t3" style="color:var(--bad);margin-top:6px">⚠️ ${R.name}が足りず ${fmt(l.short)}個ぶん作れなかった</div>` : ''}` : '<div class="t3">来月から動きはじめる</div>'}
       <div class="kv" style="margin-top:8px"><span class="k">${R.icon} ${R.name}の在庫</span><span class="num">${fmt(p.inv[raw])}</span></div><div class="kv"><span class="k">${P.icon} ${P.name}の在庫</span><span class="num">${fmt(p.inv[pk])}</span></div></div>
     <div class="box"><div class="lbl">職人 <span class="grow"></span><span class="t3">1人 ${E.WAGE}G/月 · 1人で月 ${P.rate}個</span></div>
@@ -844,6 +844,29 @@ function buildPick(g, res) {
   board.home(); render(); sfx('card');
 }
 function ratingOf(lot) { const e = lotEstimate(lot, F.build.g, F.build.res), R = rateOf(lot, e.profit); return { lot, color: R.c, text: `${R.m} ${e.profit >= 0 ? '+' : ''}${e.profit}G` }; }
+// ── レシピ: 何を入れて、何ができるか(絵で)
+function recipeWork(raw, staff = 2) {
+  const pk = E.RES[raw].proc, P = E.PROC[pk], mBuy = S.market[raw].price * (1 + E.SPREAD), mSell = S.market[pk].price * (1 - E.SPREAD), mg = mSell - mBuy;
+  return `<div class="recipe"><div class="rin">${ico(raw)}<b>${E.ITEMS[raw].name}</b><small>1個 ${mBuy.toFixed(2)}G</small></div><div class="rarr"><span>職人${staff}人で<br>月 <b>${fmt(Math.round(P.rate * staff))}</b>個</span><i></i></div><div class="rout">${ico(pk)}<b>${E.ITEMS[pk].name}</b><small>1個 ${mSell.toFixed(2)}G</small></div></div>
+    <div class="rmg ${mg >= 0 ? 'win' : 'lose'}">1個つくるごとに <b>${mg >= 0 ? '+' : '−'}${Math.abs(mg).toFixed(2)}G</b>(いまの相場)</div>`;
+}
+function recipeShop(g, s0) {
+  const G = E.GOODS[g], raw = G.res, pk = E.RES[raw].proc, use = s0 && s0.last ? Math.round(s0.last.units) : null;
+  return `<div class="recipe"><div class="rin">${ico(raw)}<b>${E.ITEMS[raw].name}</b><small>${E.ITEMS[pk].name}でもOK</small></div><div class="rarr"><span>お客1人に<br>1個つかう</span><i></i></div><div class="rout">${ico('b_' + g)}<b>${G.name}</b><small>${use != null ? `先月 ${fmt(use)}人に売った` : 'お客に売る'}</small></div></div>
+    <div class="rmg note">材料は在庫から先に使い、足りない分は月末にその月の相場で自動で買う</div>`;
+}
+// ── 借金の注意: 使ったあと来月の支払いが足りなくなりそうなら、確認画面を出す
+function debtRisk(cost, extra = 0) { const left = freeCash() - cost, need = nextFixed() + extra; return left < need ? { left, need, short: Math.round(need - left) } : null; }
+function debtModal(o, onOk) {
+  const el = document.createElement('div'); el.className = 'dmodal';
+  el.innerHTML = `<div class="dmin"><div class="dmh">${ico('coin')}<b>${o.loan ? 'お金を借りる' : '借金になるかも'}</b></div>
+    <div class="dmrows"><div><span>いまの現金</span><b>${fmt(freeCash())}G</b></div><div class="out"><span>${esc(o.what)}</span><b>−${fmt(o.cost)}G</b></div><div class="eq"><span>残り</span><b class="${o.left < 0 ? 'down' : ''}">${fmt(Math.round(o.left))}G</b></div><div class="out"><span>来月の家賃・お給料など(新しい店も)</span><b>−${fmt(Math.round(o.need))}G</b></div></div>
+    ${o.loan ? `<div class="dmwarn">銀行から <b>500G</b> を借りる。返すまで毎月 <b>${fmt(Math.round(500 * E.LOAN_RATE))}G</b> の利息がかかる。返すのは📒帳簿から</div>` : `<div class="dmwarn">足りない <b>${fmt(o.short)}G</b> は、月末に銀行が自動で貸す(<b>1割の手数料</b>つき・毎月 利息 ${Math.round(E.LOAN_RATE * 1000) / 10}%)</div>`}
+    <div class="dmbtns"><button class="btn" data-x="no">やめる</button><button class="btn danger" data-x="ok">${o.loan ? '借りる' : '借金覚悟でやる'}</button></div></div>`;
+  document.body.appendChild(el); sfx('bad'); haptic(40);
+  el.addEventListener('click', (e) => { const b = e.target.closest('[data-x]'); if (!b && e.target !== el) return; el.classList.add('out'); setTimeout(() => el.remove(), 220); if (b && b.dataset.x === 'ok') onOk(); else sfx('close'); });
+}
+const guarded = (cost, what, d, fn, extra = 0) => { if (d && d._ok) return false; const r = debtRisk(cost, extra); if (!r) return false; debtModal({ ...r, cost: Math.round(cost), what }, () => fn({ ...(d || {}), _ok: 1 })); return true; };
 // 来月かかるお金(家賃・お給料・宣伝・借金の利息。予定の新しい店も含む)
 function nextFixed() { const base = E.fixedCosts(S, ME); const opens = F.acts.filter(a => a.type === 'open').reduce((a, x) => a + E.DISTRICTS[E.LOTS[x.lot].d].rent + E.WAGE * (x.staff || 2), 0); return base + opens; }
 function buildEnd() { document.body.classList.remove('placing'); F.build = null; board.clearRatings(); board.highlightLot(-1); render(); }
@@ -853,8 +876,8 @@ function buildTray() {
     const cards = Object.entries(E.GOODS).map(([g, G]) => [g, G.icon, G.name]).concat([['work', '🏭', '工房']]);
     const one = B.lot != null ? E.DISTRICTS[E.LOTS[B.lot].d] : null;
     return `<div class="btray"><div class="bth"><b>🔨 ${one ? `${one.name}に何を建てる?` : '何を建てる?'}</b><button class="bx" data-a="buildcancel">✕</button></div>
-      <div class="bcards">${cards.map(([g, ic, nm], i) => { const [lo, hi] = one ? [E.openCost(E.LOTS[B.lot].d, g), 0] : buildCost(g); const can = freeCash() >= lo; return `<button class="bcard ${B.g === g ? 'on' : ''} ${can ? '' : 'poor'}" data-a="buildpick" data-v="${g}" style="animation-delay:${i * 0.05}s"><span class="bi">${ic}</span><b>${nm}</b><small>${BUILD_INFO[g]}</small><em>${fmt(lo)}${hi && hi !== lo ? '〜' : ''}G</em></button>`; }).join('')}</div>
-      ${step === 'res' ? `<div class="bres"><div class="t3">何を加工する?</div>${Object.entries(E.RES).map(([k, R]) => `<button class="chip" data-a="buildres" data-v="${k}">${R.icon}${R.name}→${E.ITEMS[R.proc].icon}</button>`).join('')}</div>` : ''}
+      <div class="bcards">${cards.map(([g, ic, nm], i) => { const [lo, hi] = one ? [E.openCost(E.LOTS[B.lot].d, g), 0] : buildCost(g); const can = freeCash() >= lo; return `<button class="bcard ${B.g === g ? 'on' : ''} ${can ? '' : 'poor'}" data-a="buildpick" data-v="${g}" style="animation-delay:${i * 0.05}s"><span class="bi">${ic}</span><b>${nm}</b><small>${BUILD_INFO[g]}</small>${g !== 'work' ? `<span class="bneed">${ico(E.GOODS[g].res)}を使う</span>` : '<span class="bneed">原料→加工品</span>'}<em>${fmt(lo)}${hi && hi !== lo ? '〜' : ''}G</em></button>`; }).join('')}</div>
+      ${step === 'res' ? `<div class="bres2"><div class="t2">工房で何をつくる?</div>${Object.keys(E.RES).map(k => `<button class="rpick" data-a="buildres" data-v="${k}">${recipeWork(k)}</button>`).join('')}</div>` : ''}
       <div class="t3" style="text-align:center">💰 使えるお金 <b>${fmt(freeCash())}G</b></div></div>`;
   }
   if (step === 'place') {
@@ -1167,15 +1190,19 @@ function marketNews() {
   return `<div class="box mnews"><div class="lbl">相場ニュース</div>${ks.map(({ k, ch }) => { const rs = priceReasons(k), own = me().inv[k] || 0; return `<div class="mn ${ch > 0 ? 'up' : 'dn'}"><span class="mni">${ico(k)}</span><div class="grow"><div class="mnh"><b>${E.ITEMS[k].name}</b><span>${S.market[k].price.toFixed(2)}G</span><em>${ch > 0 ? '▲' : '▼'}${Math.abs(Math.round(ch * 100))}%</em></div>${rs.map(r => `<div class="mnr">${r.up === true ? '↗' : r.up === false ? '↘' : '→'} ${esc(r.t)}</div>`).join('')}${own >= 1 ? `<div class="mnr own">あなたの在庫 ${fmt(own)}個 → ${ch > 0 ? '値上がりで得' : '値下がりで損'}(約${sign(Math.round(own * S.market[k].price * ch / (1 + ch)))}G)</div>` : ''}</div></div>`; }).join('')}</div>`;
 }
 // ── 決算の演出: 今月のお金の出入りを、1行ずつ画面に出していく(タップで早送り)
+const DECIDED = new Set(['建設', '育て方', 'カード', '市場で買った', '市場で売った', '商人との取引', '借金の返済', 'つなぎ融資(借りた)', '売掛金を前倒し', '店の買い取り', '店をたたんだ(売った)', '町の依頼']);
 const FLOW_ORDER = ['建設', '育て方', 'カード', '市場で買った', '材料の仕入れ', '先物の約束(材料)', '店の売上', '加工品を売った', '市場で売った', '商人との取引', 'ライバルとの取引', '店を売った', '店の買い取り', '店をたたんだ(売った)', 'お給料', '家賃', '宣伝', '保管料', '借金の利息', '借金の返済', '契約・売掛金', 'つなぎ融資(借りた)', '売掛金を前倒し', '町の依頼', '臨時の税', '年末の税', '町の依頼など', '大祭のボーナス', '救済融資(借りた)'];
 async function monthReplay() {
   const p = me(), fl = p.flow || {}, c0 = p.cash0 != null ? p.cash0 : p.cash;
-  const rows = Object.entries(fl).filter(([, v]) => Math.abs(v) >= 0.5).sort((a, b) => { const ia = FLOW_ORDER.indexOf(a[0]), ib = FLOW_ORDER.indexOf(b[0]); return (ia < 0 ? 50 : ia) - (ib < 0 ? 50 : ib); });
+  const all = Object.entries(fl).filter(([, v]) => Math.abs(v) >= 0.5);
+  const dec = all.filter(([k]) => DECIDED.has(k)), decSum = dec.reduce((a, [, v]) => a + v, 0);
+  const rows = all.filter(([k]) => !DECIDED.has(k)).sort((a, b) => { const ia = FLOW_ORDER.indexOf(a[0]), ib = FLOW_ORDER.indexOf(b[0]); return (ia < 0 ? 50 : ia) - (ib < 0 ? 50 : ib); });
   if (!rows.length) return;
-  const el = document.createElement('div'); el.id = 'ledger'; el.innerHTML = `<div class="lgin"><div class="lgh">📜 ${ym(S.t - 1)}の決算 <small>タップで早送り</small></div><div class="lgrows"></div><div class="lgcash"><span>現金</span><b>${fmt(c0)}G</b></div></div>`;
+  const start = c0 + decSum;
+  const el = document.createElement('div'); el.id = 'ledger'; el.innerHTML = `<div class="lgin"><div class="lgh">📜 ${ym(S.t - 1)}の決算 <small>タップで早送り</small></div>${dec.length ? `<div class="lgdec"><span>あなたが決めたこと(もう払った)</span><b>${decSum >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(decSum)))}G</b></div>` : ''}<div class="lgsub">お店が動いて、自動で出入りしたお金</div><div class="lgrows"></div><div class="lgcash"><span>現金</span><b>${fmt(start)}G</b></div></div>`;
   document.body.appendChild(el); sfx('whoosh');
   let fast = false; el.addEventListener('click', () => { fast = true; });
-  const box = el.querySelector('.lgrows'), cashEl = el.querySelector('.lgcash b'); let cash = c0;
+  const box = el.querySelector('.lgrows'), cashEl = el.querySelector('.lgcash b'); let cash = start;
   for (const [k, v] of rows) {
     const d = document.createElement('div'); d.className = 'lgr ' + (v >= 0 ? 'in' : 'out') + (k === '救済融資(借りた)' ? ' sos' : '');
     d.innerHTML = `<span>${pix(FLOW_ICON[k] || '•')} ${k}</span><b>${v >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(v)))}G</b>`; box.appendChild(d);
@@ -1191,14 +1218,18 @@ async function monthReplay() {
 const FLOW_ICON = { '建設': '🏗️', '育て方': '🌱', '店の売上': '🏪', '加工品を売った': '🏭', '材料の仕入れ': '📦', 'お給料': '👷', '家賃': '🏠', '宣伝': '📣', '市場で買った': '🛒', '市場で売った': '💰', 'カード': '🃏', '商人との取引': '🤝', 'ライバルとの取引': '🤝', '借金の返済': '💸', '借金の利息': '💸', 'つなぎ融資(借りた)': '🏦', '救済融資(借りた)': '🆘', '売掛金を前倒し': '🧾', '契約・売掛金': '📝', '先物の約束(材料)': '📝', '店の買い取り': '🏪', '店を売った': '🏪', '店をたたんだ(売った)': '🏚️', '保管料': '🗄️', '臨時の税': '📜', '年末の税': '📜', '町の依頼': '📋', '町の依頼など': '📋', '大祭のボーナス': '👑', 'その他': '•' };
 function flowBox() {
   const p = me(), fl = p.flow || {}, c0 = p.cash0 != null ? p.cash0 : p.cash;
-  const rows = Object.entries(fl).filter(([, v]) => Math.abs(v) >= 0.5).sort((a, b) => b[1] - a[1]);
-  if (!rows.length) return '';
+  const all = Object.entries(fl).filter(([, v]) => Math.abs(v) >= 0.5);
+  if (!all.length) return '';
+  const mxv = Math.max(1, ...all.map(x => Math.abs(x[1])));
+  const row = ([k, v], i) => `<div class="flr ${v >= 0 ? 'in' : 'out'}" style="animation-delay:${0.1 + i * 0.06}s"><span>${FLOW_ICON[k] || '•'} ${k}</span><b>${v >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(v)))}G</b><i style="width:${Math.min(100, Math.abs(v) / mxv * 100)}%"></i></div>`;
+  const dec = all.filter(([k]) => DECIDED.has(k)).sort((a, b) => a[1] - b[1]), auto = all.filter(([k]) => !DECIDED.has(k)).sort((a, b) => b[1] - a[1]);
   const total = p.cash - c0;
   return `<div class="box flowbox"><div class="lbl">💰 お金の流れ(今月)</div>
     <div class="fl0"><span>先月末の現金</span><b>${fmt(c0)}G</b></div>
-    ${rows.map(([k, v], i) => `<div class="flr ${v >= 0 ? 'in' : 'out'}" style="animation-delay:${0.1 + i * 0.06}s"><span>${FLOW_ICON[k] || '•'} ${k}</span><b>${v >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(v)))}G</b><i style="width:${Math.min(100, Math.abs(v) / Math.max(1, ...rows.map(x => Math.abs(x[1]))) * 100)}%"></i></div>`).join('')}
+    ${dec.length ? `<div class="flg">あなたが決めたこと</div>${dec.map(row).join('')}` : ''}
+    ${auto.length ? `<div class="flg">お店が動いて自動で出入り</div>${auto.map((r, i) => row(r, i + dec.length)).join('')}` : ''}
     <div class="fl1"><span>いまの現金</span><b>${fmt(p.cash)}G</b><small class="${cls(total)}">${sign(Math.round(total))}G</small></div>
-    ${fl['建設'] ? `<div class="t3" style="margin-top:6px">🏗️ 建てたお金は消えたわけではなく「店の価値」として純資産に残る</div>` : ''}</div>`;
+    ${fl['建設'] ? `<div class="t3" style="margin-top:6px">建てたお金は消えたわけではなく「店の価値」として純資産に残る</div>` : ''}</div>`;
 }
 const nwParts = (p) => { const shops = E.shopsOf(S, p.id).reduce((a, s) => a + E.shopValue(S, s), 0), inv = E.resValue(S, p); return `<span class="nwp"><i class="c">現金 ${fmt(p.cash)}</i><i class="s">店 ${fmt(shops)}</i>${inv >= 1 ? `<i class="v">在庫 ${fmt(inv)}</i>` : ''}${p.debt > 0 ? `<i class="d">借金 −${fmt(p.debt)}</i>` : ''}</span>`; };
 SHEETS.result = ({ r }) => {
@@ -1275,6 +1306,8 @@ const H = {
   card: (d) => openSheet('card', { i: +d.i }),
   cardgo: (d) => {
     const i = +d.i, c = me().hand[i], cd = E.cardDef(c);
+    if (cd.base === 'loan' && !d._ok) { debtModal({ loan: 1, cost: 0, left: freeCash() + 500, need: nextFixed(), short: 0, what: '借りる' }, () => H.cardgo({ ...d, _ok: 1 })); return; }
+    if (cd.cost && guarded(cd.cost, `「${cd.name}」を使う`, d, H.cardgo)) return;
     if (freeCash() < cd.cost) return toast('お金が足りない');
     F.acts = F.acts.filter(a => a.type !== 'card');
     F.acts.push({ type: 'card', card: c, idx: i, shop: d.shop ? +d.shop : undefined, res: d.res || undefined });
@@ -1300,8 +1333,9 @@ const H = {
   buildback: () => { document.body.classList.remove('placing'); board.clearRatings(); F.build.step = 'type'; F.build.g = null; render(); },
   buildother: () => { F.build.lot = null; buildPick(F.build.g, F.build.res); },
   builddetail: () => { const B = F.build; buildEnd(); openSheet('lot', { lot: B.lot, g: B.g, res: B.res }); },
-  buildgo: () => {
+  buildgo: (d) => {
     const B = F.build, e = lotEstimate(B.lot, B.g, B.res); if (freeCash() < e.cost) return toast('お金が足りない');
+    if (guarded(e.cost, `${B.g === 'work' ? '工房' : E.GOODS[B.g].name}を建てる`, d, H.buildgo, E.DISTRICTS[E.LOTS[B.lot].d].rent + E.WAGE * 2)) return;
     F.acts = F.acts.filter(a => !(a.type === 'open' && a.lot === B.lot));
     F.acts.push({ type: 'open', lot: B.lot, g: B.g, res: B.g === 'work' ? B.res : undefined, priceLv: 2, staff: 2 });
     const pos = board.screenOfLot(B.lot); coinFly(cashPos(), { x: pos.x - 10, y: pos.y - 10 }, 10);
@@ -1323,6 +1357,7 @@ const H = {
   mq: (d) => { F.mT.q = Math.max(0, Math.min(2000, F.mT.q + +d.v)); sfx('tap'); renderSheet(); },
   mqset: (d) => { F.mT.q = +d.v; sfx('tap'); renderSheet(); },
   mgo: (d) => { const k = d.v, T = F.mT, q = T.q; if (q <= 0) return;
+    if (T.mode === 'buy' && guarded(E.quote(S, k, q), `${E.ITEMS[k].name}を${fmt(q)}個買う`, d, H.mgo)) return;
     if (T.mode === 'buy') { const c = E.quote(S, k, q); if (freeCash() < c) return toast('お金が足りない'); F.acts.push({ type: 'buy', res: k, qty: q }); }
     else { const have = me().inv[k] - F.acts.filter(a => a.type === 'sell' && a.res === k).reduce((a, x) => a + x.qty, 0); const qq = Math.min(q, Math.floor(have)); if (qq <= 0) return toast('在庫がない'); F.acts.push({ type: 'sell', res: k, qty: qq }); }
     sfx('coin'); save(); render(); },
@@ -1733,7 +1768,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114033827';
+const BUILD = '20261114035155';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

@@ -88,7 +88,7 @@ export class Board {
   fit() { const w = this.el.clientWidth, h = this.el.clientHeight; this.R.setSize(w, h); this.cam.aspect = w / h; this.cam.fov = w / h < 0.7 ? 46 : 36; this.cam.updateProjectionMatrix(); }
   async build(stageId = 'rose') {
     this.peddlerObj = null;
-    this.signs = new Map(); this.bunting = null; this.trafficPer = 2; this.folkN = 0; this.folk = []; this.traffic = [];
+    this.signs = new Map(); this.bunting = null; this.trafficPer = 2; this.folkN = 0; this.folk = []; this.traffic = []; this.crowd = new Map(); this.crowdMx = [];
     const st = STAGES[stageId] || STAGES.rose;
     THEME.snow = st.theme === 'snow';
     if (this.world) this.scene.remove(this.world);
@@ -247,6 +247,28 @@ export class Board {
       g.position.copy(hexPos(q, r)); W.add(g);
     }
   }
+  // 店の前のお客: 先月よく売れた店ほど人が集まる(最大4人・町全体で28人まで)
+  updateCrowds(S) {
+    if (!this.charProto || !this.charProto[0]) return;
+    this.crowd = this.crowd || new Map(); this.crowdMx = this.crowdMx || [];
+    let total = 0; const want = new Map();
+    for (const s of S.shops) { if (s.g === 'work' || !s.last) continue; const n = Math.max(0, Math.min(4, Math.round(s.last.units / 45))); want.set(s.id, n); }
+    for (const [id, arr] of this.crowd) if (!want.has(id) || want.get(id) !== arr.length) { for (const c of arr) { this.world.remove(c.o); this.crowdMx = this.crowdMx.filter(m => m !== c.mx); } this.crowd.delete(id); }
+    for (const [, arr] of this.crowd) total += arr.length;
+    for (const [id, n] of want) {
+      if (this.crowd.has(id) || !n) continue; if (total + n > 28) continue; total += n;
+      const s = S.shops.find(x => x.id === id), l = LOTS[s.lot], c0 = hexPos(l.q, l.r), arr = [];
+      for (let i = 0; i < n; i++) {
+        const proto = this.charProto[(id + i) % 4]; if (!proto) continue;
+        const o = SkeletonUtils.clone(proto.scene); o.scale.setScalar(0.17);
+        const a = (i / Math.max(1, n)) * Math.PI * 1.2 + 0.4 + id, r = 0.82;
+        o.position.copy(c0).add(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r)); o.lookAt(c0.x, 0, c0.z);
+        const mx = new THREE.AnimationMixer(o), cl = proto.animations.find(c => c.name === (i % 2 ? 'Idle' : 'Cheer')) || proto.animations.find(c => c.name === 'Idle'); if (cl) { const ac = mx.clipAction(cl); ac.play(); ac.time = Math.random() * 2; }
+        this.world.add(o); this.crowdMx.push(mx); arr.push({ o, mx });
+      }
+      this.crowd.set(id, arr);
+    }
+  }
   // 地区の中を歩きまわる町の人(景気がいいほど多い)
   spawnFolk(per = 3) {
     if (this.folk) for (const w of this.folk) this.world.remove(w.o);
@@ -320,6 +342,7 @@ export class Board {
       if (o) o.userData.thrive = mood === '🔥';
     }
     for (const l of LOTS) { const used = S.shops.some(s => s.lot === l.id); this.plus.get(l.id).visible = !used && S.players[myId] && !S.over; if (this.rings) this.rings.get(l.id).visible = !used; }
+    this.updateCrowds(S);
   }
   // 開業予定の土地に足場を出す
   async preview(lot, g, color) {
@@ -456,7 +479,7 @@ export class Board {
   }
   // 町の景気: いいと人通りが増えて広場に旗飾り、悪いと人が減る
   setProsperity(k) {
-    const tf = k > 1.05 ? 4 : k > 0.98 ? 3 : 2; if (tf !== this.folkN) { this.folkN = tf; this.spawnFolk(tf); }
+    const tf = k > 1.05 ? 6 : k > 0.98 ? 5 : 3; if (tf !== this.folkN) { this.folkN = tf; this.spawnFolk(tf); }
     const per = k > 1.06 ? 4 : k > 1.0 ? 3 : k > 0.95 ? 2 : 1;
     if (per !== this.trafficPer) { this.trafficPer = per; this.spawnTraffic(per); }
     const want = k > 1.05;
@@ -571,6 +594,7 @@ export class Board {
     if (this.ratings) for (const [, g] of this.ratings) { const k = 1 + Math.sin(t * 3 + g.userData.ph) * 0.06; g.children[1].scale.set(1.9 * k, 0.83 * k, 1); g.children[0].material.opacity = 0.45 + Math.sin(t * 3 + g.userData.ph) * 0.12; }
     if (this.dusts) this.dusts = this.dusts.filter(d => { d.userData.life += dt; const k = d.userData.life / 0.9; d.position.addScaledVector(d.userData.v, dt); d.userData.v.multiplyScalar(0.9); d.scale.setScalar(0.4 + k * 0.9); d.material.opacity = 1 - k; if (k >= 1) { this.world.remove(d); return false; } return true; });
     this.fxTick(dt);
+    if (this.crowdMx) for (const mx of this.crowdMx) mx.update(dt);
     for (const [, o] of this.shopObjs) if (o && o.userData.shake > 0) { o.userData.shake -= dt; const k = Math.max(0, o.userData.shake); o.rotation.z = Math.sin(t * 60) * 0.08 * k; if (k <= 0) o.rotation.z = 0; }
     if (this.popIn) for (const o of this.popIn) { if (o.userData.pop < 1) { o.userData.pop = Math.min(1, o.userData.pop + dt * 2.5); o.scale.setScalar(Math.max(0.01, 1 - Math.pow(1 - o.userData.pop, 3))); } }
     if (this.signs) for (const [, sp] of this.signs) if (sp.userData.isNew) sp.position.y = 2.05 + Math.abs(Math.sin(t * 3)) * 0.18;

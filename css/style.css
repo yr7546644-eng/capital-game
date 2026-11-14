@@ -699,3 +699,22 @@ body:has(.title) #ticker{opacity:0;pointer-events:none}
 .plnote{font-size:12.5px;font-weight:800;color:#2350b0;margin-top:4px}
 .bagpl{font-size:13px;font-weight:900;border-radius:999px;padding:3px 10px;margin:4px 0}.bagpl.win{background:#dff6e8;color:#137a43}.bagpl.lose{background:#ffe0e4;color:#c21d3b}.bagpl b{font-size:16px}
 .trpl{margin-top:8px;font-size:30px;font-weight:900;padding:2px 16px;border-radius:14px;background:#fff;border-bottom:4px solid rgba(0,0,0,.12)}.trpl.win{color:#137a43}.trpl.lose{color:#c21d3b}
+/* 借金の注意 */
+.dmodal{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(40,10,20,.55);animation:tfade .2s}
+.dmodal.out{animation:tfade .2s reverse forwards}
+.dmin{width:min(360px,100%);background:linear-gradient(180deg,#fff,#fff4f5);border:3px solid #fff;border-bottom:7px solid #f0a3ad;border-radius:24px;padding:14px;box-shadow:0 20px 50px rgba(0,0,0,.35);animation:tpop .35s cubic-bezier(.34,1.6,.5,1)}
+.dmh{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:8px}.dmh b{font-size:22px;font-weight:900;color:#c21d3b}.dmh img.em3{width:40px;height:40px}
+.dmrows>div{display:flex;justify-content:space-between;padding:6px 8px;font-size:15.5px;font-weight:800;border-radius:10px}.dmrows .out b{color:#e5484d}.dmrows .eq{background:#f2f4fa}
+.dmwarn{margin:8px 0;background:#ffe0e4;color:#8f1028;border-radius:12px;padding:8px 10px;font-size:14px;font-weight:800;line-height:1.5}
+.dmbtns{display:flex;gap:8px}.dmbtns .btn{flex:1;font-size:16px;padding:14px 6px}
+.lgdec{display:flex;justify-content:space-between;background:#eef1f8;border-radius:12px;padding:6px 10px;font-size:13.5px;font-weight:800;color:#4a5570;margin-top:6px}
+.lgsub{font-size:12.5px;font-weight:900;color:#8a5a00;margin-top:8px}
+.flg{font-size:12.5px;font-weight:900;color:#8a5a00;margin:8px 2px 2px}
+/* レシピ */
+.recipe{display:grid;grid-template-columns:1fr 1.1fr 1fr;align-items:center;gap:6px;background:linear-gradient(180deg,#fffaf0,#fff1d6);border:2px solid #fff;border-bottom:4px solid #ecd39a;border-radius:18px;padding:10px 8px;margin-bottom:6px}
+.rin,.rout{display:flex;flex-direction:column;align-items:center;text-align:center}.rin img.em3,.rout img.em3{width:56px;height:56px}.rin b,.rout b{font-size:15px}.rin small,.rout small{font-size:11.5px;font-weight:800;color:#4a5570}
+.rarr{display:flex;flex-direction:column;align-items:center;text-align:center}.rarr span{font-size:12px;font-weight:800;color:#8a5a00;line-height:1.3}.rarr b{font-size:16px}
+.rarr i{display:block;width:100%;height:12px;margin-top:4px;position:relative;border-radius:6px;background:linear-gradient(90deg,#ffd36e,#e09a00,#ffd36e);background-size:200% 100%;animation:oflow 1s linear infinite}.rarr i::after{content:'';position:absolute;right:-10px;top:-8px;border:14px solid transparent;border-left-color:#e09a00;border-right:0}
+.rmg{text-align:center;font-size:14px;font-weight:900;border-radius:999px;padding:4px 10px;margin-bottom:10px}.rmg.win{background:#dff6e8;color:#137a43}.rmg.lose{background:#ffe0e4;color:#c21d3b}.rmg.note{background:#eef1f8;color:#3a4560;font-size:12.5px;border-radius:12px}
+.bres2{display:flex;flex-direction:column;gap:6px;max-height:42vh;overflow:auto;margin-bottom:6px}.rpick{text-align:left;padding:0}.rpick .recipe{margin-bottom:0}.rpick .rmg{margin:2px 0 4px}
+.bneed{display:flex;align-items:center;gap:2px;font-size:11px;font-weight:900;color:#8a5a00;background:#fff3d6;border-radius:999px;padding:1px 8px;margin-top:2px}.bneed img.em3{width:18px;height:18px}
