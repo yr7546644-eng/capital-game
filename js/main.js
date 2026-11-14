@@ -1601,6 +1601,12 @@ const H = {
   weather: () => openSheet('weather'),
   townhall: () => openSheet('townhall'),
   vote: (d) => { F.acts = F.acts.filter(a => a.type !== 'vote'); F.acts.push({ type: 'vote', bill: d.v }); sfx('card'); save(); render(); },
+  questgo: (d) => { const q = S.quests.find(x => x.id === +d.v); if (!q) return; const need = q.qty - q.got, have = Math.max(0, freeStock(q.item)), short = d.own ? 0 : Math.max(0, need - have);
+    if (short > 0) { const c = E.quote(S, q.item, short); if (freeCash() < c) return toast('お金が足りない'); if (guarded(c, `${E.ITEMS[q.item].name}を${fmt(short)}個買う`, d, H.questgo)) return; F.acts.push({ type: 'buy', res: q.item, qty: short }); }
+    if (q.taker !== ME && !F.acts.some(a => a.type === 'quest' && a.id === q.id)) { F.acts = F.acts.filter(a => a.type !== 'quest'); F.acts.push({ type: 'quest', id: q.id }); }
+    const qty = Math.min(need, have + short); F.acts = F.acts.filter(a => !(a.type === 'deliver' && a.id === q.id)); F.acts.push({ type: 'deliver', id: q.id, qty });
+    sfx('coin'); save(); toast(`月末に ${E.ITEMS[q.item].name} ${fmt(qty)}個を納める`); render(); },
+  questundo: (d) => { const id = +d.v; F.acts = F.acts.filter(a => !(a.type === 'deliver' && a.id === id) && !(a.type === 'quest' && a.id === id)); sfx('close'); save(); render(); },
   questtake: (d) => { F.acts = F.acts.filter(a => a.type !== 'quest'); F.acts.push({ type: 'quest', id: +d.v }); sfx('card'); save(); toast('月末に依頼を受ける'); render(); },
   questdeliver: (d) => { const q = S.quests.find(x => x.id === +d.v); const qty = Math.floor(Math.min(me().inv[q.item], q.qty - q.got)); if (qty <= 0) return; F.acts = F.acts.filter(a => !(a.type === 'deliver' && a.id === q.id)); F.acts.push({ type: 'deliver', id: q.id, qty }); sfx('coin'); save(); toast(`月末に ${fmt(qty)}個 納める`); render(); },
   buyshop: (d) => { F.acts = F.acts.filter(a => !(a.type === 'buyshop' && a.shop === +d.id)); F.acts.push({ type: 'buyshop', shop: +d.id, price: +d.v }); sfx('card'); save(); toast('月末に返事が来る'); render(); },
@@ -1777,13 +1783,26 @@ function alertsOf(fx, before, autoDone) {
   for (const k of new Set(mine.map(s => E.GOODS[s.g].res))) { const h = S.market[k].hist, ch = h.length > 1 ? S.market[k].price / h[h.length - 2] - 1 : 0; if (ch > 0.2) out.push({ p: 5, t: `${E.RES[k].icon}${E.RES[k].name}が高騰(前月比 +${Math.round(ch * 100)}%)。値上げするか、利益を削るか`, a: 'market' }); }
   return out.sort((a, b) => b.p - a.p).slice(0, 2);
 }
+// 町の依頼: 何を・いくつ・いくらで。足りない分はその場で市場から買って納められる
+function questCard(q, mineQ) {
+  const it = E.ITEMS[q.item], mine = q.taker === ME, need = q.qty - q.got, have = Math.max(0, freeStock(q.item)), short = Math.max(0, need - have);
+  const reward = Math.round(need * q.price + q.bonus), buyCost = short > 0 && !E.isRare(q.item) ? Math.round(E.quote(S, q.item, short)) : 0, haveVal = Math.round(Math.min(have, need) * S.market[q.item].price * (1 - E.SPREAD));
+  const gain = reward - buyCost - haveVal, left = mine ? q.took + q.months - S.t : q.months, other = q.taker != null && !mine, taking = F.acts.some(a => a.type === 'quest' && a.id === q.id), deliv = F.acts.find(a => a.type === 'deliver' && a.id === q.id);
+  return `<div class="qcard ${mine || taking ? 'mine' : ''}">
+    <div class="qch">${ico(q.item)}<div class="grow"><small>${esc(q.who)}がほしい</small><b>${it.name} ${fmt(need)}個</b>${q.got ? `<em>(納めた ${fmt(q.got)}/${fmt(q.qty)})</em>` : ''}</div><span class="qrew"><small>報酬</small><b>${fmt(reward)}G</b></span></div>
+    <div class="qrow"><span>1個 <b>${q.price.toFixed(2)}G</b>(相場の${Math.round(q.price / S.market[q.item].price * 100)}%)+ 全部納めたら <b>${fmt(q.bonus)}G</b></span></div>
+    <div class="qrow"><span>期限 <b>${left}か月</b>${mine ? '' : '(受けてから)'}</span><span>間に合わないと違約金</span></div>
+    <div class="qstock"><span>持っている <b>${fmt(have)}個</b></span>${short ? `<span class="down">足りない <b>${fmt(short)}個</b></span>` : '<span class="up">足りている!</span>'}</div>
+    ${short && !E.isRare(q.item) ? `<div class="qbuy">市場で${fmt(short)}個買うと <b class="down">−${fmt(buyCost)}G</b> → この依頼の儲け <b class="${gain >= 0 ? 'up' : 'down'}">${gain >= 0 ? '+' : '−'}${fmt(Math.abs(gain))}G</b></div>` : ''}
+    ${other ? `<div class="t3">${pname(S.players[q.taker])} が受けている</div>` : deliv ? `<div class="qdone">✓ 月末に ${fmt(deliv.qty)}個 納める予定 <button class="btn sm" data-a="questundo" data-v="${q.id}">やめる</button></div>` : (!mine && !taking && ((mineQ && mineQ.id !== q.id) || F.acts.some(a => a.type === 'quest' && a.id !== q.id))) ? `<div class="t3">依頼は1つずつ。いまの依頼を終えてから受けられる</div>` : `<div class="qbtns">${short && !E.isRare(q.item) ? `<button class="btn warm" data-a="questgo" data-v="${q.id}">${mine || taking ? '' : '受けて、'}足りない分を買って納める<small>−${fmt(buyCost)}G → +${fmt(reward)}G</small></button>` : ''}${have >= 1 ? `<button class="btn ${short ? '' : 'warm'}" data-a="questgo" data-v="${q.id}" data-own="1">${mine || taking ? '' : '受けて、'}持っている${fmt(Math.min(have, need))}個を納める</button>` : ''}${!mine && !taking ? `<button class="btn" data-a="questtake" data-v="${q.id}">受けるだけ</button>` : ''}</div>`}
+  </div>`;
+}
 SHEETS.townhall = () => {
   const qs = (S.quests || []).filter(q => !q.done || q.taker === ME), mineQ = qs.find(q => q.taker === ME && !q.done);
   const voteBox = S.vote && S.vote.t === S.t ? `<div class="box"><div class="lbl">🗳️ 商人ギルドの投票(今月決まる・1年有効)</div>${S.vote.bills.map(b => { const B = E.BILLS[b], on = (F.acts.find(a => a.type === 'vote') || {}).bill === b || S.vote.ballots[ME] === b; return `<button class="shoprow" style="width:100%;text-align:left" data-a="vote" data-v="${b}"><span class="ic">${B.icon}</span><div class="grow"><div>${B.name}</div><div class="t3">${B.text}</div></div><span class="btn sm ${on ? 'pri' : ''}">${on ? '投票 ✓' : '投票'}</span></button>`; }).join('')}<div class="t3" style="margin-top:6px">1人1票 + 店2つごとに1票。ライバルは自分の店に得な議題に入れる。</div></div>` : '';
   const laws = E.lawsActive(S);
   return head('🏛️', '町役場', '依頼・ギルドの投票・決まり・うわさ') + voteBox +
-    `<div class="box"><div class="lbl">📜 町の依頼</div>${qs.length ? qs.map(q => { const it = E.ITEMS[q.item], mine = q.taker === ME, left = mine ? q.took + q.months - S.t : null; return `<div class="quest"><div class="row"><span style="font-size:22px">${it.icon}</span><div class="grow"><div>${esc(q.who)}: ${it.name} ${fmt(q.qty)}個</div><div class="t3">${esc(q.text)} · 1個 ${q.price.toFixed(2)}G(相場の約${Math.round(q.price / S.market[q.item].price * 100)}%)+ 全部納めたら ${fmt(q.bonus)}G · 期限 ${q.months}か月</div></div></div>
-      ${q.taker == null ? `<button class="btn sm warm" data-a="questtake" data-v="${q.id}" ${mineQ ? 'disabled' : ''}>受ける</button>` : mine ? `<div class="t2" style="margin:4px 0">納めた ${fmt(q.got)}/${fmt(q.qty)} · のこり${left}か月 · 在庫 ${fmt(me().inv[q.item])}</div><button class="btn sm pri" data-a="questdeliver" data-v="${q.id}" ${me().inv[q.item] >= 1 ? '' : 'disabled'}>在庫から納める</button><div class="t3">間に合わないと、残りの報酬の${Math.round(E.QUEST_PENALTY * 100)}%を違約金で払う</div>` : `<div class="t3">${pname(S.players[q.taker])} が受けた</div>`}</div>`; }).join('') : '<div class="t3">今は依頼がない。ときどき出る</div>'}</div>
+    `<div class="box"><div class="lbl">📜 町の依頼</div><div class="t3" style="margin-bottom:6px">品物を集めて納めると、報酬がもらえる。1つずつ受けられる</div>${qs.length ? qs.map(q => questCard(q, mineQ)).join('') : '<div class="t3">いまは依頼がない。3か月ごとに新しい依頼が出る</div>'}</div>
     <div class="box"><div class="lbl">⚖️ いまの町の決まり</div>${laws.length ? laws.map(k => `<div class="news">${E.BILLS[k].icon} ${E.BILLS[k].name} <span class="t3">(${E.BILLS[k].text}・あと${S.laws[k] - S.t}か月)</span></div>`).join('') : '<div class="t3">特になし。毎年6月にギルドの議題が出る</div>'}</div>
     <div class="box"><div class="lbl">🗣️ 町のうわさ</div>${(S.rumors || []).length ? S.rumors.map(r => `<div class="news">${esc(r.t)}</div>`).join('') : '<div class="t3">まだうわさはない</div>'}</div>
     <div class="box"><div class="lbl">🧾 年末の決算</div><div class="t2">毎年12月の終わりに、その年の店の利益の${Math.round((E.lawsActive(S).includes('guildTax') ? 0.1 : E.TAX_RATE) * 100)}%を税として払う。その年に出店や育て方にかけたお金の半分は利益から差し引ける。</div><div class="kv"><span class="k">今年ここまでの利益</span><span class="num">${fmt(me().yProfit || 0)}G</span></div><div class="kv"><span class="k">今年の設備投資</span><span class="num">${fmt(me().yCapex || 0)}G</span></div></div>`;
@@ -1967,7 +1986,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114055736';
+const BUILD = '20261114060849';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
