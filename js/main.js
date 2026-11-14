@@ -1007,7 +1007,7 @@ function showTut(start = 0) {
 }
 function renderTut(dir) {
   const el = $('#tut'); if (!el) return; const i = F.tutI, P = TUT[i], last = i === TUT.length - 1;
-  el.innerHTML = `<div class="tcard ${dir > 0 ? 'fromR' : dir < 0 ? 'fromL' : 'pop'}">
+  el.innerHTML = `<div class="tcard ${dir > 0 ? 'fromR' : dir < 0 ? 'fromL' : 'tpopin'}">
     <div class="tprog">${TUT.map((_, k) => `<i class="${k < i ? 'done' : k === i ? 'on' : ''}"></i>`).join('')}</div>
     <button class="tskip" data-a="tutclose">${last ? '' : 'スキップ'}</button>
     <div class="thero" style="background:linear-gradient(140deg,${P.bg[0]},${P.bg[1]})"><span class="ttag">${P.tag}</span><span class="tem">${P.hero}</span><span class="tsp s1">✦</span><span class="tsp s2">✦</span><span class="tsp s3">•</span></div>
@@ -1628,7 +1628,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114024847';
+const BUILD = '20261114025803';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

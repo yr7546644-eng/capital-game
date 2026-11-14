@@ -265,7 +265,7 @@ body:has(.title) #dock,body:has(.title) #labels{opacity:0;pointer-events:none;tr
 #tut.out{animation:tfade .25s ease-in reverse forwards}
 @keyframes tfade{from{opacity:0}}
 .tcard{position:relative;width:100%;max-width:380px;background:#fff;border-radius:28px;overflow:hidden;box-shadow:0 24px 60px rgba(10,20,50,.4);padding-bottom:14px}
-.tcard.pop{animation:tpop .45s cubic-bezier(.34,1.6,.5,1)}.tcard.fromR{animation:tfromR .35s cubic-bezier(.22,1.2,.36,1)}.tcard.fromL{animation:tfromL .35s cubic-bezier(.22,1.2,.36,1)}
+.tcard.tpopin{animation:tpop .45s cubic-bezier(.34,1.6,.5,1)}.tcard.fromR{animation:tfromR .35s cubic-bezier(.22,1.2,.36,1)}.tcard.fromL{animation:tfromL .35s cubic-bezier(.22,1.2,.36,1)}
 @keyframes tpop{from{transform:scale(.85);opacity:0}}@keyframes tfromR{from{transform:translateX(60px) rotate(2deg);opacity:0}}@keyframes tfromL{from{transform:translateX(-60px) rotate(-2deg);opacity:0}}
 .tprog{position:absolute;top:12px;left:16px;right:80px;display:flex;gap:4px;z-index:2}
 .tprog i{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.4)}.tprog i.done{background:rgba(255,255,255,.9)}.tprog i.on{background:#fff;box-shadow:0 0 8px rgba(255,255,255,.9)}
@@ -283,8 +283,8 @@ body:has(.title) #dock,body:has(.title) #labels{opacity:0;pointer-events:none;tr
 .tvis{margin:14px 0 4px;min-height:74px;display:flex;flex-direction:column;align-items:center;gap:8px}
 .tv-note{font-size:12px;color:var(--ink3)}
 .tv-eq{display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:center}
-.tv-eq span{display:flex;flex-direction:column;align-items:center;background:#f3f6fd;border-radius:14px;padding:6px 8px;font-size:22px;animation:tbounce .5s cubic-bezier(.34,1.8,.5,1) backwards}
-.tv-eq span:nth-of-type(2){animation-delay:.08s}.tv-eq span:nth-of-type(3){animation-delay:.16s}.tv-eq span:nth-of-type(4){animation-delay:.24s}
+.tv-eq>span{display:flex;flex-direction:column;align-items:center;background:#f3f6fd;border-radius:14px;padding:6px 8px;font-size:22px;animation:tbounce .5s cubic-bezier(.34,1.8,.5,1) backwards}
+.tv-eq>span:nth-of-type(2){animation-delay:.08s}.tv-eq>span:nth-of-type(3){animation-delay:.16s}.tv-eq>span:nth-of-type(4){animation-delay:.24s}
 .tv-eq small{font-size:10px;color:var(--ink2)}.tv-eq i{font-style:normal;font-weight:800;color:var(--ink3)}
 @keyframes tbounce{from{transform:scale(.3);opacity:0}}
 .tv-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
@@ -574,3 +574,12 @@ details.tipd summary::-webkit-details-marker{display:none}details.tipd[open] sum
 .bagit{background:#fff;border-radius:16px;border-bottom:4px solid #e1e6f2;padding:10px;display:flex;flex-direction:column;align-items:center;gap:2px;box-shadow:0 4px 12px rgba(20,40,90,.08)}
 .bagit img.em3{width:58px;height:58px}.bagit b{font-size:14px}.bagit small{font-size:11.5px;color:var(--ink2)}
 #sheet.k-bag{--acc:#7c4dff;--acc2:#efe8ff}
+/* iPhone(Safari)で中央寄せの枠が文字の長さに引っぱられて左にずれる問題の対策 */
+#tut,#vs{display:flex!important;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+.tcard{width:min(380px,calc(100vw - 32px))!important;max-width:none;flex:0 0 auto;min-width:0}
+.vsin{width:min(400px,calc(100vw - 32px))!important;min-width:0}
+.tcard *,.vsin *{min-width:0}
+.tbody h2,.tbody p,.vsc q{overflow-wrap:anywhere;word-break:normal}
+
+.tv-eq .gib{width:36px;height:36px}.tv-eq img.em3{width:36px;height:36px}
+body:has(.title) #rivals,body:has(.title) #quest{opacity:0;pointer-events:none}
