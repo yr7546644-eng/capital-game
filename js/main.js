@@ -455,7 +455,7 @@ SHEETS.market = () => {
       <div class="mfacts">
         <div><span>💴 いまの相場</span><b>${m.price.toFixed(2)}G</b><small>ふだんは ${r.base.toFixed(2)}G → <i class="mtag ${tag[1]}">${tag[0]}</i></small></div>
         <div><span>🛒 買うと 1個</span><b>${(m.price * (1 + E.SPREAD)).toFixed(2)}G</b><small>💰 売ると 1個 ${(m.price * (1 - E.SPREAD)).toFixed(2)}G(差は手数料${Math.round(E.SPREAD * 100)}%)</small></div>
-        <div><span>🏚️ 町にある量</span><b style="color:${stockWord[1]}">${stockWord[0]}</b><small><span class="stockbar"><i style="width:${Math.min(100, lv / 2 * 100)}%;background:${stockWord[1]}"></i><b style="left:50%"></b></span>少ない → 値上がり / 多い → 値下がり</small></div>
+        <div><span>🏚️ 町の倉の在庫</span><b style="color:${stockWord[1]}">${stockWord[0]}</b><small><span class="stockbar"><i style="width:${Math.min(100, lv / 2 * 100)}%;background:${stockWord[1]}"></i><b style="left:50%"></b></span>町じゅうの店や人が買う共同の倉。<b>少ない → 値上がり</b> / <b>多い → 値下がり</b></small></div>
         <div class="wide">${priceChart(k, q > 0 ? after : null)}<small>${q > 0 ? `点線: ${T.mode === 'buy' ? '買う' : '売る'}と ${m.price.toFixed(2)} → <b>${after.toFixed(2)}G</b>` : '12か月の値動き'}</small></div>
         ${mk ? (() => { const inn = mk.prod, outq = mk.need + (mk.shop || 0), mxq = Math.max(1, inn, outq); return `<div class="wide sd"><div class="sdr"><span>入ってくる</span><i style="width:${inn / mxq * 100}%"></i><b>${fmt(inn)}</b></div><div class="sdr out"><span>使われる</span><i style="width:${outq / mxq * 100}%"></i><b>${fmt(outq)}</b></div><small>${trendW}</small>${priceReasons(k).map(r => `<small class="why">${r.up === true ? '↗' : r.up === false ? '↘' : '→'} ${esc(r.t)}</small>`).join('')}</div>`; })() : ''}
         <div><span>📦 あなたの在庫</span><b>${fmt(have)}個</b><small>${have > 0 ? `平均 ${avg.toFixed(2)}Gで仕入れ · いま売ると <span class="${cls(gain)}">${sign(gain)}G</span>` : 'なし'}</small></div>
@@ -993,7 +993,7 @@ function advisorTick() {
   const hide = !S || S.over || !st.all || $('.title') || $('#vs') || $('#tut') || F.sheet || F.busy || F.build;
   if (hide) { if (el) el.style.display = 'none'; return; }
   if (!el) { el = document.createElement('div'); el.id = 'advisor'; document.body.appendChild(el); }
-  const a = advice()[0], h = `<button class="adv ${a.tone || ''}" data-a="advgo" data-k="0"><span class="advh">今月の作戦</span>${ico(a.ic)}<span class="advt"><b>${a.t}</b><small>${a.why}</small></span><span class="advm" data-a="advall">ほか ›</span></button>`;
+  const a = advice()[0], h = `<button class="adv ${a.tone || ''}" data-a="advgo" data-k="0"><span class="advh">番頭</span><span class="advface">${ico('o_mage')}</span><span class="advt"><b>${a.t}</b><small>${a.why}</small></span>${ico(a.ic, 'advic')}<span class="advm" data-a="advall">ほか ›</span></button>`;
   if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; }
   el.style.display = '';
 }
@@ -1103,6 +1103,22 @@ function rivalLines(fx) {
   return out;
 }
 // ── ライバルの動きを地図で見せる: カメラがその場所へ飛び、建物の上で吹き出しを出す(タップで早送り)
+// ── キャラクターのカットイン: 大きな顔が横から入ってきて、ひとこと言う
+const SAY = {
+  build: { cheap: '安い店をどんどん出すよ!', luxury: '一流の店を構えたぞ', hoarder: 'ここも押さえておくわ', balanced: '堅実に、もう一店', me: 'ここに店を建てるぞ!' },
+  attack: { cheap: 'お客はぜんぶいただき!', luxury: '格の違いを見せてやろう', hoarder: 'じゃまはさせないわ', balanced: '悪いね、商売だから' },
+  win: { me: 'やった! 順位が上がった!' }, lose: { cheap: 'お先に失礼!', luxury: 'ふん、当然の結果だ', hoarder: '抜かせてもらったわよ', balanced: 'こつこつの勝ちだね' },
+};
+function cutIn(pid, line, sub, opt = {}) {
+  return new Promise((res) => {
+    const p = S.players[pid], col = E.COLOR_HEX[p.color], mine = pid === ME;
+    const el = document.createElement('div'); el.className = 'cutin ' + (mine ? 'ci-me' : 'ci-rv') + (opt.bad ? ' ci-bad' : ''); el.style.setProperty('--c', col);
+    el.innerHTML = `<div class="ciband"></div><div class="ciface">${avatar(p, 150)}</div><div class="citxt"><b>${mine ? 'あなた' : esc(p.name)}</b><span>${line}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
+    document.body.appendChild(el); sfx(opt.bad ? 'bad' : 'whoosh'); haptic(opt.bad ? 40 : 15);
+    let done = false; const fin = () => { if (done) return; done = true; el.classList.add('out'); setTimeout(() => { el.remove(); res(); }, 300); };
+    el.addEventListener('pointerdown', fin); setTimeout(fin, opt.ms || 1500);
+  });
+}
 async function rivalTour(fx) {
   const ev = [];
   for (const f of fx) {
@@ -1121,10 +1137,8 @@ async function rivalTour(fx) {
     board.focus(e.lot); await wait(650);
     const p = S.players[e.pid], col = E.COLOR_HEX[p.color];
     if (e.fx === 'pillar') board.pillar(e.lot, Number('0x' + col.slice(1))); if (e.fx === 'shock') { board.shock(e.lot); FX.flash('rgba(255,77,94,.3)'); FX.shake(); sfx('bad'); } if (e.fx === 'burst') board.burst(e.lot, 0xc79bff, 16);
-    const pos = board.screenOfLot(e.lot), d = document.createElement('div'); d.className = 'mapsay'; d.style.setProperty('--c', col);
-    d.innerHTML = `<span class="msf">${avatar(p, 44)}</span><div><b>${esc(p.name)}</b><span>${e.t}</span></div>`; d.style.left = Math.max(150, Math.min(innerWidth - 150, pos.x)) + 'px'; d.style.top = Math.max(200, pos.y - 30) + 'px';
-    document.body.appendChild(d); sfx('pop'); haptic(10);
-    await wait(skip ? 300 : 1500); d.classList.add('out'); setTimeout(() => d.remove(), 300);
+    const kind = e.fx === 'shock' ? 'attack' : 'build';
+    await cutIn(e.pid, (SAY[kind][p.ai] || SAY.build.balanced), e.t, { bad: e.fx === 'shock', ms: skip ? 400 : 1600 });
   }
   document.removeEventListener('pointerdown', sk);
   board.home(); await wait(400);
@@ -1505,7 +1519,7 @@ const H = {
     F.acts.push({ type: 'open', lot: B.lot, g: B.g, res: B.g === 'work' ? B.res : undefined, priceLv: 2, staff: 2 });
     const pos = board.screenOfLot(B.lot); coinFly(cashPos(), { x: pos.x - 10, y: pos.y - 10 }, 10);
     buildEnd(); board.preview(B.lot, B.g, me().color); setTimeout(() => board.dust(B.lot), 120);
-    sfx('build'); haptic(30); save(); render(); toast('🔨 建設開始! 月末に完成する');
+    sfx('build'); haptic(30); save(); render(); setTimeout(() => cutIn(ME, SAY.build.me, `${B.g === 'work' ? '工房' : E.GOODS[B.g].name}の建設開始! 月末に完成`), 350);
   },
   moveopen: (d) => { const lot = +d.v, a = F.acts.find(x => x.type === 'open' && x.lot === lot); if (!a) return; F.acts = F.acts.filter(x => x !== a); board.preview(lot, null); save(); closeSheet(); F.build = { step: 'type', lot: null }; buildPick(a.g, a.res); toast('新しい場所をタップ'); },
   bag: () => openSheet('bag'),
@@ -1691,7 +1705,8 @@ async function nextMonth() {
   if (r.tier1 > r.tier0) { sfx('rankup'); confetti(); } else if (r.tier1 < r.tier0) sfx('whoosh');
   countUp($('#cntup'), r.mine.reduce((a, x) => a + x.profit, 0));
   const pos = after.findIndex(x => x.p.id === ME);
-  if (pos < before.indexOf(ME)) { sfx('rankup'); confetti(); }
+  if (pos < before.indexOf(ME)) { sfx('rankup'); confetti(); setTimeout(() => cutIn(ME, SAY.win.me, `${before.indexOf(ME) + 1}位 → <b>${pos + 1}位</b>`), 400); }
+  else if (pos > before.indexOf(ME)) { const w = after[before.indexOf(ME)] && after[before.indexOf(ME)].p; if (w && w.id !== ME) setTimeout(() => cutIn(w.id, SAY.lose[w.ai] || SAY.lose.balanced, `あなたは ${pos + 1}位 に下がった`, { bad: true }), 400); }
   F.busy = false;
 }
 function afterResult() { render(); }
@@ -1944,7 +1959,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114052436';
+const BUILD = '20261114053105';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

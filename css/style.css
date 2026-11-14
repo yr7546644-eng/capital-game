@@ -815,3 +815,20 @@ body:has(.title) #handcol{display:none}
 #dock{gap:6px}
 @media (max-width:390px){.sc{padding:0 7px;height:42px}.sc.scev{max-width:92px}.sc img.em3{width:24px;height:24px}}
 .strip{justify-content:safe center}
+/* キャラクターのカットイン */
+.cutin{position:fixed;left:0;right:0;top:34%;height:150px;z-index:64;pointer-events:auto;animation:ciin .35s cubic-bezier(.22,1.2,.36,1)}
+.cutin.out{animation:ciout .3s ease-in forwards}
+@keyframes ciin{from{transform:translateX(-110%)}}@keyframes ciout{to{transform:translateX(110%);opacity:0}}
+.cutin.ci-rv{animation-name:ciinR}.cutin.ci-rv.out{animation-name:cioutR}@keyframes ciinR{from{transform:translateX(110%)}}@keyframes cioutR{to{transform:translateX(-110%);opacity:0}}
+.ciband{position:absolute;left:-5%;right:-5%;top:28px;bottom:8px;background:linear-gradient(90deg,var(--c),color-mix(in srgb,var(--c) 55%,#1f2a44));transform:skewY(-4deg);box-shadow:0 12px 30px rgba(0,0,0,.35);border-top:4px solid #fff;border-bottom:4px solid #fff}
+.cutin.ci-bad .ciband{background:linear-gradient(90deg,#e5484d,#7a1020)}
+.ciface{position:absolute;left:8px;bottom:6px;width:150px;height:150px;border-radius:50%;overflow:hidden;border:5px solid #fff;background:#fff;box-shadow:0 8px 20px rgba(0,0,0,.35)}.ciface img{width:170px;height:170px;object-fit:cover;margin:14px 0 0 -10px}
+.cutin.ci-rv .ciface{left:auto;right:8px}
+.citxt{position:absolute;left:170px;right:12px;top:42px;color:#fff;display:flex;flex-direction:column;text-shadow:0 2px 0 rgba(0,0,0,.3)}
+.cutin.ci-rv .citxt{left:12px;right:170px;align-items:flex-end;text-align:right}
+.citxt b{font-size:15px;opacity:.9}.citxt span{font-size:21px;font-weight:900;line-height:1.25}.citxt small{font-size:13.5px;font-weight:800;margin-top:4px;opacity:.95}
+/* 番頭 */
+.adv .advface{width:48px;height:48px;flex:0 0 48px;border-radius:50%;overflow:hidden;background:#fff;border:3px solid #3c74e6;display:grid;place-items:center}.adv .advface img.em3{width:62px;height:62px;margin-top:10px}
+.adv.bad .advface{border-color:#e5484d}
+.adv img.advic{width:34px!important;height:34px!important;flex:0 0 34px}
+.adv .advt{flex:1}
