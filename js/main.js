@@ -133,7 +133,7 @@ function applyHint() {
   const el = h === 'build' ? $('#dock [data-a=build]') : h === 'next' ? $('#dock [data-a=next]') : h === 'market' ? $('#dock [data-a=market]') : h === 'card' ? $('#dock .hand') : h === 'alerts' ? $('#dock [data-a=alerts]') : h === 'rivals' ? $('#rivals') : null;
   if (el) el.classList.add('hint');
 }
-function render() { hud(); $('#hud').innerHTML = pix($('#hud').innerHTML); cashRoll(); dock(); $('#dock').innerHTML = pix($('#dock').innerHTML); rivalsBar(); applyHint(); if (F.mp) netBadge(); board.setPeddler(!!(S.peddler && S.peddler.left > 0)); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
+function render() { hud(); $('#hud').innerHTML = pix($('#hud').innerHTML); cashRoll(); dock(); $('#dock').innerHTML = pix($('#dock').innerHTML); rivalsBar(); ticker(); applyHint(); if (F.mp) netBadge(); board.setPeddler(!!(S.peddler && S.peddler.left > 0)); F.handT = S.t; updateLabels(); if (F.sheet) renderSheet(); pickBgm(); }
 // 場面に合わせて曲を選ぶ: 大祭の年・雨・町ごとの曲を数か月ごとに入れ替え
 const STAGE_BGM = { rose: ['asa', 'kenso'], marina: ['minato', 'asa'], snow: ['yuki', 'kenso'], capital: ['kenso', 'asa'] };
 function pickBgm() {
@@ -423,7 +423,8 @@ SHEETS.market = () => {
         <div><span>💴 いまの相場</span><b>${m.price.toFixed(2)}G</b><small>ふだんは ${r.base.toFixed(2)}G → <i class="mtag ${tag[1]}">${tag[0]}</i></small></div>
         <div><span>🛒 買うと 1個</span><b>${(m.price * (1 + E.SPREAD)).toFixed(2)}G</b><small>💰 売ると 1個 ${(m.price * (1 - E.SPREAD)).toFixed(2)}G(差は手数料${Math.round(E.SPREAD * 100)}%)</small></div>
         <div><span>🏚️ 町にある量</span><b style="color:${stockWord[1]}">${stockWord[0]}</b><small><span class="stockbar"><i style="width:${Math.min(100, lv / 2 * 100)}%;background:${stockWord[1]}"></i><b style="left:50%"></b></span>少ない → 値上がり / 多い → 値下がり</small></div>
-        ${mk ? `<div class="wide"><small>${trendW}(先月 作られた ${fmt(mk.prod)} / 使われた ${fmt(mk.need + (mk.shop || 0))})</small></div>` : ''}
+        <div class="wide">${priceChart(k, q > 0 ? after : null)}<small>${q > 0 ? `点線: ${T.mode === 'buy' ? '買う' : '売る'}と ${m.price.toFixed(2)} → <b>${after.toFixed(2)}G</b>` : '12か月の値動き'}</small></div>
+        ${mk ? (() => { const inn = mk.prod, outq = mk.need + (mk.shop || 0), mxq = Math.max(1, inn, outq); return `<div class="wide sd"><div class="sdr"><span>入ってくる</span><i style="width:${inn / mxq * 100}%"></i><b>${fmt(inn)}</b></div><div class="sdr out"><span>使われる</span><i style="width:${outq / mxq * 100}%"></i><b>${fmt(outq)}</b></div><small>${trendW}</small>${priceReasons(k).map(r => `<small class="why">${r.up === true ? '↗' : r.up === false ? '↘' : '→'} ${esc(r.t)}</small>`).join('')}</div>`; })() : ''}
         <div><span>📦 あなたの在庫</span><b>${fmt(have)}個</b><small>${have > 0 ? `平均 ${avg.toFixed(2)}Gで仕入れ · いま売ると <span class="${cls(gain)}">${sign(gain)}G</span>` : 'なし'}</small></div>
         <div><span>🏪 あなたの店が使う</span><b>${use ? `月 ${fmt(use)}個` : '—'}</b><small>${r.decay ? `🥀 毎月 ${Math.round(r.decay * 100)}% 傷んで減る` : '🧊 傷まない'} · 保管料あり</small></div>
       </div>
@@ -1114,6 +1115,51 @@ SHEETS.scout = () => {
   }
   return h;
 };
+// ── 相場の動きをリアルに見せる: 理由・グラフ・上の電光掲示板
+// その品物の値段が動いた理由(出来事・季節・商会の売り買い・店の仕入れ)
+function priceReasons(k) {
+  const out = [], mk = S.mk && S.mk[k], N = E.normalStock(k), mo = (S.t + 11) % 12;
+  for (const a of S.evActive || []) { const e = E.evDef(a.id); if (!e) continue; if (e.prod && e.prod[k] != null && e.prod[k] !== 1) out.push({ t: `${e.name}で入荷が${e.prod[k] < 1 ? '減った' : '増えた'}`, up: e.prod[k] < 1 }); if (e.need && e.need[k] > 1) out.push({ t: `${e.name}で欲しがる人が増えた`, up: true }); }
+  const sk = E.seasK ? E.seasK(k, mo) : 1; if (sk > 1.35) out.push({ t: '収穫・入荷の季節', up: false }); else if (sk < 0.75) out.push({ t: '季節がら入荷が少ない', up: true });
+  const byP = {}; for (const f of S.ledger || []) { if ((f.kind === 'buy' || f.kind === 'sell') && f.res === k) byP[f.pid] = (byP[f.pid] || 0) + (f.kind === 'buy' ? f.qty : -f.qty); }
+  for (const [pid, q] of Object.entries(byP)) if (Math.abs(q) >= N * 0.04) out.push({ t: `${+pid === ME ? 'あなた' : S.players[pid].name}が${fmt(Math.abs(q))}個${q > 0 ? '買い込んだ' : '売りに出した'}`, up: q > 0 });
+  if (mk && mk.shop >= N * 0.08) out.push({ t: `お店の仕入れで${fmt(mk.shop)}個使われた`, up: true });
+  if (!out.length && mk) { const bal = mk.prod - mk.need - (mk.shop || 0); out.push(Math.abs(bal) < N * 0.02 ? { t: '入ってくる量と使う量がつり合っている', up: null } : { t: bal > 0 ? '入ってくる量のほうが多い' : '使われる量のほうが多い', up: bal < 0 }); }
+  return out.slice(0, 2);
+}
+const priceCh = (k) => { const h = S.market[k].hist; return h.length > 1 ? S.market[k].price / h[h.length - 2] - 1 : 0; };
+// 値動きのグラフ(12か月)。after を渡すと、買ったあと/売ったあとの見込みを点線で
+function priceChart(k, after) {
+  const h = S.market[k].hist.slice(-12), W = 300, Hh = 96, all = after != null ? h.concat([after]) : h, mn = Math.min(...all) * 0.97, mx = Math.max(...all) * 1.03;
+  const X = (i) => 8 + i / Math.max(1, (after != null ? h.length : h.length - 1)) * (W - 50), Y = (v) => 8 + (1 - (v - mn) / Math.max(0.0001, mx - mn)) * (Hh - 16);
+  const pts = h.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`), last = h[h.length - 1], up = h.length > 1 && last >= h[h.length - 2];
+  const col = up ? '#e5484d' : '#16a34a', id = 'g' + k;
+  return `<svg class="pchart" viewBox="0 0 ${W} ${Hh}" width="100%" height="${Hh}"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".35"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    <line x1="8" x2="${W - 42}" y1="${Y(E.ITEMS[k].base)}" y2="${Y(E.ITEMS[k].base)}" stroke="#9aa6c0" stroke-dasharray="3 4" stroke-width="1.2"/><text x="${W - 40}" y="${Y(E.ITEMS[k].base) + 4}" font-size="10" fill="#6b7590">ふだん</text>
+    <polygon points="${pts.join(' ')} ${X(h.length - 1)},${Hh} ${X(0)},${Hh}" fill="url(#${id})"/>
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${col}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${X(h.length - 1)}" cy="${Y(last)}" r="5.5" fill="#fff" stroke="${col}" stroke-width="3"/>
+    ${after != null ? `<line x1="${X(h.length - 1)}" y1="${Y(last)}" x2="${X(h.length)}" y2="${Y(after)}" stroke="#2f62d0" stroke-width="3" stroke-dasharray="5 4"/><circle cx="${X(h.length)}" cy="${Y(after)}" r="6" fill="#2f62d0"/><text x="${Math.min(W - 44, X(h.length) - 10)}" y="${Math.max(12, Y(after) - 9)}" font-size="12" font-weight="900" fill="#2f62d0">${after.toFixed(2)}</text>` : ''}
+  </svg>`;
+}
+// 上の電光掲示板: 品物の値段と前の月からの動き。月が変わると光る
+function tickerHtml() {
+  const ks = Object.keys(E.RES).concat(Object.keys(E.PROC)).concat(S.peddler && S.peddler.left > 0 ? S.peddler.items : []);
+  const one = ks.map(k => { const ch = priceCh(k), c = ch > 0.005 ? 'up' : ch < -0.005 ? 'dn' : ''; return `<span class="tk ${c}">${ico(k)}<b>${E.ITEMS[k].name}</b><em>${S.market[k].price.toFixed(2)}</em><i>${ch > 0.005 ? '▲' : ch < -0.005 ? '▼' : '−'}${Math.abs(Math.round(ch * 100))}%</i></span>`; }).join('');
+  return `<div class="tkin">${one}${one}</div>`;
+}
+function ticker(flash) {
+  let el = $('#ticker'); if (!S || $('.title')) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('button'); el.id = 'ticker'; el.dataset.a = 'market'; document.body.appendChild(el); }
+  const h = tickerHtml(); if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; }
+  if (flash) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+}
+// 結果画面: 相場ニュース(大きく動いた品物と、その理由)
+function marketNews() {
+  const ks = Object.keys(E.RES).concat(Object.keys(E.PROC)).map(k => ({ k, ch: priceCh(k) })).filter(x => Math.abs(x.ch) >= 0.02).sort((a, b) => Math.abs(b.ch) - Math.abs(a.ch)).slice(0, 3);
+  if (!ks.length) return `<div class="box mnews"><div class="lbl">相場ニュース</div><div class="t2">今月は大きな値動きなし</div></div>`;
+  return `<div class="box mnews"><div class="lbl">相場ニュース</div>${ks.map(({ k, ch }) => { const rs = priceReasons(k), own = me().inv[k] || 0; return `<div class="mn ${ch > 0 ? 'up' : 'dn'}"><span class="mni">${ico(k)}</span><div class="grow"><div class="mnh"><b>${E.ITEMS[k].name}</b><span>${S.market[k].price.toFixed(2)}G</span><em>${ch > 0 ? '▲' : '▼'}${Math.abs(Math.round(ch * 100))}%</em></div>${rs.map(r => `<div class="mnr">${r.up === true ? '↗' : r.up === false ? '↘' : '→'} ${esc(r.t)}</div>`).join('')}${own >= 1 ? `<div class="mnr own">あなたの在庫 ${fmt(own)}個 → ${ch > 0 ? '値上がりで得' : '値下がりで損'}(約${sign(Math.round(own * S.market[k].price * ch / (1 + ch)))}G)</div>` : ''}</div></div>`; }).join('')}</div>`;
+}
 // ── 決算の演出: 今月のお金の出入りを、1行ずつ画面に出していく(タップで早送り)
 const FLOW_ORDER = ['建設', '育て方', 'カード', '市場で買った', '材料の仕入れ', '先物の約束(材料)', '店の売上', '加工品を売った', '市場で売った', '商人との取引', 'ライバルとの取引', '店を売った', '店の買い取り', '店をたたんだ(売った)', 'お給料', '家賃', '宣伝', '保管料', '借金の利息', '借金の返済', '契約・売掛金', 'つなぎ融資(借りた)', '売掛金を前倒し', '町の依頼', '臨時の税', '年末の税', '町の依頼など', '大祭のボーナス', '救済融資(借りた)'];
 async function monthReplay() {
@@ -1163,6 +1209,7 @@ SHEETS.result = ({ r }) => {
     </div>
     ${(() => { const shopsV = E.shopsOf(S, ME).reduce((x, s0) => x + E.shopValue(S, s0), 0), invV = E.resValue(S, p); return `<div class="nweq"><div class="nwt">順位は<b>純資産</b>で決まる</div><div class="nwrow"><span class="c"><small>現金</small>${fmt(p.cash)}</span><i>+</i><span class="v"><small>在庫</small>${fmt(invV)}</span><i>+</i><span class="s"><small>店の価値</small>${fmt(shopsV)}</span>${p.debt > 0 ? `<i>−</i><span class="d"><small>借金</small>${fmt(p.debt)}</span>` : ''}<i>=</i><span class="n"><small>純資産</small>${fmt(nw)}</span></div>${invV >= 1 ? '<div class="nwt2">買った品物は「在庫」としていまの相場で数える。値上がりすれば増え、値下がりや傷みで減る</div>' : ''}</div>`; })()}
     ${flowBox()}
+    ${marketNews()}
     ${r.alerts && r.alerts.length ? `<div class="box alertbox"><div class="lbl">⚠️ 判断が必要なこと</div>${r.alerts.map(a => `<button class="news" style="width:100%;text-align:left" data-a="alert" data-k="${a.a || ''}" data-id="${a.id || ''}">${a.t}${a.a ? ' ›' : ''}</button>`).join('')}</div>` : '<div class="box" style="padding:10px 14px"><div class="t2" style="margin:0">✅ 今月は判断が必要なことはない。方針はそのまま引き継がれる</div></div>'}
     ${r.auto && r.auto.length ? `<div class="box"><div class="lbl">🤵 店長がしたこと</div>${r.auto.map(t => `<div class="news">${t}</div>`).join('')}</div>` : ''}
     ${mine.length ? `<div class="box">${mine.map(x => `<div class="shoprow"><span class="ic">${x.icon}</span><div class="grow"><div>${x.name} <span class="t3">${x.dist}</span></div><div class="t3">${x.work ? (x.s.last && x.s.last.noRaw ? `<span class="down">原料が買えず、作れなかった(お金不足)</span>` : `${fmt(x.units)}個つくった${x.s.last && x.s.last.bought ? `(原料 ${fmt(x.s.last.bought)}個を自動で仕入れ)` : ''}${x.sold ? ` · ${fmt(x.sold)}個売った` : ''}`) : `お客 ${fmt(x.units)}人${x.lost > 3 ? ` · <span class="down">${fmt(x.lost)}人を逃した</span>` : ''}`}</div></div><div class="num ${cls(x.profit)}">${sign(x.profit)}</div></div>${x.why ? `<div class="why">💬 ${x.why}${!x.work ? funnelBox(x.s, true) + sourcesBox(x.s, true) : ''}</div>` : ''}`).join('')}</div>` : ''}
@@ -1405,7 +1452,7 @@ async function nextMonth() {
   await board.sync(S, ME);
   board.setWeather(S.w);
   board.setProsperity(avgProsper());
-  render();
+  render(); ticker(true);
   // 客の動きと数字のポップ
   const sales = fx.filter(f => f.kind === 'sales' || f.kind === 'made');
   board.home();
@@ -1680,7 +1727,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114032246';
+const BUILD = '20261114033000';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

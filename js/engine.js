@@ -42,7 +42,7 @@ const SEAS = {
 };
 export const FLOW = { wheat: 3000, herb: 900, iron: 500, wool: 900, flour: 800, tincture: 250, steel: 180, fabric: 350, starsilver: 0, dragonscale: 0, moonherb: 0, seapearl: 0, goldwheat: 0 };
 const RARE_PULSE = 14, RARE_NEED = 6, RARE_N = 30;
-const seasK = (k, mo) => { const a = SEAS[k]; if (!a) return 1; const avg = a.reduce((x, y) => x + y, 0) / 12; return a[mo] / avg; };
+export const seasK = (k, mo) => { const a = SEAS[k]; if (!a) return 1; const avg = a.reduce((x, y) => x + y, 0) / 12; return a[mo] / avg; };
 export const normalStock = (k) => (RARES[k] ? RARE_N : FLOW[k] * (RES[k] ? 4 : 2));
 export function priceAt(k, stock) { const N = normalStock(k); return ITEMS[k].base * Math.min(3.5, Math.max(0.35, Math.pow(N / Math.max(1, stock), 0.7))); }
 function setPrice(S, k) { S.market[k].price = priceAt(k, S.mk[k].stock); }
