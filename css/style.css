@@ -691,3 +691,11 @@ body:has(.title) #ticker{opacity:0;pointer-events:none}
 .mnh{display:flex;align-items:baseline;gap:8px}.mnh b{font-size:17px}.mnh span{font-size:15px;font-weight:900}.mnh em{font-style:normal;font-weight:900;font-size:16px}
 .mn.up .mnh em{color:#e5484d}.mn.dn .mnh em{color:#16a34a}
 .mnr{font-size:13.5px;font-weight:800;color:#2b3550}.mnr.own{color:#2350b0}
+/* 損得の箱 */
+.plbox{border-radius:16px;padding:10px 12px;margin-bottom:8px;text-align:center;border-bottom:4px solid rgba(0,0,0,.08)}
+.plbox.win{background:linear-gradient(180deg,#e3f8ec,#c9f0da)}.plbox.lose{background:linear-gradient(180deg,#ffe9ec,#ffd3d9)}
+.plh{font-size:13.5px;font-weight:900;color:#2b3550}.plv{font-size:32px;font-weight:900;line-height:1.1}.plbox.win .plv{color:#137a43}.plbox.lose .plv{color:#c21d3b}
+.pleq{display:flex;justify-content:center;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;font-weight:800;margin-top:4px}.pleq i{font-style:normal;color:#4a5570}.pleq b{font-size:15px}
+.plnote{font-size:12.5px;font-weight:800;color:#2350b0;margin-top:4px}
+.bagpl{font-size:13px;font-weight:900;border-radius:999px;padding:3px 10px;margin:4px 0}.bagpl.win{background:#dff6e8;color:#137a43}.bagpl.lose{background:#ffe0e4;color:#c21d3b}.bagpl b{font-size:16px}
+.trpl{margin-top:8px;font-size:30px;font-weight:900;padding:2px 16px;border-radius:14px;background:#fff;border-bottom:4px solid rgba(0,0,0,.12)}.trpl.win{color:#137a43}.trpl.lose{color:#c21d3b}

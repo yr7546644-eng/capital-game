@@ -431,6 +431,10 @@ SHEETS.market = () => {
       <div class="seg mmode"><button class="${T.mode === 'buy' ? 'on' : ''}" data-a="mmode" data-v="buy">🛒 買う</button><button class="${T.mode === 'sell' ? 'on' : ''}" data-a="mmode" data-v="sell" ${canSell ? '' : 'disabled'}>💰 売る</button></div>
       <div class="mqty"><button class="mqb" data-a="mq" data-v="${-step}">−</button><div class="mqv"><b>${fmt(q)}</b><small>個</small></div><button class="mqb" data-a="mq" data-v="${step}">+</button></div>
       <div class="chips mpre">${presets.map(v => `<button class="chip ${q === v ? 'on' : ''}" data-a="mqset" data-v="${v}">${v}</button>`).join('')}${T.mode === 'buy' && use ? `<button class="chip" data-a="mqset" data-v="${Math.max(step, Math.ceil(use / step) * step)}">1か月分</button>` : ''}${T.mode === 'sell' && canSell ? `<button class="chip" data-a="mqset" data-v="${canSell}">ぜんぶ</button>` : ''}</div>
+      ${(() => { if (!q) return '';
+        if (T.mode === 'sell') { const pl = cost - avg * q, per = q ? pl / q : 0; return `<div class="plbox ${pl >= 0 ? 'win' : 'lose'}"><div class="plh">この取引の${pl >= 0 ? '儲け' : '損'}</div><div class="plv">${pl >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(pl)))}G</div><div class="pleq"><span>仕入れ 1個 <b>${avg.toFixed(2)}</b></span><i>→</i><span>売り 1個 <b>${(cost / q).toFixed(2)}</b></span><i>=</i><span class="${pl >= 0 ? 'up' : 'down'}">1個 <b>${per >= 0 ? '+' : ''}${per.toFixed(2)}</b></span></div></div>`; }
+        const unit = cost / q, vsBase = unit / E.ITEMS[k].base - 1, be = unit / (1 - E.SPREAD);
+        return `<div class="plbox ${vsBase <= 0 ? 'win' : 'lose'}"><div class="plh">買う値段は ふだんより</div><div class="plv">${Math.abs(Math.round(vsBase * 100))}% ${vsBase <= 0 ? '安い' : '高い'}</div><div class="pleq"><span>1個 <b>${unit.toFixed(2)}G</b>(手数料こみ)</span><i>·</i><span>ふだん <b>${E.ITEMS[k].base.toFixed(2)}G</b></span></div><div class="plnote">あとで売って得するには: 相場が <b>${be.toFixed(2)}G</b> より上がったとき(店で使えば材料費が浮く)</div></div>`; })()}
       <div class="msum">${T.mode === 'buy' ? `合計 <b class="down">−${fmt(Math.round(cost))}G</b>` : `合計 <b class="up">+${fmt(Math.round(cost))}G</b>`}${q ? ` <small>(1個平均 ${(cost / q).toFixed(2)}G)</small>` : ''}<br><small>${T.mode === 'buy' ? '買うと倉が減って' : '売ると倉が増えて'} 相場 ${m.price.toFixed(2)} → <b class="${dp > 0 ? 'down' : 'up'}">${after.toFixed(2)}G</b>(${dp >= 0 ? '+' : ''}${Math.round(dp * 100)}%)</small></div>
       <button class="btn wide ${T.mode === 'buy' ? 'pri' : 'warm'} mgo" data-a="mgo" data-v="${k}" ${q > 0 && (T.mode === 'sell' || freeCash() >= cost) && (!E.isRare(k) || E.peddlerHas(S, k)) ? '' : 'disabled'}>${E.isRare(k) && !E.peddlerHas(S, k) ? '行商人が来たときだけ' : q <= 0 ? '数を選んで' : T.mode === 'buy' ? (freeCash() >= cost ? `🛒 ${fmt(q)}個 買う` : 'お金が足りない') : `💰 ${fmt(q)}個 売る`}</button>
       ${pend.length ? `<div class="mpend"><div class="mpt">✓ 予約ずみ</div>${pend.map((a, i) => `<div class="mpr ${a.type}"><b>${a.type === 'buy' ? '買う' : '売る'} ${fmt(a.qty)}個</b><span>月末に${a.type === 'buy' ? '届く' : '渡す'}</span></div>`).join('')}<button class="btn wide" data-a="mcancel" data-v="${k}">取り消す(お金が戻る)</button></div>` : ''}
@@ -680,7 +684,8 @@ SHEETS.bag = () => {
   const mine = E.shopsOf(S, ME);
   let h = head('🎒', '持ち物', `現金 ${fmt(freeCash())}G · 店 ${mine.length}つ`);
   h += `<div class="bagshops">${mine.length ? mine.map(s => `<button class="bagshop" data-a="shop" data-id="${s.id}">${ico(s.g === 'work' ? 'b_work' : 'b_' + s.g)}<b>${gd(s).name}</b><small>${E.DISTRICTS[s.d].short}</small><em class="${cls(s.last ? s.last.profit : 0)}">${s.last ? sign(Math.round(s.last.profit)) + 'G' : '新店'}</em></button>`).join('') : '<div class="t2">まだ店がない。🔨建てるから</div>'}</div>`;
-  h += `<div class="baggrid">${items.length ? items.map(k => { const r = E.ITEMS[k], v = Math.round(p.inv[k] * S.market[k].price), feat = E.isRare(k) && E.storesOf(S, ME).some(s => s.g === E.RARES[k].use); return `<div class="bagit">${ico(k)}<b>${r.name}</b><small>${fmt(p.inv[k])}個 · 約${fmt(v)}G</small><div class="row" style="gap:4px">${!E.isRare(k) || E.peddlerHas(S, k) ? `<button class="btn sm warm" data-a="bagsell" data-v="${k}">売る</button>` : ''}${feat ? `<button class="btn sm pri" data-a="bagfeat" data-v="${k}">目玉に</button>` : ''}</div></div>`; }).join('') : '<div class="t2" style="grid-column:1/-1">品物は持っていない。🛒市場で安いときに買える</div>'}</div>`;
+  h += `<div class="baggrid">${items.length ? items.map(k => { const r = E.ITEMS[k], v = Math.round(p.inv[k] * S.market[k].price), feat = E.isRare(k) && E.storesOf(S, ME).some(s => s.g === E.RARES[k].use); const avgC = p.invCost[k] / p.inv[k], plu = Math.round(E.sellQuote(S, k, Math.floor(p.inv[k])) - p.invCost[k]);
+      return `<div class="bagit">${ico(k)}<b>${r.name}</b><small>${fmt(p.inv[k])}個 · 仕入れ 1個 ${avgC.toFixed(2)}G → いま ${S.market[k].price.toFixed(2)}G</small><div class="bagpl ${plu >= 0 ? 'win' : 'lose'}">いま全部売ると <b>${plu >= 0 ? '+' : '−'}${fmt(Math.abs(plu))}G</b></div><div class="row" style="gap:4px">${!E.isRare(k) || E.peddlerHas(S, k) ? `<button class="btn sm warm" data-a="bagsell" data-v="${k}">売る</button>` : ''}${feat ? `<button class="btn sm pri" data-a="bagfeat" data-v="${k}">目玉に</button>` : ''}</div></div>`; }).join('') : '<div class="t2" style="grid-column:1/-1">品物は持っていない。🛒市場で安いときに買える</div>'}</div>`;
   return h;
 };
 // 帳簿(自分の店の一覧・借金)
@@ -1086,7 +1091,8 @@ function missionBox() {
 // 売り買いの演出: 品物が大きく飛び出して、在庫に入る/出ていく。お金も同時に動く
 function tradeShow(a, c) {
   const buy = a.type === 'buy', r = E.ITEMS[a.res], el = document.createElement('div'); el.className = 'trade ' + (buy ? 'tb' : 'ts');
-  el.innerHTML = `<div class="trin"><div class="trart">${ico(a.res)}</div><div class="trq">${buy ? '+' : '−'}${fmt(a.qty)}<small>個</small></div><div class="trn">${r.name}</div><div class="trl">${buy ? '購入!' : '売却!'}</div><div class="trs">月末に${buy ? '届く' : '渡す'}</div></div>`;
+  const p = me(), pl = buy ? null : Math.round(E.sellQuote(S, a.res, a.qty) - (p.inv[a.res] > 0 ? p.invCost[a.res] / p.inv[a.res] : 0) * a.qty);
+  el.innerHTML = `<div class="trin"><div class="trart">${ico(a.res)}</div><div class="trq">${buy ? '+' : '−'}${fmt(a.qty)}<small>個</small></div><div class="trn">${r.name}</div><div class="trl">${buy ? '購入!' : '売却!'}</div>${pl != null ? `<div class="trpl ${pl >= 0 ? 'win' : 'lose'}">${pl >= 0 ? `+${fmt(pl)}G 儲け!` : `−${fmt(-pl)}G 損…`}</div>` : ''}<div class="trs">月末に${buy ? '届く' : '渡す'}</div></div>`;
   document.body.appendChild(el); sfx(buy ? 'kaching' : 'coins', 6); haptic(30); FX.burst(innerWidth / 2, innerHeight * 0.42, buy ? ['#7cc7ff', '#ffd36e', '#fff'] : ['#ffd36e', '#ff9a3c', '#fff'], 26);
   if (buy) coinFly(cashPos(), { x: innerWidth / 2, y: innerHeight * 0.42 }, 10); else setTimeout(() => coinFly({ x: innerWidth / 2, y: innerHeight * 0.42 }, cashPos(), 10), 300);
   setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); const row = document.querySelector(`.mrow[data-v="${a.res}"]`); if (row) { row.classList.remove('bump'); void row.offsetWidth; row.classList.add('bump'); } }, 1100);
@@ -1727,7 +1733,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114033000';
+const BUILD = '20261114033827';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();
