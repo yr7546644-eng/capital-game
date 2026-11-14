@@ -1161,6 +1161,7 @@ SHEETS.result = ({ r }) => {
       <div class="st st-c">${ico('coin')}<span>現金</span><b>${fmt(p.cash)}G</b><small class="${cls(p.cash - c0)}">${sign(Math.round(p.cash - c0))}G</small></div>
       <div class="st st-n">${ico('ui_town')}<span>純資産</span><b>${fmt(nw)}G</b><small class="${cls(nw - nw0)}">${sign(Math.round(nw - nw0))}G</small></div>
     </div>
+    ${(() => { const shopsV = E.shopsOf(S, ME).reduce((x, s0) => x + E.shopValue(S, s0), 0), invV = E.resValue(S, p); return `<div class="nweq"><div class="nwt">順位は<b>純資産</b>で決まる</div><div class="nwrow"><span class="c"><small>現金</small>${fmt(p.cash)}</span><i>+</i><span class="v"><small>在庫</small>${fmt(invV)}</span><i>+</i><span class="s"><small>店の価値</small>${fmt(shopsV)}</span>${p.debt > 0 ? `<i>−</i><span class="d"><small>借金</small>${fmt(p.debt)}</span>` : ''}<i>=</i><span class="n"><small>純資産</small>${fmt(nw)}</span></div>${invV >= 1 ? '<div class="nwt2">買った品物は「在庫」としていまの相場で数える。値上がりすれば増え、値下がりや傷みで減る</div>' : ''}</div>`; })()}
     ${flowBox()}
     ${r.alerts && r.alerts.length ? `<div class="box alertbox"><div class="lbl">⚠️ 判断が必要なこと</div>${r.alerts.map(a => `<button class="news" style="width:100%;text-align:left" data-a="alert" data-k="${a.a || ''}" data-id="${a.id || ''}">${a.t}${a.a ? ' ›' : ''}</button>`).join('')}</div>` : '<div class="box" style="padding:10px 14px"><div class="t2" style="margin:0">✅ 今月は判断が必要なことはない。方針はそのまま引き継がれる</div></div>'}
     ${r.auto && r.auto.length ? `<div class="box"><div class="lbl">🤵 店長がしたこと</div>${r.auto.map(t => `<div class="news">${t}</div>`).join('')}</div>` : ''}
@@ -1679,7 +1680,7 @@ async function boot() {
 }
 boot();
 // 新しい版が出ていたら、自動で入れかえる(古い画面のまま遊ばないように)
-const BUILD = '20261114031806';
+const BUILD = '20261114032246';
 (async () => {
   try {
     const v = (await (await fetch('version.txt', { cache: 'no-store' })).text()).trim();

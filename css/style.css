@@ -660,3 +660,9 @@ details.tipd summary{font-size:13.5px}
 .mpend{margin-top:10px;background:#e6efff;border:2px solid #8fb8ff;border-radius:16px;padding:10px;text-align:left}
 .mpt{font-weight:900;color:#2350b0;font-size:15px;margin-bottom:6px}
 .mpr{display:flex;justify-content:space-between;align-items:center;background:#fff;border-radius:12px;padding:8px 10px;margin-bottom:6px}.mpr b{font-size:17px}.mpr.buy b{color:#2350b0}.mpr.sell b{color:#c2410c}.mpr span{font-size:13px;font-weight:800;color:#3a4560}
+.nweq{background:#fff;border-radius:18px;padding:10px;margin-bottom:10px;border-bottom:4px solid #dfe5f2;box-shadow:0 6px 16px rgba(20,40,90,.08)}
+.nwt{font-size:14px;font-weight:900;text-align:center;margin-bottom:6px}.nwt2{font-size:12.5px;font-weight:700;color:#3a4560;text-align:center;margin-top:6px}
+.nwrow{display:flex;align-items:center;justify-content:center;gap:3px;flex-wrap:wrap}
+.nwrow span{display:flex;flex-direction:column;align-items:center;font-size:17px;font-weight:900;padding:4px 8px;border-radius:12px;border-bottom:3px solid rgba(0,0,0,.08)}
+.nwrow small{font-size:10.5px;font-weight:800}.nwrow i{font-style:normal;font-weight:900;color:#4a5570}
+.nwrow .c{background:#fff1c2;color:#8a5a00}.nwrow .v{background:#dff6e8;color:#137a43}.nwrow .s{background:#dbe8ff;color:#2350b0}.nwrow .d{background:#ffe0e4;color:#c21d3b}.nwrow .n{background:#2350b0;color:#fff}
